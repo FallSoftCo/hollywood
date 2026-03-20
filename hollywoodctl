@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVICE="hollywood.service"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  cat <<'EOF'
+usage: hollywoodctl <command>
+
+commands:
+  install      install+enable+start systemd user service
+  start        start service
+  stop         stop service
+  restart      restart service
+  status       show service status
+  logs         follow journal logs
+  health       check HTTP health endpoint
+  disable      stop+disable service
+EOF
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  install)
+    exec "$SCRIPT_DIR/install-systemd-user-service.sh"
+    ;;
+  start)
+    exec systemctl --user start "$SERVICE"
+    ;;
+  stop)
+    exec systemctl --user stop "$SERVICE"
+    ;;
+  restart)
+    exec systemctl --user restart "$SERVICE"
+    ;;
+  status)
+    exec systemctl --user --no-pager --full status "$SERVICE"
+    ;;
+  logs)
+    exec journalctl --user -u "$SERVICE" -f
+    ;;
+  health)
+    exec curl -fsS http://127.0.0.1:8765/hollywood/v1/health
+    ;;
+  disable)
+    systemctl --user disable --now "$SERVICE"
+    ;;
+  *)
+    usage
+    exit 1
+    ;;
+esac
