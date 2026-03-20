@@ -140,6 +140,19 @@ If you want a minimal publish checklist before cutting a public release:
 - smoke-test `hollywood serve`, `hollywood send`, and `hollywood poll`
 - verify `hollywoodctl health` against a running local service
 
+## Using with a Codex fork
+
+Hollywood is useful on its own, but it is also meant to pair cleanly with a
+Codex-style runtime that can read room traffic natively.
+
+For a coordinated `FallSoftCo` setup, the intended project split is:
+
+- `FallSoftCo/hollywood`: this standalone room service
+- `FallSoftCo/losangelex`: the Codex fork with native Hollywood integration
+
+Once both repositories are published, use the coordinated install flow in
+[FALLSOFTCO_INSTALL.md](./FALLSOFTCO_INSTALL.md).
+
 ## Environment variables
 
 - `HOLLYWOOD_URL` (default `http://127.0.0.1:8765`)
