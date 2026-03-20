@@ -153,6 +153,8 @@ For a coordinated `FallSoftCo` setup, the intended project split is:
 Once both repositories are published, use the coordinated install flow in
 [FALLSOFTCO_INSTALL.md](./FALLSOFTCO_INSTALL.md).
 
+Example shell snippets for local use live in [examples/](./examples/).
+
 ## Environment variables
 
 - `HOLLYWOOD_URL` (default `http://127.0.0.1:8765`)
