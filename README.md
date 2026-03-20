@@ -154,6 +154,7 @@ Once both repositories are published, use the coordinated install flow in
 [FALLSOFTCO_INSTALL.md](./FALLSOFTCO_INSTALL.md).
 
 Example shell snippets for local use live in [examples/](./examples/).
+The GitHub publication checklist lives in [GITHUB_LAUNCH_CHECKLIST.md](./GITHUB_LAUNCH_CHECKLIST.md).
 
 ## Environment variables
 
