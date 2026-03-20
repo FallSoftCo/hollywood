@@ -18,6 +18,14 @@ It is designed to be useful on its own and easy to integrate into larger runtime
 
 ## Quick start
 
+If you want the full experimental multi-agent Codex experience, do **not** start
+here. Start from the primary integrated quickstart in `FallSoftCo/losangelex`,
+which should point back to this repository only for the Hollywood service
+installation step.
+
+Use the quick start below if you want to run Hollywood by itself as a local
+coordination service or if you are wiring it into another runtime manually.
+
 ```bash
 cd /home/ai/Development/hollywood
 ./hollywood serve
@@ -147,14 +155,24 @@ Codex-style runtime that can read room traffic natively.
 
 For a coordinated `FallSoftCo` setup, the intended project split is:
 
-- `FallSoftCo/hollywood`: this standalone room service
-- `FallSoftCo/losangelex`: the Codex fork with native Hollywood integration
+- `FallSoftCo/losangelex`: the primary experimental integrated stack
+- `FallSoftCo/hollywood`: the supporting coordination service and protocol
 
 Once both repositories are published, use the coordinated install flow in
 [FALLSOFTCO_INSTALL.md](./FALLSOFTCO_INSTALL.md).
 
 Example shell snippets for local use live in [examples/](./examples/).
 The GitHub publication checklist lives in [GITHUB_LAUNCH_CHECKLIST.md](./GITHUB_LAUNCH_CHECKLIST.md).
+
+Required for the integrated stack:
+
+- a running Hollywood service
+- a LosangElex build/configuration that enables Hollywood auto-attach
+
+Optional:
+
+- using Hollywood by itself without LosangElex
+- reusing Hollywood with a different runtime
 
 ## Environment variables
 

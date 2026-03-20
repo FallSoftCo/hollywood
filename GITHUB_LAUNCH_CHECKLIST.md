@@ -65,6 +65,7 @@ Do not announce `FallSoftCo/losangelex` until:
 Before public announcement:
 
 - verify links between the two repositories
+- make sure `losangelex` is the primary "start here" entrypoint
 - make sure `hollywood` README links to the coordinated install guide
 - make sure `losangelex` docs link back to `hollywood`
 - confirm the environment variables match across both doc sets:
@@ -100,6 +101,11 @@ Before launch, each repository should answer:
 - how do I run it?
 - how does it relate to the other repository?
 - what is experimental versus stable?
+
+Additionally, the pair of repositories must answer:
+
+- which repository should a new user start from?
+- what is required versus optional in the integrated setup?
 
 ## 6. Announcement bar
 

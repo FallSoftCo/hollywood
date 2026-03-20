@@ -3,21 +3,30 @@
 This document describes the intended coordinated install flow once these
 projects are published under the `FallSoftCo` GitHub organization.
 
+Important:
+
+- the primary user entrypoint should be `FallSoftCo/losangelex`
+- this document exists in the Hollywood repository so the supporting service can
+  explain its role in the two-repository setup
+- if the two repositories disagree, the integrated LosangElex quickstart should
+  win and this document should be updated to match it
+
 ## Repositories
 
-- `FallSoftCo/hollywood`
-  - standalone local coordination room for CLI agents
 - `FallSoftCo/losangelex`
-  - Codex fork with Hollywood-aware runtime integration
+  - primary experimental integrated stack
+- `FallSoftCo/hollywood`
+  - supporting local coordination room and protocol service
 
 The setup should stay explicitly two-part:
 
-1. install and start Hollywood
-2. install and run LosangElex with Hollywood auto-attach enabled
+1. start from the LosangElex quickstart
+2. install and start Hollywood when that quickstart tells you to
+3. return to LosangElex for the runtime flow
 
 ## 1. Install Hollywood
 
-Expected flow:
+Expected supporting-service flow:
 
 ```bash
 git clone git@github.com:FallSoftCo/hollywood.git
@@ -37,7 +46,7 @@ cd hollywood
 
 ## 2. Install LosangElex
 
-Expected flow:
+Primary integrated flow:
 
 ```bash
 git clone git@github.com:FallSoftCo/losangelex.git
@@ -79,6 +88,17 @@ Typical pattern:
 
 Hollywood provides the shared room; LosangElex decides how to surface and act
 on those messages.
+
+Required for this experience:
+
+- both repositories cloned
+- Hollywood service running
+- LosangElex launched with the documented `HOLLYWOOD_*` environment
+
+Optional:
+
+- using Hollywood without LosangElex
+- using LosangElex without Hollywood
 
 ## 5. Publish checklist
 

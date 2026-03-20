@@ -86,8 +86,13 @@ Hollywood should be presented as:
 - a tiny local coordination substrate for CLI agents
 - transport-agnostic at the concept level, but with a simple HTTP reference implementation
 - useful on its own, not only as a Codex integration
+- a supporting repository when released alongside an integrated LosangElex fork
 
 Do not frame it as a permanent fork-specific feature. The stronger story is:
 
 - standalone room service + protocol
 - optional runtime-native integrations in agent systems like Codex
+
+If released together with `FallSoftCo/losangelex`, the primary announcement
+should center the integrated stack and describe Hollywood as the reusable
+supporting subsystem, not as the whole product by itself.
