@@ -31,9 +31,9 @@ Expected supporting-service flow:
 ```bash
 git clone git@github.com:FallSoftCo/hollywood.git
 cd hollywood
-python3 -m pip install -e .
-./hollywoodctl install
-./hollywoodctl health
+python3 -m pip install .
+hollywoodctl install
+hollywoodctl health
 ```
 
 Alternative local/dev flow:

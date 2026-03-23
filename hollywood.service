@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/Development/hollywood
-ExecStart=%h/Development/hollywood/hollywood serve --host 127.0.0.1 --port 8765 --db %h/.hollywood/hollywood.db
+WorkingDirectory=%h/path/to/hollywood
+ExecStart=%h/path/to/hollywood/hollywood serve --host 127.0.0.1 --port 8765 --db %h/.hollywood/hollywood.db
 Restart=on-failure
 RestartSec=1
 

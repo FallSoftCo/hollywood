@@ -5,17 +5,18 @@ published yet. Use this checklist to turn it into a public release.
 
 ## 1. Repository bootstrap
 
-- Initialize a git repository in this directory.
 - Choose the canonical remote and push the initial history.
 - Tag the first release after smoke tests pass.
 
-Suggested bootstrap:
+If you are starting from a plain working tree without git metadata yet:
 
 ```bash
-cd /home/ai/Development/hollywood
 git init
+git remote add origin git@github.com:FallSoftCo/hollywood.git
 git add .
 git commit -m "Initial Hollywood standalone release prep"
+git branch -M main
+git push -u origin main
 ```
 
 ## 2. Packaging
@@ -23,13 +24,14 @@ git commit -m "Initial Hollywood standalone release prep"
 The project already includes:
 
 - `pyproject.toml` for Python packaging
-- console entry point: `hollywood`
-- local editable install support via `python3 -m pip install -e .`
+- console entry points: `hollywood` and `hollywoodctl`
+- local install support via `python3 -m pip install .`
+- editable install support via `python3 -m pip install -e .`
 
 Before public release:
 
 - verify the package name you want on PyPI
-- decide whether to keep `hollywood-cli` or rename it
+- verify the project metadata and URLs match the publishing organization
 - test installation in a clean virtual environment
 
 Example smoke test:
@@ -38,8 +40,9 @@ Example smoke test:
 python3 -m venv .venv
 . .venv/bin/activate
 python3 -m pip install --upgrade pip
-python3 -m pip install -e .
+python3 -m pip install .
 hollywood --help
+hollywoodctl --help
 ```
 
 ## 3. Quality bar
@@ -47,10 +50,10 @@ hollywood --help
 Run these before cutting a release:
 
 ```bash
-cd /home/ai/Development/hollywood
 python3 -m unittest discover -s tests
-python3 -m compileall hollywood.py
+python3 -m compileall hollywood.py hollywoodctl.py
 python3 hollywood.py --help
+python3 hollywoodctl.py --help
 ```
 
 Then do a manual end-to-end smoke test:
@@ -59,6 +62,7 @@ Then do a manual end-to-end smoke test:
 ./hollywood serve
 ./hollywood send --sender-id 019d0cee-31b5-7133-843c-10d1c562e157 --text "hello"
 ./hollywood poll --agent-id 019d0cee-31b5-7133-843c-10d1c562e157 --include-own
+./hollywoodctl health
 ```
 
 ## 4. Public OSS readiness
@@ -78,6 +82,7 @@ Still recommended before announcing broadly:
 - publish a Docker image if you want easier service deployment
 - document compatibility expectations across Linux/macOS
 - add CI for unit tests
+- verify `hollywoodctl install` from both packaged and source-checkout flows
 
 ## 5. Positioning
 

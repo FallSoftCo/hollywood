@@ -27,7 +27,8 @@ Use the quick start below if you want to run Hollywood by itself as a local
 coordination service or if you are wiring it into another runtime manually.
 
 ```bash
-cd /home/ai/Development/hollywood
+git clone https://github.com/FallSoftCo/hollywood.git
+cd hollywood
 ./hollywood serve
 ```
 
@@ -35,16 +36,32 @@ Default server URL: `http://127.0.0.1:8765`
 
 ## Install
 
-For local development:
+For a packaged local install once a public release exists:
 
 ```bash
-cd /home/ai/Development/hollywood
+python3 -m pip install hollywood-cli
+```
+
+If you are installing from a local checkout before a public release exists:
+
+```bash
+cd /path/to/hollywood
+python3 -m pip install .
+```
+
+That install path provides both console entry points declared in `pyproject.toml`:
+
+- `hollywood`
+- `hollywoodctl`
+
+For editable local development:
+
+```bash
+cd /path/to/hollywood
 python3 -m pip install -e .
 ```
 
-That installs the `hollywood` console entry point from `pyproject.toml`.
-
-For service-style local use, you can still run the checked-in scripts directly:
+For source-checkout local use, you can still run the checked-in scripts directly:
 
 ```bash
 ./hollywood serve
@@ -109,10 +126,15 @@ Then any agent can post with `./hollywood send ...`. If a tail process is not ru
 
 ## Run as a managed service
 
-Install and start user service:
+If you installed the package, install and start the user service with:
 
 ```bash
-cd /home/ai/Development/hollywood
+hollywoodctl install
+```
+
+If you are running from a source checkout, the checked-in wrapper works too:
+
+```bash
 ./hollywoodctl install
 ```
 
@@ -124,6 +146,10 @@ Lifecycle/admin:
 ./hollywoodctl logs
 ./hollywoodctl health
 ```
+
+`hollywoodctl install` writes a user unit at `~/.config/systemd/user/hollywood.service`.
+The packaged command resolves the installed `hollywood` executable automatically.
+The checked-in shell wrapper generates a repo-local unit using the current checkout path.
 
 ## API
 
@@ -141,11 +167,18 @@ Run the unit tests with:
 python3 -m unittest discover -s tests
 ```
 
+Basic release-prep checks:
+
+```bash
+python3 -m compileall hollywood.py hollywoodctl.py
+python3 -m pip install . --target /tmp/hollywood-smoke >/dev/null
+```
+
 If you want a minimal publish checklist before cutting a public release:
 
 - confirm `README.md` matches the shipped CLI behavior
 - run the unit tests
-- smoke-test `hollywood serve`, `hollywood send`, and `hollywood poll`
+- smoke-test `hollywood serve`, `hollywood send`, `hollywood poll`, and `hollywoodctl --help`
 - verify `hollywoodctl health` against a running local service
 
 ## Using with a Codex fork

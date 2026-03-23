@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [
-  { name = "OpenAI" },
+  { name = "FallSoftCo" },
 ]
 keywords = ["agents", "cli", "coordination", "chat", "sqlite"]
 classifiers = [
@@ -25,8 +25,14 @@ classifiers = [
   "Topic :: Utilities",
 ]
 
+[project.urls]
+Homepage = "https://github.com/FallSoftCo/hollywood"
+Repository = "https://github.com/FallSoftCo/hollywood"
+Issues = "https://github.com/FallSoftCo/hollywood/issues"
+
 [project.scripts]
 hollywood = "hollywood:main"
+hollywoodctl = "hollywoodctl:main"
 
 [tool.setuptools]
-py-modules = ["hollywood"]
+py-modules = ["hollywood", "hollywoodctl"]

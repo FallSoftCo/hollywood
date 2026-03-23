@@ -26,6 +26,31 @@ DEFAULT_URL = os.environ.get("HOLLYWOOD_URL", "http://127.0.0.1:8765")
 DEFAULT_ROOM = os.environ.get("HOLLYWOOD_ROOM", "main")
 DEFAULT_CURSOR_DIR = os.environ.get("HOLLYWOOD_CURSOR_DIR", str(Path.home() / ".hollywood" / "cursors"))
 ALIAS_PREFIX = "sid-"
+MESSAGE_KIND_AMBIENT = "ambient"
+MESSAGE_KIND_BROADCAST = "broadcast"
+MESSAGE_KIND_DIRECT = "direct"
+VALID_MESSAGE_KINDS = {
+    MESSAGE_KIND_AMBIENT,
+    MESSAGE_KIND_BROADCAST,
+    MESSAGE_KIND_DIRECT,
+}
+VALID_REGISTRY_STATUSES = {
+    "unknown",
+    "idle",
+    "active",
+    "waiting",
+    "blocked",
+    "done",
+}
+VALID_TEAM_MEMBER_STATES = {
+    "pending",
+    "accepted",
+    "joined",
+    "active",
+    "declined",
+    "deferred",
+    "timed_out",
+}
 
 
 def utcnow_iso() -> str:
@@ -89,26 +114,102 @@ def init_db(db_path: str) -> None:
                 room TEXT NOT NULL,
                 sender_id TEXT NOT NULL,
                 recipient_id TEXT,
+                message_kind TEXT NOT NULL DEFAULT 'ambient',
                 body TEXT NOT NULL,
                 created_at TEXT NOT NULL
             )
             """
         )
+        columns = {
+            row[1] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
+        }
+        if "message_kind" not in columns:
+            conn.execute(
+                "ALTER TABLE messages ADD COLUMN message_kind TEXT NOT NULL DEFAULT 'ambient'"
+            )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages(room, id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS registry (
+                session_id TEXT PRIMARY KEY,
+                room TEXT NOT NULL,
+                attached INTEGER NOT NULL DEFAULT 1,
+                cwd TEXT,
+                repo_name TEXT,
+                attention_mode TEXT,
+                identities_json TEXT NOT NULL DEFAULT '[]',
+                session_kind TEXT,
+                resumed_from TEXT,
+                ephemeral INTEGER,
+                rollout_path TEXT,
+                status TEXT NOT NULL DEFAULT 'unknown',
+                role TEXT,
+                task TEXT,
+                scope TEXT,
+                updated_at TEXT NOT NULL,
+                last_heartbeat_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_registry_room ON registry(room)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS teams (
+                team_id TEXT PRIMARY KEY,
+                room TEXT NOT NULL,
+                task_room TEXT,
+                purpose TEXT NOT NULL,
+                leader_session_id TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_teams_room ON teams(room, updated_at DESC)")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS team_members (
+                team_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'member',
+                state TEXT NOT NULL DEFAULT 'pending',
+                joined_room TEXT,
+                task TEXT,
+                scope TEXT,
+                invited_by TEXT,
+                invited_at TEXT NOT NULL,
+                responded_at TEXT,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(team_id, session_id),
+                FOREIGN KEY(team_id) REFERENCES teams(team_id) ON DELETE CASCADE
+            )
+            """
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_id, updated_at DESC)"
+        )
         conn.commit()
     finally:
         conn.close()
 
 
-def insert_message(db_path: str, room: str, sender_id: str, recipient_id: str | None, body: str) -> dict[str, Any]:
+def insert_message(
+    db_path: str,
+    room: str,
+    sender_id: str,
+    recipient_id: str | None,
+    message_kind: str,
+    body: str,
+) -> dict[str, Any]:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
         created_at = utcnow_iso()
         cur = conn.execute(
-            "INSERT INTO messages(room, sender_id, recipient_id, body, created_at) VALUES (?, ?, ?, ?, ?)",
-            (room, sender_id, recipient_id, body, created_at),
+            "INSERT INTO messages(room, sender_id, recipient_id, message_kind, body, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (room, sender_id, recipient_id, message_kind, body, created_at),
         )
         conn.commit()
         msg_id = cur.lastrowid
@@ -141,6 +242,7 @@ def list_messages(
 
         q = f"""
             SELECT id, room, sender_id, recipient_id, body, created_at
+                 , message_kind
             FROM messages
             WHERE {' AND '.join(where)}
             ORDER BY id ASC
@@ -149,6 +251,424 @@ def list_messages(
         params.append(limit)
         rows = conn.execute(q, params).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def validate_registry_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    session_id = normalize_id(str(payload.get("session_id") or "").strip())
+    if not session_id:
+        raise ValueError("session_id is required")
+
+    room = str(payload.get("room") or DEFAULT_ROOM).strip()
+    if not room:
+        raise ValueError("room is required")
+
+    status = str(payload.get("status") or "unknown").strip().lower()
+    if status not in VALID_REGISTRY_STATUSES:
+        raise ValueError(
+            f"status must be one of {', '.join(sorted(VALID_REGISTRY_STATUSES))}"
+        )
+
+    identities = payload.get("identities") or []
+    if not isinstance(identities, list):
+        raise ValueError("identities must be a list")
+    normalized_identities: list[str] = []
+    seen_identities: set[str] = set()
+    for identity in identities:
+        if identity is None:
+            continue
+        text = str(identity).strip()
+        if not text:
+            continue
+        if text.lower().startswith(ALIAS_PREFIX):
+            alias_to_session_id(text)
+            normalized = text.lower()
+        else:
+            normalized = normalize_id(text)
+        if normalized and normalized not in seen_identities:
+            normalized_identities.append(normalized)
+            seen_identities.add(normalized)
+
+    attached = payload.get("attached", True)
+    attached_flag = 1 if bool(attached) else 0
+    ephemeral = payload.get("ephemeral")
+    ephemeral_flag = None if ephemeral is None else (1 if bool(ephemeral) else 0)
+
+    def optional_text(key: str) -> str | None:
+        value = payload.get(key)
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    return {
+        "session_id": session_id,
+        "room": room,
+        "attached": attached_flag,
+        "cwd": optional_text("cwd"),
+        "repo_name": optional_text("repo_name"),
+        "attention_mode": optional_text("attention_mode"),
+        "identities_json": json.dumps(normalized_identities),
+        "session_kind": optional_text("session_kind"),
+        "resumed_from": optional_text("resumed_from"),
+        "ephemeral": ephemeral_flag,
+        "rollout_path": optional_text("rollout_path"),
+        "status": status,
+        "role": optional_text("role"),
+        "task": optional_text("task"),
+        "scope": optional_text("scope"),
+    }
+
+
+def upsert_registry_entry(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    values = validate_registry_payload(payload)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        now = utcnow_iso()
+        values["updated_at"] = now
+        values["last_heartbeat_at"] = now
+        conn.execute(
+            """
+            INSERT INTO registry(
+                session_id, room, attached, cwd, repo_name, attention_mode,
+                identities_json, session_kind, resumed_from, ephemeral, rollout_path,
+                status, role, task, scope, updated_at, last_heartbeat_at
+            ) VALUES (
+                :session_id, :room, :attached, :cwd, :repo_name, :attention_mode,
+                :identities_json, :session_kind, :resumed_from, :ephemeral, :rollout_path,
+                :status, :role, :task, :scope, :updated_at, :last_heartbeat_at
+            )
+            ON CONFLICT(session_id) DO UPDATE SET
+                room = excluded.room,
+                attached = excluded.attached,
+                cwd = excluded.cwd,
+                repo_name = excluded.repo_name,
+                attention_mode = excluded.attention_mode,
+                identities_json = excluded.identities_json,
+                session_kind = excluded.session_kind,
+                resumed_from = excluded.resumed_from,
+                ephemeral = excluded.ephemeral,
+                rollout_path = excluded.rollout_path,
+                status = excluded.status,
+                role = COALESCE(excluded.role, registry.role),
+                task = COALESCE(excluded.task, registry.task),
+                scope = COALESCE(excluded.scope, registry.scope),
+                updated_at = excluded.updated_at,
+                last_heartbeat_at = excluded.last_heartbeat_at
+            """,
+            values,
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM registry WHERE session_id = ?",
+            (values["session_id"],),
+        ).fetchone()
+        return registry_row_to_dict(row)
+    finally:
+        conn.close()
+
+
+def registry_row_to_dict(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        raise ValueError("registry row missing")
+    data = dict(row)
+    try:
+        identities = json.loads(data.pop("identities_json") or "[]")
+    except json.JSONDecodeError:
+        identities = []
+    data["identities"] = identities
+    data["attached"] = bool(data.get("attached"))
+    if data.get("ephemeral") is not None:
+        data["ephemeral"] = bool(data["ephemeral"])
+    return data
+
+
+def list_registry_entries(
+    db_path: str,
+    room: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM registry
+            WHERE room = ?
+            ORDER BY last_heartbeat_at DESC, session_id ASC
+            LIMIT ?
+            """,
+            (room, limit),
+        ).fetchall()
+        return [registry_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def validate_team_create_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    team_id = str(payload.get("team_id") or uuid.uuid4()).strip().lower()
+    room = str(payload.get("room") or DEFAULT_ROOM).strip()
+    purpose = str(payload.get("purpose") or "").strip()
+    leader_session_id = normalize_id(str(payload.get("leader_session_id") or "").strip())
+    task_room = str(payload.get("task_room") or "").strip() or None
+    status = str(payload.get("status") or "active").strip().lower()
+    if not room:
+        raise ValueError("room is required")
+    if not purpose:
+        raise ValueError("purpose is required")
+    if not leader_session_id:
+        raise ValueError("leader_session_id is required")
+    members = payload.get("members") or []
+    if not isinstance(members, list):
+        raise ValueError("members must be a list")
+    validated_members: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for member in members:
+        if not isinstance(member, dict):
+            raise ValueError("each member must be an object")
+        session_id = normalize_id(str(member.get("session_id") or "").strip())
+        if not session_id:
+            raise ValueError("member session_id is required")
+        if session_id in seen:
+            continue
+        seen.add(session_id)
+        role = str(member.get("role") or "member").strip().lower() or "member"
+        state = str(member.get("state") or "pending").strip().lower() or "pending"
+        if state not in VALID_TEAM_MEMBER_STATES:
+            raise ValueError(
+                f"member state must be one of {', '.join(sorted(VALID_TEAM_MEMBER_STATES))}"
+            )
+        validated_members.append(
+            {
+                "session_id": session_id,
+                "role": role,
+                "state": state,
+            }
+        )
+    if leader_session_id not in seen:
+        validated_members.insert(
+            0,
+            {
+                "session_id": leader_session_id,
+                "role": "leader",
+                "state": "active",
+            },
+        )
+    return {
+        "team_id": team_id,
+        "room": room,
+        "task_room": task_room,
+        "purpose": purpose,
+        "leader_session_id": leader_session_id,
+        "status": status,
+        "members": validated_members,
+    }
+
+
+def team_member_row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
+    return dict(row)
+
+
+def list_team_members(conn: sqlite3.Connection, team_id: str) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT team_id, session_id, role, state, joined_room, task, scope,
+               invited_by, invited_at, responded_at, updated_at
+        FROM team_members
+        WHERE team_id = ?
+        ORDER BY invited_at ASC, session_id ASC
+        """,
+        (team_id,),
+    ).fetchall()
+    return [team_member_row_to_dict(row) for row in rows]
+
+
+def team_row_to_dict(conn: sqlite3.Connection, row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        raise ValueError("team row missing")
+    data = dict(row)
+    data["members"] = list_team_members(conn, data["team_id"])
+    return data
+
+
+def create_team(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    values = validate_team_create_payload(payload)
+    now = utcnow_iso()
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        conn.execute(
+            """
+            INSERT INTO teams(
+                team_id, room, task_room, purpose, leader_session_id, status, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                values["team_id"],
+                values["room"],
+                values["task_room"],
+                values["purpose"],
+                values["leader_session_id"],
+                values["status"],
+                now,
+                now,
+            ),
+        )
+        for member in values["members"]:
+            responded_at = (
+                now
+                if member["state"]
+                in {"accepted", "joined", "active", "declined", "deferred", "timed_out"}
+                else None
+            )
+            conn.execute(
+                """
+                INSERT INTO team_members(
+                    team_id, session_id, role, state, joined_room, task, scope,
+                    invited_by, invited_at, responded_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    values["team_id"],
+                    member["session_id"],
+                    member["role"],
+                    member["state"],
+                    values["task_room"],
+                    None,
+                    None,
+                    values["leader_session_id"],
+                    now,
+                    responded_at,
+                    now,
+                ),
+            )
+        conn.commit()
+        row = conn.execute("SELECT * FROM teams WHERE team_id = ?", (values["team_id"],)).fetchone()
+        return team_row_to_dict(conn, row)
+    finally:
+        conn.close()
+
+
+def validate_team_member_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    team_id = str(payload.get("team_id") or "").strip().lower()
+    session_id = normalize_id(str(payload.get("session_id") or "").strip())
+    if not team_id:
+        raise ValueError("team_id is required")
+    if not session_id:
+        raise ValueError("session_id is required")
+    state = payload.get("state")
+    if state is not None:
+        state = str(state).strip().lower()
+        if state not in VALID_TEAM_MEMBER_STATES:
+            raise ValueError(
+                f"state must be one of {', '.join(sorted(VALID_TEAM_MEMBER_STATES))}"
+            )
+
+    def optional_text(key: str) -> str | None:
+        value = payload.get(key)
+        if value is None:
+            return None
+        text = str(value).strip()
+        return text or None
+
+    return {
+        "team_id": team_id,
+        "session_id": session_id,
+        "role": optional_text("role"),
+        "state": state,
+        "joined_room": optional_text("joined_room"),
+        "task": optional_text("task"),
+        "scope": optional_text("scope"),
+    }
+
+
+def upsert_team_member(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    values = validate_team_member_payload(payload)
+    now = utcnow_iso()
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        existing_team = conn.execute(
+            "SELECT * FROM teams WHERE team_id = ?",
+            (values["team_id"],),
+        ).fetchone()
+        if existing_team is None:
+            raise ValueError("team_id not found")
+        current = conn.execute(
+            "SELECT * FROM team_members WHERE team_id = ? AND session_id = ?",
+            (values["team_id"], values["session_id"]),
+        ).fetchone()
+        invited_at = current["invited_at"] if current is not None else now
+        responded_at = (
+            now
+            if values["state"] in {"accepted", "joined", "active", "declined", "deferred", "timed_out"}
+            else (current["responded_at"] if current is not None else None)
+        )
+        conn.execute(
+            """
+            INSERT INTO team_members(
+                team_id, session_id, role, state, joined_room, task, scope,
+                invited_by, invited_at, responded_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(team_id, session_id) DO UPDATE SET
+                role = COALESCE(excluded.role, team_members.role),
+                state = COALESCE(excluded.state, team_members.state),
+                joined_room = COALESCE(excluded.joined_room, team_members.joined_room),
+                task = COALESCE(excluded.task, team_members.task),
+                scope = COALESCE(excluded.scope, team_members.scope),
+                responded_at = COALESCE(excluded.responded_at, team_members.responded_at),
+                updated_at = excluded.updated_at
+            """,
+            (
+                values["team_id"],
+                values["session_id"],
+                values["role"] or (current["role"] if current is not None else "member"),
+                values["state"] or (current["state"] if current is not None else "pending"),
+                values["joined_room"] or (current["joined_room"] if current is not None else None),
+                values["task"] or (current["task"] if current is not None else None),
+                values["scope"] or (current["scope"] if current is not None else None),
+                existing_team["leader_session_id"],
+                invited_at,
+                responded_at,
+                now,
+            ),
+        )
+        conn.execute(
+            "UPDATE teams SET updated_at = ? WHERE team_id = ?",
+            (now, values["team_id"]),
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT * FROM team_members WHERE team_id = ? AND session_id = ?",
+            (values["team_id"], values["session_id"]),
+        ).fetchone()
+        return team_member_row_to_dict(row)
+    finally:
+        conn.close()
+
+
+def list_teams(
+    db_path: str,
+    room: str,
+    limit: int,
+) -> list[dict[str, Any]]:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM teams
+            WHERE room = ?
+            ORDER BY updated_at DESC, team_id ASC
+            LIMIT ?
+            """,
+            (room, limit),
+        ).fetchall()
+        return [team_row_to_dict(conn, row) for row in rows]
     finally:
         conn.close()
 
@@ -195,9 +715,104 @@ def make_handler(db_path: str):
                 self._json(HTTPStatus.OK, {"messages": messages, "count": len(messages), "last_id": last_id})
                 return
 
+            if parsed.path == f"{API_PREFIX}/registry":
+                qs = urlparse.parse_qs(parsed.query)
+                room = qs.get("room", [DEFAULT_ROOM])[0]
+                try:
+                    limit = int(qs.get("limit", ["100"])[0])
+                except ValueError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "limit must be an integer"})
+                    return
+                limit = max(1, min(1000, limit))
+                entries = list_registry_entries(db_path, room, limit)
+                self._json(
+                    HTTPStatus.OK,
+                    {"entries": entries, "count": len(entries)},
+                )
+                return
+
+            if parsed.path == f"{API_PREFIX}/teams":
+                qs = urlparse.parse_qs(parsed.query)
+                room = qs.get("room", [DEFAULT_ROOM])[0]
+                try:
+                    limit = int(qs.get("limit", ["100"])[0])
+                except ValueError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "limit must be an integer"})
+                    return
+                limit = max(1, min(1000, limit))
+                teams = list_teams(db_path, room, limit)
+                self._json(HTTPStatus.OK, {"teams": teams, "count": len(teams)})
+                return
+
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802
+            if self.path == f"{API_PREFIX}/registry":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid Content-Length"})
+                    return
+
+                raw = self.rfile.read(length)
+                try:
+                    payload = json.loads(raw.decode("utf-8") or "{}")
+                except json.JSONDecodeError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid json"})
+                    return
+
+                try:
+                    entry = upsert_registry_entry(db_path, payload)
+                except ValueError as e:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
+                    return
+                self._json(HTTPStatus.CREATED, {"ok": True, "entry": entry})
+                return
+
+            if self.path == f"{API_PREFIX}/teams":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid Content-Length"})
+                    return
+
+                raw = self.rfile.read(length)
+                try:
+                    payload = json.loads(raw.decode("utf-8") or "{}")
+                except json.JSONDecodeError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid json"})
+                    return
+
+                try:
+                    team = create_team(db_path, payload)
+                except ValueError as e:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
+                    return
+                self._json(HTTPStatus.CREATED, {"ok": True, "team": team})
+                return
+
+            if self.path == f"{API_PREFIX}/team-members":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid Content-Length"})
+                    return
+
+                raw = self.rfile.read(length)
+                try:
+                    payload = json.loads(raw.decode("utf-8") or "{}")
+                except json.JSONDecodeError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid json"})
+                    return
+
+                try:
+                    member = upsert_team_member(db_path, payload)
+                except ValueError as e:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
+                    return
+                self._json(HTTPStatus.CREATED, {"ok": True, "member": member})
+                return
+
             if self.path != f"{API_PREFIX}/messages":
                 self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
                 return
@@ -218,6 +833,7 @@ def make_handler(db_path: str):
             room = str(payload.get("room") or DEFAULT_ROOM).strip()
             sender_id = str(payload.get("sender_id") or "").strip()
             recipient_id = payload.get("recipient_id")
+            message_kind = str(payload.get("message_kind") or "").strip().lower()
             body = str(payload.get("body") or "").rstrip("\n")
 
             if not sender_id:
@@ -235,7 +851,28 @@ def make_handler(db_path: str):
                 self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
                 return
 
-            message = insert_message(db_path, room, sender_id, recipient_id, body)
+            if message_kind:
+                if message_kind not in VALID_MESSAGE_KINDS:
+                    self._json(
+                        HTTPStatus.BAD_REQUEST,
+                        {
+                            "error": f"message_kind must be one of {', '.join(sorted(VALID_MESSAGE_KINDS))}"
+                        },
+                    )
+                    return
+            elif recipient_id:
+                message_kind = MESSAGE_KIND_DIRECT
+            else:
+                message_kind = MESSAGE_KIND_AMBIENT
+
+            if recipient_id and message_kind == MESSAGE_KIND_BROADCAST:
+                self._json(
+                    HTTPStatus.BAD_REQUEST,
+                    {"error": "broadcast messages cannot also set recipient_id"},
+                )
+                return
+
+            message = insert_message(db_path, room, sender_id, recipient_id, message_kind, body)
             self._json(HTTPStatus.CREATED, {"ok": True, "message": message})
 
         def log_message(self, format: str, *args: Any) -> None:
@@ -267,7 +904,8 @@ def http_json(method: str, url: str, data: dict[str, Any] | None = None) -> dict
 def format_line(msg: dict[str, Any]) -> str:
     sender = display_identity(msg.get("sender_id"))
     to = display_identity(msg.get("recipient_id"))
-    return f"[{msg['id']}] {msg['created_at']} {sender} -> {to}: {msg['body']}"
+    kind = msg.get("message_kind") or MESSAGE_KIND_AMBIENT
+    return f"[{msg['id']}] {msg['created_at']} {sender} -> {to} [{kind}]: {msg['body']}"
 
 
 def cursor_path(cursor_dir: str, room: str, agent_id: str) -> Path:
@@ -318,11 +956,140 @@ def cmd_send(args: argparse.Namespace) -> int:
         "room": args.room,
         "sender_id": sender_id,
         "recipient_id": to,
+        "message_kind": MESSAGE_KIND_BROADCAST if args.broadcast else None,
         "body": text,
     }
     data = http_json("POST", f"{args.server}{API_PREFIX}/messages", payload)
     msg = data["message"]
     print(format_line(msg))
+    return 0
+
+
+def cmd_register(args: argparse.Namespace) -> int:
+    identities = list(args.identity or [])
+    if args.session_id not in identities:
+        identities.insert(0, args.session_id)
+    payload = {
+        "session_id": args.session_id,
+        "room": args.room,
+        "attached": not args.detached,
+        "cwd": args.cwd,
+        "repo_name": args.repo_name,
+        "attention_mode": args.attention_mode,
+        "identities": identities,
+        "session_kind": args.session_kind,
+        "resumed_from": args.resumed_from,
+        "ephemeral": args.ephemeral,
+        "rollout_path": args.rollout_path,
+        "status": args.status,
+        "role": args.role,
+        "task": args.task,
+        "scope": args.scope,
+    }
+    data = http_json("POST", f"{args.server}{API_PREFIX}/registry", payload)
+    print(json.dumps(data["entry"], indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_registry_list(args: argparse.Namespace) -> int:
+    url = (
+        f"{args.server}{API_PREFIX}/registry?"
+        f"{urlparse.urlencode({'room': args.room, 'limit': str(args.limit)})}"
+    )
+    data = http_json("GET", url)
+    if args.json:
+        print(json.dumps(data["entries"], indent=2, sort_keys=True))
+        return 0
+    for entry in data["entries"]:
+        print(
+            "[{session_id}] room={room} status={status} cwd={cwd} role={role} task={task} scope={scope} updated={updated_at}".format(
+                session_id=entry["session_id"],
+                room=entry["room"],
+                status=entry["status"],
+                cwd=entry.get("cwd") or "-",
+                role=entry.get("role") or "-",
+                task=entry.get("task") or "-",
+                scope=entry.get("scope") or "-",
+                updated_at=entry["updated_at"],
+            )
+        )
+    return 0
+
+
+def cmd_team_create(args: argparse.Namespace) -> int:
+    members: list[dict[str, Any]] = []
+    for spec in args.member or []:
+        parts = spec.split(":", 2)
+        session_id = parts[0]
+        role = parts[1] if len(parts) > 1 and parts[1] else "member"
+        state = parts[2] if len(parts) > 2 and parts[2] else "pending"
+        members.append(
+            {
+                "session_id": session_id,
+                "role": role,
+                "state": state,
+            }
+        )
+    payload = {
+        "team_id": args.team_id,
+        "room": args.room,
+        "task_room": args.task_room,
+        "purpose": args.purpose,
+        "leader_session_id": args.leader_session_id,
+        "status": args.status,
+        "members": members,
+    }
+    data = http_json("POST", f"{args.server}{API_PREFIX}/teams", payload)
+    print(json.dumps(data["team"], indent=2, sort_keys=True))
+    return 0
+
+
+def cmd_team_list(args: argparse.Namespace) -> int:
+    url = (
+        f"{args.server}{API_PREFIX}/teams?"
+        f"{urlparse.urlencode({'room': args.room, 'limit': str(args.limit)})}"
+    )
+    data = http_json("GET", url)
+    if args.json:
+        print(json.dumps(data["teams"], indent=2, sort_keys=True))
+        return 0
+    for team in data["teams"]:
+        print(
+            "[{team_id}] room={room} task_room={task_room} leader={leader} status={status} purpose={purpose}".format(
+                team_id=team["team_id"],
+                room=team["room"],
+                task_room=team.get("task_room") or "-",
+                leader=team["leader_session_id"],
+                status=team["status"],
+                purpose=team["purpose"],
+            )
+        )
+        for member in team.get("members", []):
+            print(
+                "  - {session_id} role={role} state={state} joined_room={joined_room} task={task} scope={scope}".format(
+                    session_id=member["session_id"],
+                    role=member["role"],
+                    state=member["state"],
+                    joined_room=member.get("joined_room") or "-",
+                    task=member.get("task") or "-",
+                    scope=member.get("scope") or "-",
+                )
+            )
+    return 0
+
+
+def cmd_team_member_set(args: argparse.Namespace) -> int:
+    payload = {
+        "team_id": args.team_id,
+        "session_id": args.session_id,
+        "role": args.role,
+        "state": args.state,
+        "joined_room": args.joined_room,
+        "task": args.task,
+        "scope": args.scope,
+    }
+    data = http_json("POST", f"{args.server}{API_PREFIX}/team-members", payload)
+    print(json.dumps(data["member"], indent=2, sort_keys=True))
     return 0
 
 
@@ -447,6 +1214,11 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument("--room", default=DEFAULT_ROOM)
     send.add_argument("--sender-id", required=True)
     send.add_argument("--to", default=None, help="recipient agent/session id (omit for broadcast)")
+    send.add_argument(
+        "--broadcast",
+        action="store_true",
+        help="mark the message as an explicit room-wide broadcast that should wake idle listeners",
+    )
     send.add_argument("--text", default=None, help="message body; if omitted, reads stdin")
     send.set_defaults(func=cmd_send)
 
@@ -481,6 +1253,66 @@ def build_parser() -> argparse.ArgumentParser:
     alias_decode = sub.add_parser("alias-decode", help="Convert deterministic alias back to UUID session id")
     alias_decode.add_argument("--alias", required=True)
     alias_decode.set_defaults(func=cmd_alias_decode)
+
+    register = sub.add_parser("register", help="Upsert a structured registry entry")
+    register.add_argument("--server", default=DEFAULT_URL)
+    register.add_argument("--room", default=DEFAULT_ROOM)
+    register.add_argument("--session-id", required=True)
+    register.add_argument("--cwd", default=None)
+    register.add_argument("--repo-name", default=None)
+    register.add_argument("--attention-mode", default=None)
+    register.add_argument("--identity", action="append", default=None)
+    register.add_argument("--session-kind", default=None)
+    register.add_argument("--resumed-from", default=None)
+    register.add_argument("--ephemeral", action="store_true")
+    register.add_argument("--rollout-path", default=None)
+    register.add_argument("--status", default="unknown")
+    register.add_argument("--role", default=None)
+    register.add_argument("--task", default=None)
+    register.add_argument("--scope", default=None)
+    register.add_argument("--detached", action="store_true")
+    register.set_defaults(func=cmd_register)
+
+    registry_list = sub.add_parser("registry-list", help="List structured registry entries")
+    registry_list.add_argument("--server", default=DEFAULT_URL)
+    registry_list.add_argument("--room", default=DEFAULT_ROOM)
+    registry_list.add_argument("--limit", type=int, default=100)
+    registry_list.add_argument("--json", action="store_true")
+    registry_list.set_defaults(func=cmd_registry_list)
+
+    team_create = sub.add_parser("team-create", help="Create a structured team")
+    team_create.add_argument("--server", default=DEFAULT_URL)
+    team_create.add_argument("--room", default=DEFAULT_ROOM)
+    team_create.add_argument("--task-room", default=None)
+    team_create.add_argument("--team-id", default=None)
+    team_create.add_argument("--purpose", required=True)
+    team_create.add_argument("--leader-session-id", required=True)
+    team_create.add_argument(
+        "--member",
+        action="append",
+        default=None,
+        help="member spec as session_id[:role[:state]]",
+    )
+    team_create.add_argument("--status", default="active")
+    team_create.set_defaults(func=cmd_team_create)
+
+    team_list = sub.add_parser("team-list", help="List structured teams")
+    team_list.add_argument("--server", default=DEFAULT_URL)
+    team_list.add_argument("--room", default=DEFAULT_ROOM)
+    team_list.add_argument("--limit", type=int, default=100)
+    team_list.add_argument("--json", action="store_true")
+    team_list.set_defaults(func=cmd_team_list)
+
+    team_member_set = sub.add_parser("team-member-set", help="Update team member state")
+    team_member_set.add_argument("--server", default=DEFAULT_URL)
+    team_member_set.add_argument("--team-id", required=True)
+    team_member_set.add_argument("--session-id", required=True)
+    team_member_set.add_argument("--role", default=None)
+    team_member_set.add_argument("--state", default=None)
+    team_member_set.add_argument("--joined-room", default=None)
+    team_member_set.add_argument("--task", default=None)
+    team_member_set.add_argument("--scope", default=None)
+    team_member_set.set_defaults(func=cmd_team_member_set)
 
     return parser
 
