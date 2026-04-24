@@ -11,7 +11,7 @@ import sqlite3
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -25,6 +25,13 @@ DEFAULT_DB = os.environ.get("HOLLYWOOD_DB", str(Path.home() / ".hollywood" / "ho
 DEFAULT_URL = os.environ.get("HOLLYWOOD_URL", "http://127.0.0.1:8765")
 DEFAULT_ROOM = os.environ.get("HOLLYWOOD_ROOM", "main")
 DEFAULT_CURSOR_DIR = os.environ.get("HOLLYWOOD_CURSOR_DIR", str(Path.home() / ".hollywood" / "cursors"))
+SERVICE_VERSION = "hollywood/0.1"
+SCHEMA_VERSION = 2
+ROOM_CONTRACT_VERSION = "losangelex-room/v1"
+INITIAL_ROOM_STATE_VERSION = 1
+REGISTRY_STALE_AFTER = timedelta(
+    seconds=int(os.environ.get("HOLLYWOOD_REGISTRY_STALE_AFTER_SECONDS", "90"))
+)
 ALIAS_PREFIX = "sid-"
 MESSAGE_KIND_AMBIENT = "ambient"
 MESSAGE_KIND_BROADCAST = "broadcast"
@@ -33,6 +40,14 @@ VALID_MESSAGE_KINDS = {
     MESSAGE_KIND_AMBIENT,
     MESSAGE_KIND_BROADCAST,
     MESSAGE_KIND_DIRECT,
+}
+RESPONSE_POLICY_REQUIRED = "required"
+RESPONSE_POLICY_OPTIONAL = "optional"
+RESPONSE_POLICY_NONE = "none"
+VALID_RESPONSE_POLICIES = {
+    RESPONSE_POLICY_REQUIRED,
+    RESPONSE_POLICY_OPTIONAL,
+    RESPONSE_POLICY_NONE,
 }
 VALID_REGISTRY_STATUSES = {
     "unknown",
@@ -51,10 +66,108 @@ VALID_TEAM_MEMBER_STATES = {
     "deferred",
     "timed_out",
 }
+ROOM_KIND_MAIN = "main"
+ROOM_KIND_REPO = "repo"
+ROOM_KIND_TASK = "task"
+ROOM_KIND_MULTI = "multi"
+ROOM_KIND_ORG = "org"
+KNOWN_TYPED_ROOM_KINDS = {
+    ROOM_KIND_REPO,
+    ROOM_KIND_TASK,
+    ROOM_KIND_MULTI,
+    ROOM_KIND_ORG,
+}
 
 
 def utcnow_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def parse_registry_timestamp(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def registry_row_is_fresh(
+    row: sqlite3.Row,
+    now: datetime | None = None,
+    stale_after: timedelta = REGISTRY_STALE_AFTER,
+) -> bool:
+    if now is None:
+        now = datetime.now(timezone.utc)
+    heartbeat_at = parse_registry_timestamp(row["last_heartbeat_at"]) or parse_registry_timestamp(
+        row["updated_at"]
+    )
+    return heartbeat_at is not None and heartbeat_at >= now - stale_after
+
+
+def slugify_room_segment(value: str, *, fallback: str = "workspace") -> str:
+    pieces: list[str] = []
+    previous_was_sep = False
+    for ch in value.strip().lower():
+        if ch.isalnum():
+            pieces.append(ch)
+            previous_was_sep = False
+        elif not previous_was_sep:
+            pieces.append("-")
+            previous_was_sep = True
+    slug = "".join(pieces).strip("-")
+    return slug or fallback
+
+
+def repo_room_name(repo_slug: str) -> str:
+    return f"{ROOM_KIND_REPO}/{slugify_room_segment(repo_slug, fallback='repo')}"
+
+
+def task_room_name(repo_slug: str, task_slug: str) -> str:
+    return (
+        f"{ROOM_KIND_TASK}/{slugify_room_segment(repo_slug, fallback='repo')}/"
+        f"{slugify_room_segment(task_slug, fallback='task')}"
+    )
+
+
+def multi_room_name(name: str) -> str:
+    return f"{ROOM_KIND_MULTI}/{slugify_room_segment(name, fallback='shared')}"
+
+
+def org_room_name(name: str) -> str:
+    return f"{ROOM_KIND_ORG}/{slugify_room_segment(name, fallback='shared')}"
+
+
+def describe_room(room: str) -> dict[str, str | None]:
+    normalized = room.strip()
+    if normalized == ROOM_KIND_MAIN:
+        return {
+            "kind": ROOM_KIND_MAIN,
+            "room": ROOM_KIND_MAIN,
+            "repo": None,
+            "task": None,
+        }
+    parts = [part for part in normalized.split("/") if part]
+    if len(parts) == 2 and parts[0] in {ROOM_KIND_REPO, ROOM_KIND_MULTI, ROOM_KIND_ORG}:
+        return {
+            "kind": parts[0],
+            "room": normalized,
+            "repo": parts[1] if parts[0] == ROOM_KIND_REPO else None,
+            "task": None,
+        }
+    if len(parts) == 3 and parts[0] == ROOM_KIND_TASK:
+        return {
+            "kind": ROOM_KIND_TASK,
+            "room": normalized,
+            "repo": parts[1],
+            "task": parts[2],
+        }
+    return {
+        "kind": "custom",
+        "room": normalized,
+        "repo": None,
+        "task": None,
+    }
 
 
 def session_id_to_alias(session_id: str) -> str:
@@ -103,93 +216,203 @@ def ensure_parent(path: str) -> None:
     Path(path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
 
 
+def apply_base_schema_migration(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room TEXT NOT NULL,
+            sender_id TEXT NOT NULL,
+            recipient_id TEXT,
+            message_kind TEXT NOT NULL DEFAULT 'ambient',
+            response_policy TEXT NOT NULL DEFAULT 'optional',
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
+    }
+    if "message_kind" not in columns:
+        conn.execute(
+            "ALTER TABLE messages ADD COLUMN message_kind TEXT NOT NULL DEFAULT 'ambient'"
+        )
+    if "response_policy" not in columns:
+        conn.execute(
+            "ALTER TABLE messages ADD COLUMN response_policy TEXT NOT NULL DEFAULT 'optional'"
+        )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages(room, id)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS registry (
+            session_id TEXT PRIMARY KEY,
+            room TEXT NOT NULL,
+            attached INTEGER NOT NULL DEFAULT 1,
+            cwd TEXT,
+            repo_name TEXT,
+            attention_mode TEXT,
+            identities_json TEXT NOT NULL DEFAULT '[]',
+            session_kind TEXT,
+            resumed_from TEXT,
+            ephemeral INTEGER,
+            rollout_path TEXT,
+            status TEXT NOT NULL DEFAULT 'unknown',
+            role TEXT,
+            task TEXT,
+            scope TEXT,
+            updated_at TEXT NOT NULL,
+            last_heartbeat_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_registry_room ON registry(room)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS teams (
+            team_id TEXT PRIMARY KEY,
+            room TEXT NOT NULL,
+            task_room TEXT,
+            purpose TEXT NOT NULL,
+            leader_session_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_teams_room ON teams(room, updated_at DESC)")
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS team_members (
+            team_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'member',
+            state TEXT NOT NULL DEFAULT 'pending',
+            joined_room TEXT,
+            task TEXT,
+            scope TEXT,
+            invited_by TEXT,
+            invited_at TEXT NOT NULL,
+            responded_at TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY(team_id, session_id),
+            FOREIGN KEY(team_id) REFERENCES teams(team_id) ON DELETE CASCADE
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_id, updated_at DESC)"
+    )
+
+
+def room_row_to_dict(row: sqlite3.Row | None) -> dict[str, Any]:
+    if row is None:
+        raise ValueError("room row missing")
+    return dict(row)
+
+
+def ensure_room_entry(
+    conn: sqlite3.Connection,
+    room: str,
+    *,
+    last_message_id: int | None = None,
+) -> dict[str, Any]:
+    normalized = room.strip()
+    if not normalized:
+        raise ValueError("room is required")
+    described = describe_room(normalized)
+    now = utcnow_iso()
+    conn.execute(
+        """
+        INSERT INTO rooms(
+            room, kind, repo, task, state_version, contract_version,
+            created_at, updated_at, last_message_id, archived_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+        ON CONFLICT(room) DO UPDATE SET
+            kind = excluded.kind,
+            repo = excluded.repo,
+            task = excluded.task,
+            contract_version = rooms.contract_version,
+            updated_at = excluded.updated_at,
+            archived_at = NULL,
+            last_message_id = CASE
+                WHEN excluded.last_message_id > rooms.last_message_id THEN excluded.last_message_id
+                ELSE rooms.last_message_id
+            END
+        """,
+        (
+            normalized,
+            described["kind"],
+            described["repo"],
+            described["task"],
+            INITIAL_ROOM_STATE_VERSION,
+            ROOM_CONTRACT_VERSION,
+            now,
+            now,
+            max(0, int(last_message_id or 0)),
+        ),
+    )
+    row = conn.execute("SELECT * FROM rooms WHERE room = ?", (normalized,)).fetchone()
+    return room_row_to_dict(row)
+
+
+def backfill_room_entries(conn: sqlite3.Connection) -> None:
+    rooms: set[str] = set()
+    for query in (
+        "SELECT DISTINCT room FROM messages WHERE TRIM(room) != ''",
+        "SELECT DISTINCT room FROM registry WHERE TRIM(room) != ''",
+        "SELECT DISTINCT room FROM teams WHERE TRIM(room) != ''",
+        "SELECT DISTINCT task_room FROM teams WHERE task_room IS NOT NULL AND TRIM(task_room) != ''",
+        "SELECT DISTINCT joined_room FROM team_members WHERE joined_room IS NOT NULL AND TRIM(joined_room) != ''",
+    ):
+        rooms.update(str(row[0]).strip() for row in conn.execute(query).fetchall() if row[0])
+    for room in sorted(rooms):
+        last_message_row = conn.execute(
+            "SELECT COALESCE(MAX(id), 0) FROM messages WHERE room = ?",
+            (room,),
+        ).fetchone()
+        last_message_id = int(last_message_row[0]) if last_message_row is not None else 0
+        ensure_room_entry(conn, room, last_message_id=last_message_id)
+
+
+def apply_rooms_schema_migration(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rooms (
+            room TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            repo TEXT,
+            task TEXT,
+            state_version INTEGER NOT NULL DEFAULT 1,
+            contract_version TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            last_message_id INTEGER NOT NULL DEFAULT 0,
+            archived_at TEXT
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rooms_kind ON rooms(kind, updated_at DESC)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_rooms_repo ON rooms(repo, updated_at DESC)")
+    backfill_room_entries(conn)
+
+
 def init_db(db_path: str) -> None:
     ensure_parent(db_path)
     conn = sqlite3.connect(db_path)
     try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                room TEXT NOT NULL,
-                sender_id TEXT NOT NULL,
-                recipient_id TEXT,
-                message_kind TEXT NOT NULL DEFAULT 'ambient',
-                body TEXT NOT NULL,
-                created_at TEXT NOT NULL
+        conn.row_factory = sqlite3.Row
+        current_version = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        if current_version > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"Hollywood DB schema version {current_version} is newer than supported version {SCHEMA_VERSION}"
             )
-            """
-        )
-        columns = {
-            row[1] for row in conn.execute("PRAGMA table_info(messages)").fetchall()
-        }
-        if "message_kind" not in columns:
-            conn.execute(
-                "ALTER TABLE messages ADD COLUMN message_kind TEXT NOT NULL DEFAULT 'ambient'"
-            )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_room_id ON messages(room, id)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_recipient ON messages(recipient_id)")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS registry (
-                session_id TEXT PRIMARY KEY,
-                room TEXT NOT NULL,
-                attached INTEGER NOT NULL DEFAULT 1,
-                cwd TEXT,
-                repo_name TEXT,
-                attention_mode TEXT,
-                identities_json TEXT NOT NULL DEFAULT '[]',
-                session_kind TEXT,
-                resumed_from TEXT,
-                ephemeral INTEGER,
-                rollout_path TEXT,
-                status TEXT NOT NULL DEFAULT 'unknown',
-                role TEXT,
-                task TEXT,
-                scope TEXT,
-                updated_at TEXT NOT NULL,
-                last_heartbeat_at TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_registry_room ON registry(room)")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS teams (
-                team_id TEXT PRIMARY KEY,
-                room TEXT NOT NULL,
-                task_room TEXT,
-                purpose TEXT NOT NULL,
-                leader_session_id TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'active',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_teams_room ON teams(room, updated_at DESC)")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS team_members (
-                team_id TEXT NOT NULL,
-                session_id TEXT NOT NULL,
-                role TEXT NOT NULL DEFAULT 'member',
-                state TEXT NOT NULL DEFAULT 'pending',
-                joined_room TEXT,
-                task TEXT,
-                scope TEXT,
-                invited_by TEXT,
-                invited_at TEXT NOT NULL,
-                responded_at TEXT,
-                updated_at TEXT NOT NULL,
-                PRIMARY KEY(team_id, session_id),
-                FOREIGN KEY(team_id) REFERENCES teams(team_id) ON DELETE CASCADE
-            )
-            """
-        )
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_team_members_team ON team_members(team_id, updated_at DESC)"
-        )
+        apply_base_schema_migration(conn)
+        if current_version < 2:
+            apply_rooms_schema_migration(conn)
+        conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
         conn.commit()
     finally:
         conn.close()
@@ -201,6 +424,7 @@ def insert_message(
     sender_id: str,
     recipient_id: str | None,
     message_kind: str,
+    response_policy: str,
     body: str,
 ) -> dict[str, Any]:
     conn = sqlite3.connect(db_path)
@@ -208,11 +432,21 @@ def insert_message(
     try:
         created_at = utcnow_iso()
         cur = conn.execute(
-            "INSERT INTO messages(room, sender_id, recipient_id, message_kind, body, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (room, sender_id, recipient_id, message_kind, body, created_at),
+            "INSERT INTO messages(room, sender_id, recipient_id, message_kind, response_policy, body, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                room,
+                sender_id,
+                recipient_id,
+                message_kind,
+                response_policy,
+                body,
+                created_at,
+            ),
         )
         conn.commit()
         msg_id = cur.lastrowid
+        ensure_room_entry(conn, room, last_message_id=int(msg_id))
+        conn.commit()
         row = conn.execute("SELECT * FROM messages WHERE id = ?", (msg_id,)).fetchone()
         return dict(row)
     finally:
@@ -243,6 +477,7 @@ def list_messages(
         q = f"""
             SELECT id, room, sender_id, recipient_id, body, created_at
                  , message_kind
+                 , response_policy
             FROM messages
             WHERE {' AND '.join(where)}
             ORDER BY id ASC
@@ -251,6 +486,16 @@ def list_messages(
         params.append(limit)
         rows = conn.execute(q, params).fetchall()
         return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_room_state(db_path: str, room: str) -> dict[str, Any] | None:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        row = conn.execute("SELECT * FROM rooms WHERE room = ?", (room,)).fetchone()
+        return None if row is None else room_row_to_dict(row)
     finally:
         conn.close()
 
@@ -321,6 +566,61 @@ def validate_registry_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def identity_is_session_bound(identity: str) -> bool:
+    if not identity:
+        return False
+    if identity.lower().startswith(ALIAS_PREFIX):
+        return True
+    try:
+        uuid.UUID(identity)
+    except ValueError:
+        return False
+    return True
+
+
+def logical_identities_from_json(raw: str) -> set[str]:
+    try:
+        identities = json.loads(raw or "[]")
+    except json.JSONDecodeError:
+        return set()
+    return {
+        str(identity).strip().lower()
+        for identity in identities
+        if isinstance(identity, str)
+        and str(identity).strip()
+        and not identity_is_session_bound(str(identity).strip())
+    }
+
+
+def assert_unique_attached_logical_identities(
+    conn: sqlite3.Connection, session_id: str, attached: int, identities_json: str
+) -> None:
+    if not attached:
+        return
+    logical_identities = logical_identities_from_json(identities_json)
+    if not logical_identities:
+        return
+    rows = conn.execute(
+        """
+        SELECT session_id, identities_json, updated_at, last_heartbeat_at
+        FROM registry
+        WHERE attached = 1
+          AND session_id != ?
+        """,
+        (session_id,),
+    ).fetchall()
+    now = datetime.now(timezone.utc)
+    for row in rows:
+        if not registry_row_is_fresh(row, now):
+            continue
+        overlap = logical_identities & logical_identities_from_json(row["identities_json"])
+        if overlap:
+            joined = ", ".join(sorted(overlap))
+            raise ValueError(
+                f"logical identity already attached by another session: {joined}"
+            )
+
+
 def upsert_registry_entry(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
     values = validate_registry_payload(payload)
     conn = sqlite3.connect(db_path)
@@ -329,6 +629,13 @@ def upsert_registry_entry(db_path: str, payload: dict[str, Any]) -> dict[str, An
         now = utcnow_iso()
         values["updated_at"] = now
         values["last_heartbeat_at"] = now
+        assert_unique_attached_logical_identities(
+            conn,
+            values["session_id"],
+            values["attached"],
+            values["identities_json"],
+        )
+        ensure_room_entry(conn, values["room"])
         conn.execute(
             """
             INSERT INTO registry(
@@ -404,6 +711,114 @@ def list_registry_entries(
             (room, limit),
         ).fetchall()
         return [registry_row_to_dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def validate_room_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    room = str(payload.get("room") or "").strip()
+    if not room:
+        raise ValueError("room is required")
+    state_version = payload.get("state_version")
+    if state_version is not None:
+        try:
+            state_version = int(state_version)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("state_version must be an integer") from exc
+        if state_version < 1:
+            raise ValueError("state_version must be >= 1")
+    bump_state_version = bool(payload.get("bump_state_version"))
+    contract_version = payload.get("contract_version")
+    if contract_version is not None:
+        contract_version = str(contract_version).strip() or None
+    archived = payload.get("archived")
+    archived = bool(archived) if archived is not None else None
+    return {
+        "room": room,
+        "state_version": state_version,
+        "bump_state_version": bump_state_version,
+        "contract_version": contract_version,
+        "archived": archived,
+    }
+
+
+def upsert_room_state(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    values = validate_room_payload(payload)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        ensure_room_entry(conn, values["room"])
+        current = conn.execute("SELECT * FROM rooms WHERE room = ?", (values["room"],)).fetchone()
+        if current is None:
+            raise ValueError("room row missing")
+        current = room_row_to_dict(current)
+        if values["state_version"] is not None:
+            state_version = values["state_version"]
+        elif values["bump_state_version"]:
+            state_version = int(current["state_version"]) + 1
+        else:
+            state_version = int(current["state_version"])
+        contract_version = values["contract_version"] or str(current["contract_version"])
+        archived_at = current["archived_at"]
+        if values["archived"] is True:
+            archived_at = utcnow_iso()
+        elif values["archived"] is False:
+            archived_at = None
+        updated_at = utcnow_iso()
+        conn.execute(
+            """
+            UPDATE rooms
+            SET state_version = ?,
+                contract_version = ?,
+                updated_at = ?,
+                archived_at = ?
+            WHERE room = ?
+            """,
+            (
+                state_version,
+                contract_version,
+                updated_at,
+                archived_at,
+                values["room"],
+            ),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM rooms WHERE room = ?", (values["room"],)).fetchone()
+        return room_row_to_dict(row)
+    finally:
+        conn.close()
+
+
+def list_rooms(
+    db_path: str,
+    room: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    try:
+        if room:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM rooms
+                WHERE room = ?
+                ORDER BY updated_at DESC, room ASC
+                LIMIT ?
+                """,
+                (room, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT *
+                FROM rooms
+                ORDER BY updated_at DESC, room ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [room_row_to_dict(row) for row in rows]
     finally:
         conn.close()
 
@@ -500,6 +915,9 @@ def create_team(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
+        ensure_room_entry(conn, values["room"])
+        if values["task_room"]:
+            ensure_room_entry(conn, values["task_room"])
         conn.execute(
             """
             INSERT INTO teams(
@@ -597,6 +1015,8 @@ def upsert_team_member(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
         ).fetchone()
         if existing_team is None:
             raise ValueError("team_id not found")
+        if values["joined_room"]:
+            ensure_room_entry(conn, values["joined_room"])
         current = conn.execute(
             "SELECT * FROM team_members WHERE team_id = ? AND session_id = ?",
             (values["team_id"], values["session_id"]),
@@ -675,7 +1095,7 @@ def list_teams(
 
 def make_handler(db_path: str):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "hollywood/0.1"
+        server_version = SERVICE_VERSION
 
         def _json(self, code: int, payload: dict[str, Any]) -> None:
             blob = json.dumps(payload).encode("utf-8")
@@ -689,7 +1109,16 @@ def make_handler(db_path: str):
             parsed = urlparse.urlparse(self.path)
 
             if parsed.path == f"{API_PREFIX}/health":
-                self._json(HTTPStatus.OK, {"ok": True, "time": utcnow_iso()})
+                self._json(
+                    HTTPStatus.OK,
+                    {
+                        "ok": True,
+                        "time": utcnow_iso(),
+                        "service_version": SERVICE_VERSION,
+                        "schema_version": SCHEMA_VERSION,
+                        "room_contract_version": ROOM_CONTRACT_VERSION,
+                    },
+                )
                 return
 
             if parsed.path == f"{API_PREFIX}/messages":
@@ -712,7 +1141,15 @@ def make_handler(db_path: str):
                 limit = max(1, min(1000, limit))
                 messages = list_messages(db_path, room, after_id, limit, agent_id, include_own)
                 last_id = messages[-1]["id"] if messages else after_id
-                self._json(HTTPStatus.OK, {"messages": messages, "count": len(messages), "last_id": last_id})
+                self._json(
+                    HTTPStatus.OK,
+                    {
+                        "messages": messages,
+                        "count": len(messages),
+                        "last_id": last_id,
+                        "room_state": get_room_state(db_path, room),
+                    },
+                )
                 return
 
             if parsed.path == f"{API_PREFIX}/registry":
@@ -744,9 +1181,52 @@ def make_handler(db_path: str):
                 self._json(HTTPStatus.OK, {"teams": teams, "count": len(teams)})
                 return
 
+            if parsed.path == f"{API_PREFIX}/rooms":
+                qs = urlparse.parse_qs(parsed.query)
+                room = qs.get("room", [None])[0]
+                try:
+                    limit = int(qs.get("limit", ["100"])[0])
+                except ValueError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "limit must be an integer"})
+                    return
+                limit = max(1, min(1000, limit))
+                rooms = list_rooms(db_path, room, limit)
+                self._json(
+                    HTTPStatus.OK,
+                    {
+                        "rooms": rooms,
+                        "count": len(rooms),
+                        "schema_version": SCHEMA_VERSION,
+                        "room_contract_version": ROOM_CONTRACT_VERSION,
+                    },
+                )
+                return
+
             self._json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
         def do_POST(self) -> None:  # noqa: N802
+            if self.path == f"{API_PREFIX}/rooms":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                except ValueError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid Content-Length"})
+                    return
+
+                raw = self.rfile.read(length)
+                try:
+                    payload = json.loads(raw.decode("utf-8") or "{}")
+                except json.JSONDecodeError:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": "invalid json"})
+                    return
+
+                try:
+                    room = upsert_room_state(db_path, payload)
+                except ValueError as e:
+                    self._json(HTTPStatus.BAD_REQUEST, {"error": str(e)})
+                    return
+                self._json(HTTPStatus.CREATED, {"ok": True, "room": room})
+                return
+
             if self.path == f"{API_PREFIX}/registry":
                 try:
                     length = int(self.headers.get("Content-Length", "0"))
@@ -834,6 +1314,7 @@ def make_handler(db_path: str):
             sender_id = str(payload.get("sender_id") or "").strip()
             recipient_id = payload.get("recipient_id")
             message_kind = str(payload.get("message_kind") or "").strip().lower()
+            response_policy = str(payload.get("response_policy") or "").strip().lower()
             body = str(payload.get("body") or "").rstrip("\n")
 
             if not sender_id:
@@ -865,6 +1346,22 @@ def make_handler(db_path: str):
             else:
                 message_kind = MESSAGE_KIND_AMBIENT
 
+            if response_policy:
+                if response_policy not in VALID_RESPONSE_POLICIES:
+                    self._json(
+                        HTTPStatus.BAD_REQUEST,
+                        {
+                            "error": f"response_policy must be one of {', '.join(sorted(VALID_RESPONSE_POLICIES))}"
+                        },
+                    )
+                    return
+            elif recipient_id or message_kind == MESSAGE_KIND_DIRECT:
+                response_policy = RESPONSE_POLICY_REQUIRED
+            elif message_kind == MESSAGE_KIND_BROADCAST:
+                response_policy = RESPONSE_POLICY_NONE
+            else:
+                response_policy = RESPONSE_POLICY_OPTIONAL
+
             if recipient_id and message_kind == MESSAGE_KIND_BROADCAST:
                 self._json(
                     HTTPStatus.BAD_REQUEST,
@@ -872,7 +1369,15 @@ def make_handler(db_path: str):
                 )
                 return
 
-            message = insert_message(db_path, room, sender_id, recipient_id, message_kind, body)
+            message = insert_message(
+                db_path,
+                room,
+                sender_id,
+                recipient_id,
+                message_kind,
+                response_policy,
+                body,
+            )
             self._json(HTTPStatus.CREATED, {"ok": True, "message": message})
 
         def log_message(self, format: str, *args: Any) -> None:
@@ -905,7 +1410,11 @@ def format_line(msg: dict[str, Any]) -> str:
     sender = display_identity(msg.get("sender_id"))
     to = display_identity(msg.get("recipient_id"))
     kind = msg.get("message_kind") or MESSAGE_KIND_AMBIENT
-    return f"[{msg['id']}] {msg['created_at']} {sender} -> {to} [{kind}]: {msg['body']}"
+    response_policy = msg.get("response_policy") or RESPONSE_POLICY_OPTIONAL
+    return (
+        f"[{msg['id']}] {msg['created_at']} {sender} -> {to} "
+        f"[{kind} reply={response_policy}]: {msg['body']}"
+    )
 
 
 def cursor_path(cursor_dir: str, room: str, agent_id: str) -> Path:
@@ -957,6 +1466,7 @@ def cmd_send(args: argparse.Namespace) -> int:
         "sender_id": sender_id,
         "recipient_id": to,
         "message_kind": MESSAGE_KIND_BROADCAST if args.broadcast else None,
+        "response_policy": args.response_policy,
         "body": text,
     }
     data = http_json("POST", f"{args.server}{API_PREFIX}/messages", payload)
@@ -1199,6 +1709,67 @@ def cmd_alias_decode(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_room_name(args: argparse.Namespace) -> int:
+    if args.kind == ROOM_KIND_REPO:
+        print(repo_room_name(args.name))
+        return 0
+    if args.kind == ROOM_KIND_TASK:
+        if not args.repo:
+            raise SystemExit("--repo is required for task rooms")
+        print(task_room_name(args.repo, args.name))
+        return 0
+    if args.kind == ROOM_KIND_MULTI:
+        print(multi_room_name(args.name))
+        return 0
+    if args.kind == ROOM_KIND_ORG:
+        print(org_room_name(args.name))
+        return 0
+    if args.kind == ROOM_KIND_MAIN:
+        print(ROOM_KIND_MAIN)
+        return 0
+    raise SystemExit(f"unsupported room kind: {args.kind}")
+
+
+def cmd_room_list(args: argparse.Namespace) -> int:
+    params = {"limit": str(args.limit)}
+    if args.room:
+        params["room"] = args.room
+    url = f"{args.server}{API_PREFIX}/rooms?{urlparse.urlencode(params)}"
+    data = http_json("GET", url)
+    if args.json:
+        print(json.dumps(data["rooms"], indent=2, sort_keys=True))
+        return 0
+    for room in data["rooms"]:
+        print(
+            "[{room}] kind={kind} repo={repo} task={task} state_version={state_version} contract_version={contract_version} last_message_id={last_message_id} updated={updated_at}".format(
+                room=room["room"],
+                kind=room["kind"],
+                repo=room.get("repo") or "-",
+                task=room.get("task") or "-",
+                state_version=room["state_version"],
+                contract_version=room["contract_version"],
+                last_message_id=room["last_message_id"],
+                updated_at=room["updated_at"],
+            )
+        )
+    return 0
+
+
+def cmd_room_set(args: argparse.Namespace) -> int:
+    if args.archived and args.unarchive:
+        raise SystemExit("choose only one of --archived or --unarchive")
+    payload = {
+        "room": args.room,
+        "state_version": args.state_version,
+        "bump_state_version": args.bump_state_version,
+        "contract_version": args.contract_version,
+        "archived": True if args.archived else (False if args.unarchive else None),
+    }
+    data = http_json("POST", f"{args.server}{API_PREFIX}/rooms", payload)
+    print(json.dumps(data["room"], indent=2, sort_keys=True))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hollywood", description="Local pull-based chatroom for CLI agents")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -1218,6 +1789,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--broadcast",
         action="store_true",
         help="mark the message as an explicit room-wide broadcast that should wake idle listeners",
+    )
+    send.add_argument(
+        "--response-policy",
+        choices=sorted(VALID_RESPONSE_POLICIES),
+        default=None,
+        help="whether a reply is required, optional, or explicitly not needed",
     )
     send.add_argument("--text", default=None, help="message body; if omitted, reads stdin")
     send.set_defaults(func=cmd_send)
@@ -1253,6 +1830,41 @@ def build_parser() -> argparse.ArgumentParser:
     alias_decode = sub.add_parser("alias-decode", help="Convert deterministic alias back to UUID session id")
     alias_decode.add_argument("--alias", required=True)
     alias_decode.set_defaults(func=cmd_alias_decode)
+
+    room_name = sub.add_parser("room-name", help="Generate a recommended typed room name")
+    room_name.add_argument(
+        "--kind",
+        choices=[ROOM_KIND_MAIN, ROOM_KIND_REPO, ROOM_KIND_TASK, ROOM_KIND_MULTI, ROOM_KIND_ORG],
+        required=True,
+    )
+    room_name.add_argument(
+        "--name",
+        default="",
+        help="base name for repo, task, multi, or org rooms; ignored for --kind main",
+    )
+    room_name.add_argument(
+        "--repo",
+        default=None,
+        help="repo name used as the middle segment for --kind task",
+    )
+    room_name.set_defaults(func=cmd_room_name)
+
+    room_list = sub.add_parser("room-list", help="List persisted room state metadata")
+    room_list.add_argument("--server", default=DEFAULT_URL)
+    room_list.add_argument("--room", default=None)
+    room_list.add_argument("--limit", type=int, default=100)
+    room_list.add_argument("--json", action="store_true")
+    room_list.set_defaults(func=cmd_room_list)
+
+    room_set = sub.add_parser("room-set", help="Update persisted room state metadata")
+    room_set.add_argument("--server", default=DEFAULT_URL)
+    room_set.add_argument("--room", required=True)
+    room_set.add_argument("--state-version", type=int, default=None)
+    room_set.add_argument("--bump-state-version", action="store_true")
+    room_set.add_argument("--contract-version", default=None)
+    room_set.add_argument("--archived", action="store_true")
+    room_set.add_argument("--unarchive", action="store_true")
+    room_set.set_defaults(func=cmd_room_set)
 
     register = sub.add_parser("register", help="Upsert a structured registry entry")
     register.add_argument("--server", default=DEFAULT_URL)

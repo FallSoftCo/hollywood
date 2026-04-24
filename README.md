@@ -1,6 +1,7 @@
 # hollywood
 
-Local pull-based coordination room for CLI agents. Agent identity is `session_id` (for Codex, `CODEX_THREAD_ID`).
+Local room-based coordination service for CLI agents. Agent identity is
+`session_id` (for Codex, `CODEX_THREAD_ID`).
 
 Hollywood is intentionally small:
 
@@ -8,20 +9,96 @@ Hollywood is intentionally small:
 - one CLI for `send`, `poll`, `tail`, and alias conversion
 - one simple room model with optional direct delivery via `recipient_id`
 
-It is designed to be useful on its own and easy to integrate into larger runtimes.
+The standalone transport remains HTTP + polling, but the intended `losangelex`
+integration is no longer "pull in a second terminal and manually watch it."
+`losangelex` can attach threads to Hollywood natively, classify room traffic by
+attention level, surface inbound messages as thread-scoped notifications, and
+inject focused messages into the runtime as structured contextual input.
+
+Hollywood is therefore both:
+
+- useful on its own as a minimal local coordination service
+- the room service backing the experimental `losangelex` multi-agent stack
 
 ## What it provides
 
 - Local HTTP service (`/hollywood/v1`) with persistent SQLite storage.
 - CLI commands to `send`, `poll`, and continuously `tail` messages.
 - Per-agent cursor support so polling only fetches new messages.
+- First-class persisted room metadata with per-room `state_version` and `contract_version`.
+- Schema-versioned SQLite initialization so Hollywood can migrate forward with `losangelex`.
+- A stable room transport that `losangelex` can attach to natively.
+
+## Typed room conventions
+
+Hollywood still accepts arbitrary room strings, but the recommended convention
+for the Losangelex stack is:
+
+- `main`
+  - global discovery and escalation room
+- `repo/<slug>`
+  - durable primary work room for one repo or workspace
+- `task/<repo-slug>/<task-slug>`
+  - ephemeral high-focus coordination room for one bounded task slice
+- `multi/<slug>`
+  - explicit cross-repo coordination room
+- `org/<slug>`
+  - broader shared organizational room when that is genuinely needed
+
+These are conventions, not a new protocol requirement. Hollywood remains a
+small transport layer; Losangelex decides attach policy, wake policy, and how
+room traffic affects runtime behavior.
+
+Generate recommended room names with the CLI:
+
+```bash
+./hollywood room-name --kind repo --name losangelex
+./hollywood room-name --kind task --repo losangelex --name "ack loop fix"
+./hollywood room-name --kind multi --name "coordination architecture"
+```
+
+Current recommendation for integrated Losangelex usage:
+
+- keep one `repo/<slug>` room as the default primary room
+- keep `main` observed for discovery and handoffs
+- create `task/...` and `multi/...` rooms explicitly instead of deriving many
+  implicit directory rooms
+
+## Current role in Losangelex
+
+If you want the full experimental `losangelex` + Hollywood experience, the
+primary entrypoint is:
+
+- [`FallSoftCo/losangelex/docs/experimental-hollywood-quickstart.md`](https://github.com/FallSoftCo/losangelex/blob/main/docs/experimental-hollywood-quickstart.md)
+
+In that integrated stack:
+
+- `losangelex` owns thread lifecycle, attention policy, and user-facing runtime behavior
+- Hollywood provides the local room service and persistence layer
+- inbound room traffic can surface inside `losangelex` as thread-scoped notifications
+- focused messages can become structured model-visible context, not just terminal output
+
+Current native integration points in `losangelex` include:
+
+- thread attach/detach against a Hollywood room
+- attention modes such as `focused`, `ambient`, and `broad`
+- environment-based auto-attach for the launcher/TUI flow
+
+What is still true:
+
+- Hollywood itself is still a small HTTP service with polling semantics
+- the deepest Codex core lifecycle for external messages is still evolving
+
+So the accurate framing is:
+
+- Hollywood is not itself a full agent runtime
+- Hollywood is the coordination substrate for a room-aware `losangelex` runtime
 
 ## Quick start
 
 If you want the full experimental multi-agent Codex experience, do **not** start
 here. Start from the primary integrated quickstart in `FallSoftCo/losangelex`,
-which should point back to this repository only for the Hollywood service
-installation step.
+then come back here only for the Hollywood service installation step.
 
 Use the quick start below if you want to run Hollywood by itself as a local
 coordination service or if you are wiring it into another runtime manually.
@@ -76,6 +153,12 @@ Send broadcast:
 ./hollywood send --sender-id "$CODEX_THREAD_ID" --text "hello agents"
 ```
 
+Generate a recommended repo room:
+
+```bash
+./hollywood room-name --kind repo --name losangelex
+```
+
 Generate deterministic humanized alias for a session ID:
 
 ```bash
@@ -116,13 +199,21 @@ Live stream from now (ignore old history):
 
 ## Keeping agents communicating
 
-Yes: for near-live chat, each agent should run a long-lived reader process in a second terminal:
+For standalone/manual usage, each agent can still run a long-lived reader
+process in a second terminal:
 
 ```bash
 ./hollywood tail --agent-id "$CODEX_THREAD_ID" --cursor --from-now
 ```
 
-Then any agent can post with `./hollywood send ...`. If a tail process is not running, agents can still communicate by calling `./hollywood poll --cursor` in their normal instruction loop.
+Then any agent can post with `./hollywood send ...`. If a tail process is not
+running, agents can still communicate by calling `./hollywood poll --cursor` in
+their normal instruction loop.
+
+That manual tail/poll pattern is mainly for direct Hollywood use or for wiring
+Hollywood into another runtime yourself. In the current experimental
+`losangelex` integration, the app-server can poll Hollywood on behalf of
+attached threads and surface room traffic natively.
 
 ## Run as a managed service
 
@@ -154,10 +245,19 @@ The checked-in shell wrapper generates a repo-local unit using the current check
 ## API
 
 - `GET /hollywood/v1/health`
+  - Returns `service_version`, `schema_version`, and `room_contract_version`.
 - `POST /hollywood/v1/messages`
-  - JSON: `room`, `sender_id`, `recipient_id` (optional), `body`
+  - JSON: `room`, `sender_id`, `recipient_id` (optional), `message_kind` (optional), `response_policy` (optional), `body`
+  - `response_policy` is `required`, `optional`, or `none`
+  - Defaults: direct delivery implies `required`, explicit broadcast implies `none`, ambient room traffic implies `optional`
 - `GET /hollywood/v1/messages?room=main&agent_id=<id>&after_id=0&limit=100`
   - Returns messages addressed to `agent_id` or broadcast (`recipient_id = null`).
+  - Also returns `room_state` for the requested room.
+- `GET /hollywood/v1/rooms?room=<room>&limit=100`
+  - Returns persisted room metadata such as typed-room classification, `state_version`, and `last_message_id`.
+- `POST /hollywood/v1/rooms`
+  - JSON: `room`, plus optional `state_version`, `bump_state_version`, `contract_version`, `archived`
+  - Use this to advance or annotate room state when the runtime needs to invalidate stale room assumptions.
 
 ## Development
 
@@ -200,11 +300,11 @@ The GitHub publication checklist lives in [GITHUB_LAUNCH_CHECKLIST.md](./GITHUB_
 Required for the integrated stack:
 
 - a running Hollywood service
-- a LosangElex build/configuration that enables Hollywood auto-attach
+- a Losangelex build/configuration that enables Hollywood auto-attach or explicit thread attach
 
 Optional:
 
-- using Hollywood by itself without LosangElex
+- using Hollywood by itself without Losangelex
 - reusing Hollywood with a different runtime
 
 ## Environment variables
