@@ -132,6 +132,11 @@ class HollywoodTests(unittest.TestCase):
             self.assertEqual(room_state["repo"], "losangelex")
             self.assertEqual(room_state["state_version"], 1)
             self.assertEqual(room_state["contract_version"], hollywood.ROOM_CONTRACT_VERSION)
+            self.assertIsNone(room_state["coordination_policy"])
+            self.assertIsNone(room_state["coordination_phase"])
+            self.assertEqual(room_state["coordination_epoch"], 1)
+            self.assertIsNone(room_state["leader_session_id"])
+            self.assertIsNone(room_state["verifier_session_id"])
             self.assertEqual(room_state["last_message_id"], 1)
 
     def test_insert_message_creates_room_state(self) -> None:
@@ -183,6 +188,40 @@ class HollywoodTests(unittest.TestCase):
             listed = hollywood.list_rooms(db_path, "repo/losangelex", 10)
             self.assertEqual(len(listed), 1)
             self.assertEqual(listed[0]["state_version"], 2)
+
+    def test_upsert_room_state_roundtrips_coordination_policy_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = str(Path(tmpdir) / "hollywood.db")
+            hollywood.init_db(db_path)
+
+            updated = hollywood.upsert_room_state(
+                db_path,
+                {
+                    "room": "repo/losangelex",
+                    "bump_state_version": True,
+                    "coordination_policy": "dual_command_lease",
+                    "coordination_phase": "execution",
+                    "coordination_epoch": 3,
+                    "leader_session_id": "leader-thread",
+                    "verifier_session_id": "verifier-thread",
+                },
+            )
+
+            self.assertEqual(updated["state_version"], 2)
+            self.assertEqual(updated["coordination_policy"], "dual_command_lease")
+            self.assertEqual(updated["coordination_phase"], "execution")
+            self.assertEqual(updated["coordination_epoch"], 3)
+            self.assertEqual(updated["leader_session_id"], "leader-thread")
+            self.assertEqual(updated["verifier_session_id"], "verifier-thread")
+
+            room_state = hollywood.get_room_state(db_path, "repo/losangelex")
+            self.assertIsNotNone(room_state)
+            assert room_state is not None
+            self.assertEqual(room_state["coordination_policy"], "dual_command_lease")
+            self.assertEqual(room_state["coordination_phase"], "execution")
+            self.assertEqual(room_state["coordination_epoch"], 3)
+            self.assertEqual(room_state["leader_session_id"], "leader-thread")
+            self.assertEqual(room_state["verifier_session_id"], "verifier-thread")
 
     def test_format_line_includes_message_kind_and_response_policy(self) -> None:
         formatted = hollywood.format_line(

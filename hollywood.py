@@ -26,8 +26,8 @@ DEFAULT_URL = os.environ.get("HOLLYWOOD_URL", "http://127.0.0.1:8765")
 DEFAULT_ROOM = os.environ.get("HOLLYWOOD_ROOM", "main")
 DEFAULT_CURSOR_DIR = os.environ.get("HOLLYWOOD_CURSOR_DIR", str(Path.home() / ".hollywood" / "cursors"))
 SERVICE_VERSION = "hollywood/0.1"
-SCHEMA_VERSION = 2
-ROOM_CONTRACT_VERSION = "losangelex-room/v1"
+SCHEMA_VERSION = 3
+ROOM_CONTRACT_VERSION = "losangelex-room/v2"
 INITIAL_ROOM_STATE_VERSION = 1
 REGISTRY_STALE_AFTER = timedelta(
     seconds=int(os.environ.get("HOLLYWOOD_REGISTRY_STALE_AFTER_SECONDS", "90"))
@@ -76,6 +76,18 @@ KNOWN_TYPED_ROOM_KINDS = {
     ROOM_KIND_TASK,
     ROOM_KIND_MULTI,
     ROOM_KIND_ORG,
+}
+VALID_COORDINATION_POLICIES = {
+    "leader_award",
+    "kanban_pull",
+    "dual_command_lease",
+    "auto",
+}
+VALID_COORDINATION_PHASES = {
+    "discovery",
+    "execution",
+    "stabilization",
+    "closure",
 }
 
 
@@ -328,8 +340,10 @@ def ensure_room_entry(
         """
         INSERT INTO rooms(
             room, kind, repo, task, state_version, contract_version,
-            created_at, updated_at, last_message_id, archived_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            created_at, updated_at, last_message_id, archived_at,
+            coordination_policy, coordination_phase, coordination_epoch,
+            leader_session_id, verifier_session_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 1, NULL, NULL)
         ON CONFLICT(room) DO UPDATE SET
             kind = excluded.kind,
             repo = excluded.repo,
@@ -390,10 +404,28 @@ def apply_rooms_schema_migration(conn: sqlite3.Connection) -> None:
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             last_message_id INTEGER NOT NULL DEFAULT 0,
-            archived_at TEXT
+            archived_at TEXT,
+            coordination_policy TEXT,
+            coordination_phase TEXT,
+            coordination_epoch INTEGER NOT NULL DEFAULT 1,
+            leader_session_id TEXT,
+            verifier_session_id TEXT
         )
         """
     )
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(rooms)").fetchall()
+    }
+    if "coordination_policy" not in columns:
+        conn.execute("ALTER TABLE rooms ADD COLUMN coordination_policy TEXT")
+    if "coordination_phase" not in columns:
+        conn.execute("ALTER TABLE rooms ADD COLUMN coordination_phase TEXT")
+    if "coordination_epoch" not in columns:
+        conn.execute("ALTER TABLE rooms ADD COLUMN coordination_epoch INTEGER NOT NULL DEFAULT 1")
+    if "leader_session_id" not in columns:
+        conn.execute("ALTER TABLE rooms ADD COLUMN leader_session_id TEXT")
+    if "verifier_session_id" not in columns:
+        conn.execute("ALTER TABLE rooms ADD COLUMN verifier_session_id TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rooms_kind ON rooms(kind, updated_at DESC)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_rooms_repo ON rooms(repo, updated_at DESC)")
     backfill_room_entries(conn)
@@ -731,6 +763,36 @@ def validate_room_payload(payload: dict[str, Any]) -> dict[str, Any]:
     contract_version = payload.get("contract_version")
     if contract_version is not None:
         contract_version = str(contract_version).strip() or None
+    coordination_policy = payload.get("coordination_policy")
+    if coordination_policy is not None:
+        coordination_policy = str(coordination_policy).strip().lower() or None
+        if coordination_policy is not None and coordination_policy not in VALID_COORDINATION_POLICIES:
+            raise ValueError(
+                "coordination_policy must be one of: "
+                + ", ".join(sorted(VALID_COORDINATION_POLICIES))
+            )
+    coordination_phase = payload.get("coordination_phase")
+    if coordination_phase is not None:
+        coordination_phase = str(coordination_phase).strip().lower() or None
+        if coordination_phase is not None and coordination_phase not in VALID_COORDINATION_PHASES:
+            raise ValueError(
+                "coordination_phase must be one of: "
+                + ", ".join(sorted(VALID_COORDINATION_PHASES))
+            )
+    coordination_epoch = payload.get("coordination_epoch")
+    if coordination_epoch is not None:
+        try:
+            coordination_epoch = int(coordination_epoch)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("coordination_epoch must be an integer") from exc
+        if coordination_epoch < 1:
+            raise ValueError("coordination_epoch must be >= 1")
+    leader_session_id = payload.get("leader_session_id")
+    if leader_session_id is not None:
+        leader_session_id = str(leader_session_id).strip() or None
+    verifier_session_id = payload.get("verifier_session_id")
+    if verifier_session_id is not None:
+        verifier_session_id = str(verifier_session_id).strip() or None
     archived = payload.get("archived")
     archived = bool(archived) if archived is not None else None
     return {
@@ -738,6 +800,11 @@ def validate_room_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "state_version": state_version,
         "bump_state_version": bump_state_version,
         "contract_version": contract_version,
+        "coordination_policy": coordination_policy,
+        "coordination_phase": coordination_phase,
+        "coordination_epoch": coordination_epoch,
+        "leader_session_id": leader_session_id,
+        "verifier_session_id": verifier_session_id,
         "archived": archived,
     }
 
@@ -759,6 +826,31 @@ def upsert_room_state(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
         else:
             state_version = int(current["state_version"])
         contract_version = values["contract_version"] or str(current["contract_version"])
+        coordination_policy = (
+            current["coordination_policy"]
+            if payload.get("coordination_policy") is None
+            else values["coordination_policy"]
+        )
+        coordination_phase = (
+            current["coordination_phase"]
+            if payload.get("coordination_phase") is None
+            else values["coordination_phase"]
+        )
+        coordination_epoch = (
+            int(current["coordination_epoch"])
+            if values["coordination_epoch"] is None
+            else values["coordination_epoch"]
+        )
+        leader_session_id = (
+            current["leader_session_id"]
+            if payload.get("leader_session_id") is None
+            else values["leader_session_id"]
+        )
+        verifier_session_id = (
+            current["verifier_session_id"]
+            if payload.get("verifier_session_id") is None
+            else values["verifier_session_id"]
+        )
         archived_at = current["archived_at"]
         if values["archived"] is True:
             archived_at = utcnow_iso()
@@ -770,6 +862,11 @@ def upsert_room_state(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
             UPDATE rooms
             SET state_version = ?,
                 contract_version = ?,
+                coordination_policy = ?,
+                coordination_phase = ?,
+                coordination_epoch = ?,
+                leader_session_id = ?,
+                verifier_session_id = ?,
                 updated_at = ?,
                 archived_at = ?
             WHERE room = ?
@@ -777,6 +874,11 @@ def upsert_room_state(db_path: str, payload: dict[str, Any]) -> dict[str, Any]:
             (
                 state_version,
                 contract_version,
+                coordination_policy,
+                coordination_phase,
+                coordination_epoch,
+                leader_session_id,
+                verifier_session_id,
                 updated_at,
                 archived_at,
                 values["room"],
