@@ -42,7 +42,7 @@ async def test_push_omits_history_and_resolved_questions_and_contains_no_task_te
             {"event": pending, "state": "sent"},
         ]
         assert len(sent) == 1
-        assert sent[0].data == {"attentionId": str(pending)}
+        assert sent[0].data == {"attentionId": str(pending), "deviceId": "device"}
         assert sent[0].fid == "fixture-fid"
         assert sent[0].android.priority == "high"
         assert sent[0].notification is None

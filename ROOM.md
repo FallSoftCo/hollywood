@@ -90,12 +90,14 @@ supports service-account impersonation and workload identity federation. Give th
 identity the Firebase Cloud Messaging API Admin role on the intended project. Use federation
 for unattended production hosts where an external workload identity is available.
 
-Push payloads contain only an opaque attention ID. The app displays a generic notification
+Push payloads contain only opaque attention and device-registration IDs. The app displays a generic notification
 without connecting to the private host. Opening it fetches current authenticated state.
 High-priority delivery is used for questions and approvals; completion alerts use normal
 priority. Attempts persist per device, retry with backoff, skip resolved/expired attention and
 do not send historical notifications to newly registered devices. Provider acceptance is not
 treated as a device receipt. Device registration and the last received alert are shown in the app.
+Registrations are scoped to the connected host. Alerts and intents for another registration are
+ignored, so switching hosts cannot open an unrelated task with the same numeric attention ID.
 
 ## Evidence and remaining limits
 

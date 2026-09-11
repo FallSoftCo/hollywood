@@ -72,7 +72,7 @@ class Push:
                     continue
                 payload = messaging.Message(
                     fid=item["token"],
-                    data={"attentionId": str(item["event"])},
+                    data={"attentionId": str(item["event"]), "deviceId": item["device"]},
                     android=messaging.AndroidConfig(
                         priority="high" if event["kind"] in ("attention", "approval") else "normal",
                         ttl=3600,
