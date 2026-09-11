@@ -33,6 +33,7 @@ Issues = "https://github.com/FallSoftCo/hollywood/issues"
 [project.scripts]
 hollywood = "hollywood:main"
 hollywoodctl = "hollywoodctl:main"
+hollywood-room = "hollywood_room.server:main"
 
 [project.optional-dependencies]
 room = ["aiohttp>=3.12,<4", "pydantic>=2.12,<3", "filelock>=3.20,<4", "jsonschema>=4.26,<5"]
