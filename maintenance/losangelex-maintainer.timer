@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily Codex maintenance with delivery retry
+
+[Timer]
+OnCalendar=*-*-* *:00,30:00 America/New_York
+Persistent=true
+Unit=losangelex-maintainer.service
+
+[Install]
+WantedBy=timers.target

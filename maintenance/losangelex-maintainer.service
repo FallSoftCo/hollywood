@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily Losangelex Codex upstream maintainer wakeup
+After=network-online.target hollywood-room.service
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3 %h/.local/share/losangelex-maintainer/maintainer.py --state %h/.local/state/losangelex-maintainer --token-file %h/.local/state/hollywood-room/client-token --repo %h/Development/losangelex-next
