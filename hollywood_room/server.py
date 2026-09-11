@@ -12,6 +12,7 @@ from pathlib import Path
 from aiohttp import web
 from pydantic import ValidationError
 
+from .history import HistoryQuery, history_page
 from .models import TEAM, Answer, ApprovalAnswer, Control, Device, Message
 from .runtime import Runtime
 from .store import Conflict, Store
@@ -119,6 +120,11 @@ def application(service):
     async def post(request):
         return web.json_response(
             service.post(Message.model_validate(await request.json())), status=202
+        )
+
+    async def history(request):
+        return web.json_response(
+            history_page(service.store, HistoryQuery.model_validate(dict(request.query)))
         )
 
     async def detail(request):
@@ -235,6 +241,7 @@ def application(service):
             web.get("/health", health),
             web.get("/hollywood/v2/overview", snapshot),
             web.get("/hollywood/v2/messages", messages),
+            web.get("/hollywood/v2/history", history),
             web.post("/hollywood/v2/messages", post),
             web.get("/hollywood/v2/messages/{id}", detail),
             web.get("/hollywood/v2/events", events),

@@ -42,6 +42,8 @@ class Store:
                 author TEXT NOT NULL, body TEXT NOT NULL, data TEXT NOT NULL,
                 visibility TEXT NOT NULL DEFAULT 'room', created_at INTEGER NOT NULL
             );
+            CREATE INDEX IF NOT EXISTS event_conversation ON event(visibility,id);
+            CREATE INDEX IF NOT EXISTS event_conversation_task ON event(visibility,task,id);
             CREATE TABLE IF NOT EXISTS command (
                 id TEXT PRIMARY KEY, digest TEXT NOT NULL, event INTEGER REFERENCES event(id)
             );

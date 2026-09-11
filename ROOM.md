@@ -55,6 +55,7 @@ same ID and contents returns the original receipt; changing its contents fails w
 | --- | --- |
 | `GET overview` | Team, tasks, agent states, open attention and unconfirmed deliveries |
 | `GET messages?after=ID&limit=100&task=TASK` | Paginated durable history; task is optional |
+| `GET history?visibility=room&limit=50` | Newest chat page; exact conversation, optional task, and exclusive `before` / `after` or inclusive `around` cursor |
 | `GET events?after=ID` | SSE replay; also accepts `Last-Event-ID` |
 | `POST messages` | `commandId`, `body`, optional `task`, `targets`, `visibility`, `replyTo` |
 | `GET messages/ID` | Current message and attention state, including resolved/expired actions |
@@ -64,6 +65,14 @@ same ID and contents returns the original receipt; changing its contents fails w
 | `POST approval/ID/answer` | Explicit `decision`: `accept` or `decline` for a live upstream request |
 | `POST devices` | Owner registers `id` and Firebase installation ID `fid` |
 | `DELETE devices/ID` | Stops future push attempts for that device |
+
+`history` returns messages newest first, with nullable `olderCursor` and `newerCursor` event IDs.
+Use the older cursor as `before`, the newer cursor as `after`, or `around=ID` to restore a reading
+position or open an old notification. Pages contain at most 100 events and reflect current
+question/approval state. `visibility` is exactly `room` or `direct:AGENT`; omitted `task` includes
+all tasks in that conversation. Replies include an optional, bounded source excerpt. Keyset
+pagination and indexed conversation queries keep older history accessible without offsets or a
+client history limit. The existing forward replay API and agent-facing reads retain their behavior.
 
 Unnamed room messages address the coordinator. `Maya, …` or `@maya …` addresses Maya publicly.
 Explicit `visibility: "direct"` requires one target. Replies retain the original task and
