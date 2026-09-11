@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hollywood-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local pull-based coordination room for CLI agents"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -34,5 +34,19 @@ Issues = "https://github.com/FallSoftCo/hollywood/issues"
 hollywood = "hollywood:main"
 hollywoodctl = "hollywoodctl:main"
 
+[project.optional-dependencies]
+room = ["aiohttp>=3.12,<4", "pydantic>=2.12,<3", "filelock>=3.20,<4", "jsonschema>=4.26,<5"]
+push = ["firebase-admin>=7,<8"]
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=1,<2", "ruff>=0.15,<1"]
+
 [tool.setuptools]
 py-modules = ["hollywood", "hollywoodctl"]
+packages = ["hollywood_room"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
