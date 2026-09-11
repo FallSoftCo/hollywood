@@ -43,3 +43,7 @@ results. Cleanup is limited to maintainer-owned disposable artifacts. Landing is
 coordinated with the active fork owner after validation; the scheduler never
 deploys builds. Consult `~/.local/state/losangelex-maintainer/report.md` and task
 history for actual integration outcomes.
+
+Each invocation reads the durable report first and resumes its recorded candidate and
+remote builder, checking active jobs before launching more work. Existing approvals
+remain effective within their recorded scope.

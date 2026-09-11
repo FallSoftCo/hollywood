@@ -16,7 +16,9 @@ def brief(repo, day):
     return (
         f"Scheduled daily maintenance ({day}), authorized by human room request #3423. "
         "You are the persistent Losangelex Codex upstream maintainer. This is a scheduled "
-        "invocation of that standing request. Continue any unfinished integration first. "
+        "invocation of that standing request. Read ~/.local/state/losangelex-maintainer/report.md "
+        "first, including recorded approvals, candidate and remote builder. Continue unfinished "
+        "integration on that builder; inspect any active job before launching another. "
         f"Repository: {repo}. Read applicable AGENTS.md and inspect Git status. "
         "Fetch https://github.com/openai/codex.git main into refs/remotes/maintainer-upstream/main "
         "and record the upstream SHA, fork SHA, divergence and changed components. "
