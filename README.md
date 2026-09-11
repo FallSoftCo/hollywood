@@ -1,5 +1,8 @@
 # hollywood
 
+The new [shared team room service](ROOM.md) adds durable Codex execution, streaming terminal
+and Android clients, and background notification delivery. The original CLI below remains available.
+
 Local room-based coordination service for CLI agents. Agent identity is
 `session_id` (for Codex, `CODEX_THREAD_ID`).
 
