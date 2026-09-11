@@ -11,15 +11,28 @@ from .actions import perform
 from .approvals import Approvals
 from .rpc import AppServer, RpcError
 from .tools import bounded, instruction, specs
-from .workspace import Workspaces
+from .workspace import SHARED_WORKSPACE_INSTRUCTIONS, Workspaces
 
 
 class Runtime:
-    def __init__(self, store, *, binary, home, state, workspace, model=None, ephemeral=False):
+    def __init__(
+        self,
+        store,
+        *,
+        binary,
+        home,
+        state,
+        workspace,
+        model=None,
+        ephemeral=False,
+        workspace_mode="worktree",
+    ):
         self.store, self.workspace = store, Path(workspace).resolve()
         self.approvals = Approvals(store)
         self.model, self.ephemeral = model, ephemeral
-        self.workspaces = Workspaces(self.workspace, Path(state) / "workspaces")
+        self.workspaces = Workspaces(
+            self.workspace, Path(state) / "workspaces", mode=workspace_mode
+        )
         self.rpc = AppServer(binary, Path(home), Path(state), self.event, self.tool)
         self.active = {}
         self.loaded = set()
@@ -81,25 +94,33 @@ class Runtime:
         binding = self.store.rows("SELECT * FROM binding WHERE task=? AND agent=?", (task, agent))[
             0
         ]
-        if binding["thread"]:
-            if binding["thread"] not in self.loaded:
-                await self.rpc.call(
-                    "thread/resume", {"threadId": binding["thread"], "includeTurns": False}
-                )
-                self.loaded.add(binding["thread"])
+        if binding["thread"] in self.loaded:
             return binding["thread"]
         cwd = await self.workspaces.for_agent(task, agent)
+        instructions = instruction(agent, task)
+        if self.workspaces.mode == "shared":
+            instructions += SHARED_WORKSPACE_INSTRUCTIONS
+        settings = {
+            "cwd": str(cwd),
+            "sandbox": "workspace-write",
+            "approvalPolicy": "on-request",
+            "developerInstructions": instructions,
+            "config": {"features.multi_agent": False, "features.multi_agent_v2": False},
+        }
+        if binding["thread"]:
+            await self.rpc.call(
+                "thread/resume",
+                {"threadId": binding["thread"], "excludeTurns": True, **settings},
+            )
+            self.loaded.add(binding["thread"])
+            return binding["thread"]
         result = await self.rpc.call(
             "thread/start",
             {
-                "cwd": str(cwd),
+                **settings,
                 "model": self.model,
                 "ephemeral": self.ephemeral,
-                "sandbox": "workspace-write",
-                "approvalPolicy": "on-request",
-                "developerInstructions": instruction(agent, task),
                 "dynamicTools": specs(),
-                "config": {"features.multi_agent": False, "features.multi_agent_v2": False},
             },
         )
         thread = result["thread"]["id"]

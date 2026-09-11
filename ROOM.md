@@ -4,9 +4,10 @@ The `hollywood-room` service owns persistent Codex app-server threads. Terminal 
 clients submit commands and replay events; disconnecting or rebuilding either client does not
 stop agent turns. The legacy `/hollywood/v1` service and CLI remain separate.
 
-This first implementation supports one Git project per service, four named teammates
-(`coordinator`, `maya`, `theo`, `rowan`), and separate root threads and worktrees for each
-task/teammate pair. It is an initial usable release, with the limits below.
+This implementation supports a development directory or a Git project per service and four
+named teammates (`coordinator`, `maya`, `theo`, `rowan`). Every task/teammate pair has a separate
+root conversation. Workspace mode determines whether those conversations share files or use
+separate Git worktrees.
 
 ## Run and install
 
@@ -26,6 +27,19 @@ uv run --extra room --extra push hollywood-room \
   --codex-home /absolute/configured/codex-home \
   --port 18767
 ```
+
+For a development directory containing several repositories and ordinary subfolders, pass
+`--workspace /absolute/Development --workspace-mode shared`. Agents start at that root and
+edit the actual named subfolders. The workspace-write sandbox covers that directory; requests
+outside it retain the normal approval policy. Agents are instructed to read applicable nested
+`AGENTS.md` files, inspect existing changes, include repository paths in delegation briefs, and
+coordinate overlapping edits. Conversations are independent; shared files are not isolated or
+automatically locked. Git operations and worktrees can still be requested explicitly.
+
+The default `--workspace-mode worktree` preserves the original single-repository workflow.
+When changing the configured root or mode, activate the new release while the runtime is idle.
+Existing threads resume with the current root, mode and instructions while retaining their
+conversation history. Existing worktrees and their uncommitted edits are left in place.
 
 The API binds to loopback. Put an authenticated private HTTPS connection, such as Tailscale
 Serve, in front of it for Android. All endpoints except `/health` require the owner bearer
@@ -105,18 +119,22 @@ ignored, so switching hosts cannot open an unrelated task with the same numeric 
 uv run --extra room --extra push pytest -q
 uv run --extra room python tests/evaluate_room.py --help
 uv run --extra room --with textual==6.12.0 python tests/evaluate_lifecycle.py --help
+uv run --extra room python tests/evaluate_shared_workspace.py --help
 ```
 
 The explicit evaluations use real Codex model runs, disposable worktrees and frozen requests
 captured from earlier failures. They test peer handoff, private summaries, per-task context,
 real delegated file creation, client rebuilds during a live turn, steering and context recovery
 after an idle runtime restart. Reports record the model, binary hash, checks and transcripts.
+The shared-workspace evaluation freezes real room documentation in two nested repositories,
+resumes an existing thread at a non-Git development root, checks per-folder instructions and
+preserved edits, and delegates a review to an independent teammate in the selected subfolder.
 Deterministic tests cover storage/transport invariants rather than simulating model judgment.
 
 Rebuilding clients preserves running turns. Replacing the host process during a turn can still
 interrupt it: keep the installed release running, test another instance on a separate port/state,
 and switch runtime versions after work is idle. Idle thread resumption is tested. Legacy session
-migration, multi-project aggregation, arbitrary team membership, automatic merge/integration of
+migration, aggregation of independently configured roots, arbitrary team membership, automatic merge/integration of
 worktrees, and a comparative productivity benchmark against Codex remain future work.
 
 Authentication references: [Google service-account impersonation](https://cloud.google.com/docs/authentication/use-service-account-impersonation)

@@ -253,6 +253,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state", type=Path, required=True)
     parser.add_argument("--workspace", type=Path, required=True)
+    parser.add_argument("--workspace-mode", choices=("worktree", "shared"), default="worktree")
     parser.add_argument("--codex", required=True, help="Absolute installed Codex binary path")
     parser.add_argument("--codex-home", type=Path)
     parser.add_argument("--model")
@@ -278,6 +279,7 @@ def main():
         home=args.codex_home or state / "codex-home",
         state=state / "runtime",
         workspace=args.workspace,
+        workspace_mode=args.workspace_mode,
         model=args.model,
     )
     app = application(
