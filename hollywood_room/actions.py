@@ -17,6 +17,24 @@ async def perform(runtime, key, active, tool, args, call_id):
     if tool == "hollywood_control" and args["agent"] not in roster:
         raise ValueError("Unknown teammate")
     depth = active["delivery"]["depth"] + 1
+    if tool == "hollywood_rooms":
+        from .rooms import catalog
+        page = catalog(runtime.store, team, cursor=args["cursor"], limit=1)
+        return {"authorityId": page["authorityId"],
+                "rooms": [{"roomId": r["id"], "task": r["task"], "title": bounded(r["title"], 80),
+                           "purpose": bounded(r["purpose"], 160), "purposeTruncated": len(r["purpose"].encode("utf-8")) > 160,
+                           "members": len(r["members"])} for r in page["rooms"]],
+                "nextCursor": page["next_cursor"]}
+    if tool == "hollywood_room_context":
+        from .rooms import synchronize, detail
+        synchronize(runtime.store)
+        room_id = runtime.store.rows("SELECT id FROM room_catalog WHERE task=?", (task,))[0]["id"]
+        room = detail(runtime.store, room_id, team)
+        actor_id = runtime.store.rows("SELECT id FROM actor_catalog WHERE legacy_agent=?", (agent,))[0]["id"]
+        return {"roomId": room_id, "actorId": actor_id, "task": task,
+                "purpose": bounded(room["purpose"], 240), "purposeTruncated": len(room["purpose"].encode("utf-8")) > 240,
+                "member": any(m["id"] == actor_id for m in room["members"]),
+                "contextIsolation": "room-local", "membershipGrantsExecution": False}
     if tool == "hollywood_roster":
         page = runtime.store.roster_page(team, cursor=args["cursor"], limit=3)
         return {

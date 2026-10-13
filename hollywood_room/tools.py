@@ -48,6 +48,14 @@ def instruction(agent, task, roster=None, coordinator="coordinator"):
 
 def specs():
     definitions = {
+        "hollywood_rooms": (
+            "Discover purpose-scoped rooms in your team without waking agents. Each page contains one room. Use its task key with existing communication tools.",
+            {"cursor": {"type": "string", "maxLength": 64}},
+        ),
+        "hollywood_room_context": (
+            "Read your stable actor identity, membership and current room purpose; does not merge contexts or grant execution permissions.",
+            {},
+        ),
         "hollywood_roster": (
             "Discover teammates in your team; pass an empty cursor first, then nextCursor for more.",
             {"cursor": {"type": "string", "maxLength": 64}},

@@ -1,9 +1,14 @@
+import json
+from types import SimpleNamespace
+
 import pytest
 from aiohttp import ClientSession, web
 
+from hollywood_room.actions import perform
 from hollywood_room.rooms import catalog, join, set_purpose
 from hollywood_room.server import Service, application
 from hollywood_room.store import Conflict, Store
+from hollywood_room.tools import bounded
 
 
 def test_identity_membership_restart_and_context_isolation(tmp_path):
@@ -53,6 +58,8 @@ async def test_api_auth_team_boundary_and_membership_no_wakeup(tmp_path):
             assert (await client.get(base + '/rooms')).status == 401
         async with ClientSession(headers={'Authorization': 'Bearer test-token'}) as client:
             default = await (await client.get(base + '/rooms')).json()
+            actors = await (await client.get(base + '/actors')).json()
+            assert len(actors['actors']) == 4
             research = await (await client.get(base + '/teams/research/rooms')).json()
             room = research['rooms'][0]
             actor = default['rooms'][0]['members'][0]['id']
@@ -68,4 +75,30 @@ async def test_api_auth_team_boundary_and_membership_no_wakeup(tmp_path):
             assert store.rows('SELECT * FROM binding') == []
     finally:
         await runner.cleanup()
+        store.close()
+
+
+async def test_native_discovery_is_bounded_identity_scoped_and_does_not_dispatch(tmp_path):
+    store = Store(tmp_path / 'room.db')
+    try:
+        store.add_task('leaf', 'Focused context', None)
+        rooms = {r['task']: r for r in catalog(store, 'default')['rooms']}
+        set_purpose(store, rooms['lobby']['id'], 'default', '目的😀 ' * 450, 0)
+        runtime = SimpleNamespace(store=store)
+        active = {'delivery': {'depth': 0}, 'visibility': 'room'}
+        context = await perform(runtime, ('lobby', 'coordinator'), active, 'hollywood_room_context', {}, 'read-context')
+        assert context['roomId'] == rooms['lobby']['id']
+        assert context['member'] and context['purposeTruncated']
+        assert not context['membershipGrantsExecution']
+        cursor = ''
+        found = []
+        while True:
+            page = await perform(runtime, ('lobby', 'coordinator'), active, 'hollywood_rooms', {'cursor': cursor}, 'read-catalog')
+            assert json.loads(bounded(page)) == page
+            found.extend(page['rooms']);cursor=page['nextCursor']
+            if not cursor:break
+        assert {r['task'] for r in found} == {'lobby', 'leaf'}
+        assert store.rows('SELECT * FROM delivery') == []
+        assert store.rows('SELECT * FROM binding') == []
+    finally:
         store.close()

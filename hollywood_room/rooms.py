@@ -65,6 +65,16 @@ def catalog(store, team, *, cursor="", limit=100):
             "next_cursor": rows[limit-1]["id"] if len(rows) > limit else None}
 
 
+def actors(store, team, *, cursor="", limit=100):
+    synchronize(store)
+    limit = min(max(int(limit), 1), 100)
+    rows = store.rows("""SELECT a.id,a.legacy_agent AS agent,p.role FROM actor_catalog a
+        JOIN teammate p ON p.id=a.legacy_agent WHERE p.team=? AND a.id>?
+        ORDER BY a.id LIMIT ?""", (team, cursor, limit + 1))
+    return {"actors": rows[:limit],
+            "next_cursor": rows[limit-1]["id"] if len(rows) > limit else None}
+
+
 def set_purpose(store, room, team, purpose, revision):
     from .store import Conflict
     if not isinstance(purpose, str) or len(purpose) > 4000:
@@ -75,15 +85,21 @@ def set_purpose(store, room, team, purpose, revision):
                                    (purpose, room, revision)).rowcount
         if not changed:
             raise Conflict("Room revision changed; read before updating")
+        store.event("roomMetadata", detail(store, room, team)["task"], "hollywood",
+                    "Room purpose updated", {"roomId": room, "revision": revision + 1})
     return detail(store, room, team)
 
 
 def join(store, room, team, actor):
     row = detail(store, room, team)
-    candidates = store.rows("""SELECT a.id FROM actor_catalog a JOIN teammate p ON p.id=a.legacy_agent
+    candidates = store.rows("""SELECT a.id,a.legacy_agent FROM actor_catalog a JOIN teammate p ON p.id=a.legacy_agent
         WHERE a.id=? AND p.team=?""", (actor, team))
     if not candidates:
         raise ValueError("Actor is not admitted to this team")
     with store.db:
-        store.db.execute("INSERT OR IGNORE INTO room_membership VALUES(?,?)", (row["id"], actor))
+        inserted = store.db.execute("INSERT OR IGNORE INTO room_membership VALUES(?,?)", (row["id"], actor)).rowcount
+        if inserted:
+            store.event("membership", row["task"], "hollywood",
+                        candidates[0]["legacy_agent"] + " joined room",
+                        {"roomId": room, "actorId": actor})
     return detail(store, room, team)

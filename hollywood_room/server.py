@@ -352,6 +352,10 @@ def application(service):
             "limit": min(max(int(request.query.get("limit", 100)), 1), 100),
         }
 
+    async def actors(request):
+        from .rooms import actors as actor_catalog
+        return web.json_response(actor_catalog(service.store, selected_team(request), **page_args(request)))
+
     async def rooms(request):
         from .rooms import catalog
         return web.json_response(catalog(service.store, selected_team(request), **page_args(request)))
@@ -363,7 +367,7 @@ def application(service):
     async def room_purpose(request):
         from .rooms import set_purpose
         value = await request.json()
-        if type(value.get('revision')) is not int:
+        if not isinstance(value, dict) or type(value.get('revision')) is not int:
             raise ValueError('Expected integer room revision')
         return web.json_response(set_purpose(service.store, request.match_info['room'],
             selected_team(request), value.get('purpose'), value['revision']))
@@ -547,6 +551,7 @@ def application(service):
         return web.json_response(result)
 
     routes = [
+        web.get("/hollywood/v2/actors", actors),
         web.get("/hollywood/v2/rooms", rooms),
         web.get("/hollywood/v2/rooms/{room}", room_detail),
         web.put("/hollywood/v2/rooms/{room}/purpose", room_purpose),
