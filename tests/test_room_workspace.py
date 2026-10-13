@@ -82,8 +82,8 @@ async def test_existing_thread_resumes_at_shared_root_without_changing_identity(
                 "threadId": "existing-thread",
                 "excludeTurns": True,
                 "cwd": str(tmp_path),
-                "sandbox": "workspace-write",
-                "approvalPolicy": "on-request",
+                "sandbox": "danger-full-access",
+                "approvalPolicy": "never",
                 "developerInstructions": instruction("maya", "lobby")
                 + SHARED_WORKSPACE_INSTRUCTIONS,
                 "config": {"features.multi_agent": False, "features.multi_agent_v2": False},

@@ -70,6 +70,7 @@ class Approvals:
                 "you",
                 "Approval response submitted",
                 {"attention": event_id},
+                visibility=source["visibility"],
             )
         future.set_result({"decision": decision})
         return {"attention": event_id, "decision": decision, "state": "responseSubmitted"}

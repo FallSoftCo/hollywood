@@ -9,6 +9,17 @@ named teammates (`coordinator`, `maya`, `theo`, `rowan`). Every task/teammate pa
 root conversation. Workspace mode determines whether those conversations share files or use
 separate Git worktrees.
 
+The coordinator handles user discussion, assignments, dependencies and review of reported
+evidence. Its developer instructions delegate implementation, commands, tests, deployments
+and operational changes to Maya, Theo or Rowan, unless the human explicitly requests personal
+execution by the coordinator. Busy teammates are handled by sequencing assignments. Briefs
+identify the owning task, repository or host, scope and expected verification.
+
+This is prompt policy, not a tool permission boundary. The runtime supplies it only to the
+coordinator on thread start and resume; worker execution remains available. Already loaded
+threads receive updated instructions after the service is activated while idle and resumes
+them. Prompt delivery tests do not establish model compliance on every turn.
+
 ## Run and install
 
 Use Losangelex's `losangelex/pin_room.py` to install locked, non-editable packages and a Linux

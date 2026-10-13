@@ -62,3 +62,69 @@ async def test_peer_delivery_uses_tool_authority_and_separate_thread(tmp_path):
         {"agent": "theo", "state": "confirmed"},
     ]
     store.close()
+
+
+async def test_new_and_resumed_threads_use_full_access(tmp_path):
+    store = Store(tmp_path / "room.db")
+    store.message(
+        "human", task="lobby", author="you", body="Review UX", targets=["maya"], authority="user"
+    )
+    runtime = Runtime(store, binary="unused", home=tmp_path, state=tmp_path, workspace=tmp_path)
+    runtime.workspaces.for_agent = AsyncMock(return_value=tmp_path)
+    runtime.rpc.call = AsyncMock(return_value={"thread": {"id": "thread-a"}})
+    try:
+        assert await runtime.thread("lobby", "maya") == "thread-a"
+        method, params = runtime.rpc.call.call_args.args
+        assert (method, params["sandbox"], params["approvalPolicy"]) == (
+            "thread/start",
+            "danger-full-access",
+            "never",
+        )
+        runtime.loaded.clear()
+        assert await runtime.thread("lobby", "maya") == "thread-a"
+        method, params = runtime.rpc.call.call_args.args
+        assert (method, params["sandbox"], params["approvalPolicy"]) == (
+            "thread/resume",
+            "danger-full-access",
+            "never",
+        )
+    finally:
+        store.close()
+
+
+async def test_progress_and_actions_are_visible_without_internal_reasoning(tmp_path):
+    from hollywood_room.history import HistoryQuery, history_page
+
+    store = Store(tmp_path / "room.db")
+    store.message(
+        "human", task="lobby", author="you", body="Review UX", targets=["maya"], authority="user"
+    )
+    with store.db:
+        store.db.execute("UPDATE binding SET thread='thread-a'")
+    runtime = Runtime(store, binary="unused", home=tmp_path, state=tmp_path, workspace=tmp_path)
+    runtime.active[("lobby", "maya")] = {"visibility": "direct:maya"}
+    try:
+        for item in [
+            {
+                "id": "note",
+                "type": "agentMessage",
+                "phase": "commentary",
+                "text": "I’m checking the composer.",
+            },
+            {
+                "id": "cmd",
+                "type": "commandExecution",
+                "command": "rg composer app",
+                "status": "completed",
+            },
+            {"id": "thought", "type": "reasoning", "content": ["Private internal reasoning"]},
+        ]:
+            await runtime.event("item/completed", {"threadId": "thread-a", "item": item})
+        page = history_page(store, HistoryQuery(visibility="direct:maya"))
+        assert [(e["kind"], e["body"]) for e in page["data"]] == [
+            ("artifact", "Ran command\nrg composer app"),
+            ("agentNote", "I’m checking the composer."),
+        ]
+        assert all(e["kind"] == "message" for e in history_page(store, HistoryQuery())["data"])
+    finally:
+        store.close()

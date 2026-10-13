@@ -85,13 +85,13 @@ async def test_private_question_answer_stays_private_and_cannot_reuse_another_re
 
 async def test_history_reads_every_page_across_live_inserts_without_crossing_conversations(service):
     service, url = service
-    expected = []
+    expected = [service.store.add_task("client", "Client", None)]
     with service.store.db:
         for index in range(650):
             task = "lobby" if index % 2 else "client"
             expected.append(service.store.event("message", task, "maya", f"Message {index}"))
             service.store.event("message", task, "theo", "Private", visibility="direct:theo")
-            service.store.event("artifact", task, "maya", "Tool output")
+            expected.append(service.store.event("artifact", task, "maya", "Tool output"))
     async with ClientSession(headers={"Authorization": "Bearer fixture-secret"}) as client:
 
         async def page(**params):

@@ -1,8 +1,10 @@
 """Indexed, bidirectional chat pages. Reading history never dispatches agent work."""
 
+import re
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .models import TEAM
+from .failures import present_event
 
 
 class HistoryQuery(BaseModel):
@@ -16,18 +18,23 @@ class HistoryQuery(BaseModel):
 
     @model_validator(mode="after")
     def validate_scope(self):
-        if self.visibility not in {"room", *(f"direct:{agent}" for agent in TEAM)}:
+        if self.visibility != "room" and not re.fullmatch(
+            r"direct:[a-z0-9_-]{1,64}", self.visibility
+        ):
             raise ValueError("Unknown conversation")
         if sum(cursor is not None for cursor in (self.before, self.after, self.around)) > 1:
             raise ValueError("Supply only one history cursor")
         return self
 
 
-def history_page(store, query: HistoryQuery):
-    where = (
-        "visibility=? AND kind IN ('message','attention','approval','task','control','resolved')"
-    )
-    args = [query.visibility]
+def history_page(store, query: HistoryQuery, *, team="default"):
+    if query.visibility != "room" and query.visibility.split(":", 1)[1] not in store.roster(team):
+        raise ValueError("Unknown conversation")
+    if query.task and store.task_team(query.task) != team:
+        raise ValueError("Task does not belong to this team")
+    where = "visibility=? AND kind IN ('message','attention','approval','task','control','resolved','agentNote','artifact','dismissed')"
+    where += " AND task IN (SELECT id FROM task WHERE team=?)"
+    args = [query.visibility, team]
     if query.task:
         where += " AND task=?"
         args.append(query.task)
@@ -57,7 +64,8 @@ def history_page(store, query: HistoryQuery):
 
     data = []
     for event_id in selected:
-        event = store.get_event(event_id)
+        event = present_event(store, store.get_event(event_id))
+        event.update(store.attention_card_state(event))
         if event["kind"] in {"attention", "approval"}:
             attention = store.rows("SELECT state FROM attention WHERE id=?", (event_id,))
             event["open"] = bool(attention and attention[0]["state"] == "open")

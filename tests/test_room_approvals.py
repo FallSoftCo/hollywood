@@ -47,3 +47,30 @@ async def test_runtime_loss_expires_durable_approval(tmp_path):
         approvals.answer(event, "accept")
     assert store.snapshot()["attention"] == []
     store.close()
+
+
+async def test_private_approval_resolution_stays_private(tmp_path):
+    from hollywood_room.history import HistoryQuery, history_page
+
+    store = Store(tmp_path / "room.db")
+    approvals = Approvals(store)
+    pending = asyncio.create_task(
+        approvals.request(
+            "item/commandExecution/requestApproval",
+            {"threadId": "thread", "turnId": "turn", "command": "private-command"},
+            task="lobby",
+            agent="maya",
+            visibility="direct:maya",
+        )
+    )
+    await asyncio.sleep(0)
+    event = store.snapshot()["attention"][0]["id"]
+    try:
+        approvals.answer(event, "accept")
+        assert await pending == {"decision": "accept"}
+        assert history_page(store, HistoryQuery())["data"] == []
+        assert history_page(store, HistoryQuery(visibility="direct:theo"))["data"] == []
+        private = history_page(store, HistoryQuery(visibility="direct:maya"))["data"]
+        assert {item["kind"] for item in private} == {"approval", "resolved"}
+    finally:
+        store.close()

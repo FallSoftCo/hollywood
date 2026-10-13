@@ -7,7 +7,7 @@ from hollywood_room.push import Push
 from hollywood_room.store import Store
 
 
-async def test_push_omits_history_and_resolved_questions_and_contains_no_task_text(
+async def test_push_omits_history_and_resolved_questions_and_includes_context(
     tmp_path, monkeypatch
 ):
     store = Store(tmp_path / "room.db")
@@ -18,7 +18,10 @@ async def test_push_omits_history_and_resolved_questions_and_contains_no_task_te
         )
     resolved = store.attention("lobby", "theo", "Already answered private question")
     pending = store.attention(
-        "lobby", "rowan", "Do not put this private text in the push", visibility="direct:rowan"
+        "lobby",
+        "rowan",
+        "Can you review the Android notification layout?",
+        visibility="direct:rowan",
     )
     with store.db:
         store.db.execute("UPDATE attention SET state='resolved' WHERE id=?", (resolved,))
@@ -42,7 +45,18 @@ async def test_push_omits_history_and_resolved_questions_and_contains_no_task_te
             {"event": pending, "state": "sent"},
         ]
         assert len(sent) == 1
-        assert sent[0].data == {"attentionId": str(pending), "deviceId": "device"}
+        assert sent[0].data == {
+            "attentionId": str(pending),
+            "deviceId": "device",
+            "author": "rowan",
+            "task": "lobby",
+            "team": "default",
+            "team_id": "default",
+            "taskTitle": "Project room",
+            "preview": "Can you review the Android notification layout?",
+            "kind": "attention",
+            "visibility": "direct:rowan",
+        }
         assert sent[0].fid == "fixture-fid"
         assert sent[0].android.priority == "high"
         assert sent[0].notification is None

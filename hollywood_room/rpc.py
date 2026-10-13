@@ -10,7 +10,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 class RpcError(Exception):
-    pass
+    def __init__(self, message, *, code=None, not_sent=False):
+        super().__init__(message)
+        self.code = code
+        self.not_sent = not_sent
 
 
 class AppServer:
@@ -62,7 +65,7 @@ class AppServer:
 
     async def write(self, message):
         if self.process is None or self.process.returncode is not None:
-            raise RpcError("Codex runtime is unavailable")
+            raise RpcError("Codex runtime is unavailable", not_sent=True)
         self.process.stdin.write((json.dumps(message) + "\n").encode())
         await self.process.stdin.drain()
 
@@ -106,7 +109,8 @@ class AppServer:
                         await self.on_event(message["method"], message.get("params", {}))
                 elif (future := self.pending.get(message.get("id"))) and not future.done():
                     if "error" in message:
-                        future.set_exception(RpcError(str(message["error"])))
+                        error = message["error"]
+                        future.set_exception(RpcError(str(error), code=error.get("code")))
                     else:
                         future.set_result(message.get("result", {}))
         finally:
