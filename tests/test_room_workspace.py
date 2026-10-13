@@ -86,7 +86,9 @@ async def test_existing_thread_resumes_at_shared_root_without_changing_identity(
                 "approvalPolicy": "never",
                 "developerInstructions": instruction("maya", "lobby")
                 + SHARED_WORKSPACE_INSTRUCTIONS,
-                "config": {"features.multi_agent": False, "features.multi_agent_v2": False},
+                "model": "gpt-5.5",
+                "config": {"features.multi_agent": False, "features.multi_agent_v2": False,
+                           "model_reasoning_effort": "low"},
             },
         )
         assert store.rows("SELECT thread FROM binding") == [{"thread": "existing-thread"}]
