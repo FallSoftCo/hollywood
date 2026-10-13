@@ -102,3 +102,50 @@ async def test_native_discovery_is_bounded_identity_scoped_and_does_not_dispatch
         assert store.rows('SELECT * FROM binding') == []
     finally:
         store.close()
+
+
+def test_room_creation_is_team_scoped_idempotent_and_does_not_admit_work(tmp_path):
+    from hollywood_room.rooms import create
+    store = Store(tmp_path / 'room.db')
+    try:
+        store.add_team('enterprise', 'Global', 'global-steward', 'Observe explicitly authorized work')
+        room = create(store, 'enterprise', 'ozzz-engineering', 'OZZZ Engineering', 'Engineering delivery')
+        assert create(store, 'enterprise', 'ozzz-engineering', 'OZZZ Engineering', 'Engineering delivery') == room
+        assert room['status'] == 'idle' and room['members'][0]['agent'] == 'global-steward'
+        assert store.rows('SELECT * FROM delivery') == []
+        assert store.rows('SELECT * FROM binding') == []
+        assert len(store.rows("SELECT * FROM event WHERE kind='roomCreated'")) == 1
+        with pytest.raises(Conflict):
+            create(store, 'default', 'ozzz-engineering', 'OZZZ Engineering', 'Engineering delivery')
+        with pytest.raises(Conflict):
+            create(store, 'enterprise', 'ozzz-engineering', 'Changed', 'Engineering delivery')
+        with pytest.raises(ValueError):
+            create(store, 'missing', 'invalid-team-room', 'Valid title', '')
+        assert store.rows("SELECT * FROM task WHERE id='invalid-team-room'") == []
+        with pytest.raises(ValueError):
+            create(store, 'enterprise', 'invalid-title', ' ', '')
+    finally:
+        store.close()
+
+
+async def test_native_room_creation_requires_auth_and_rejects_work_payload(tmp_path):
+    store = Store(tmp_path / 'room.db')
+    runner = web.AppRunner(application(Service(store, 'test-token')))
+    await runner.setup()
+    site = web.TCPSite(runner, '127.0.0.1', 0)
+    await site.start()
+    base = f'http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}/hollywood/v2/rooms'
+    try:
+        async with ClientSession() as client:
+            assert (await client.post(base, json={'task': 'created-room', 'title': 'Room'})).status == 401
+        async with ClientSession(headers={'Authorization': 'Bearer test-token'}) as client:
+            response = await client.post(base, json={'task': 'created-room', 'title': 'Room', 'purpose': 'Purpose'})
+            assert response.status == 201, await response.text()
+            room = await response.json()
+            assert (await client.post(base, json={'task': 'created-room', 'title': 'Room', 'purpose': 'Purpose'})).status == 201
+            assert (await client.post(base, json={'task': 'unsafe', 'title': 'Unsafe', 'targets': ['coordinator']})).status == 400
+            assert store.rows('SELECT * FROM delivery') == [] and store.rows('SELECT * FROM binding') == []
+            assert (await (await client.get(base + '/' + room['id'])).json())['purpose'] == 'Purpose'
+    finally:
+        await runner.cleanup()
+        store.close()

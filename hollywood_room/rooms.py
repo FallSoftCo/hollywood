@@ -103,3 +103,33 @@ def join(store, room, team, actor):
                         candidates[0]["legacy_agent"] + " joined room",
                         {"roomId": room, "actorId": actor})
     return detail(store, room, team)
+
+
+def create(store, team, task, title, purpose):
+    """Create a communication context without admitting an agent turn."""
+    import time
+
+    from .store import Conflict
+    store.validate_identity(task)
+    if not isinstance(title, str) or not title.strip() or len(title) > 200:
+        raise ValueError("Room title must contain text and fit 200 characters")
+    if not isinstance(purpose, str) or len(purpose) > 4000:
+        raise ValueError("Room purpose must fit 4000 characters")
+    teams = store.rows("SELECT coordinator FROM team WHERE id=?", (team,))
+    if not teams:
+        raise ValueError("Unknown team")
+    synchronize(store)
+    existing = store.rows("SELECT r.id,t.team,t.title,r.purpose FROM task t JOIN room_catalog r ON r.task=t.id WHERE t.id=?", (task,))
+    if existing:
+        row = existing[0]
+        if (row["team"], row["title"], row["purpose"]) != (team, title, purpose):
+            raise Conflict("Room task ID already exists with different metadata")
+        return detail(store, row["id"], team)
+    room = str(uuid.uuid4())
+    actor = store.rows("SELECT id FROM actor_catalog WHERE legacy_agent=?", (teams[0]["coordinator"],))[0]["id"]
+    with store.db:
+        store.db.execute("INSERT INTO task(id,title,status,created_at,team) VALUES(?,?,'idle',?,?)", (task, title, int(time.time()), team))
+        store.db.execute("INSERT INTO room_catalog(id,task,purpose) VALUES(?,?,?)", (room, task, purpose))
+        store.db.execute("INSERT INTO room_membership VALUES(?,?)", (room, actor))
+        store.event("roomCreated", task, "hollywood", "Room created without execution", {"roomId": room, "executionAdmitted": False})
+    return detail(store, room, team)

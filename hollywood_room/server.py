@@ -360,6 +360,13 @@ def application(service):
         from .rooms import catalog
         return web.json_response(catalog(service.store, selected_team(request), **page_args(request)))
 
+    async def room_create(request):
+        from .models import RoomCreate
+        from .rooms import create
+        value = RoomCreate.model_validate(await request.json())
+        return web.json_response(create(service.store, selected_team(request),
+            value.task, value.title, value.purpose), status=201)
+
     async def room_detail(request):
         from .rooms import detail
         return web.json_response(detail(service.store, request.match_info['room'], selected_team(request)))
@@ -553,6 +560,7 @@ def application(service):
     routes = [
         web.get("/hollywood/v2/actors", actors),
         web.get("/hollywood/v2/rooms", rooms),
+        web.post("/hollywood/v2/rooms", room_create),
         web.get("/hollywood/v2/rooms/{room}", room_detail),
         web.put("/hollywood/v2/rooms/{room}/purpose", room_purpose),
         web.put("/hollywood/v2/rooms/{room}/members/{actor}", room_join),

@@ -26,7 +26,7 @@ async def perform(runtime, key, active, tool, args, call_id):
                            "members": len(r["members"])} for r in page["rooms"]],
                 "nextCursor": page["next_cursor"]}
     if tool == "hollywood_room_context":
-        from .rooms import synchronize, detail
+        from .rooms import detail, synchronize
         synchronize(runtime.store)
         room_id = runtime.store.rows("SELECT id FROM room_catalog WHERE task=?", (task,))[0]["id"]
         room = detail(runtime.store, room_id, team)

@@ -104,3 +104,10 @@ class TaskCreate(BaseModel):
 class Dismiss(BaseModel):
     model_config = ConfigDict(extra="forbid")
     commandId: str = Field(min_length=1, max_length=128)
+
+
+class RoomCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task: str = Field(pattern=r"^[a-z0-9_-]{1,64}$")
+    title: str = Field(min_length=1, max_length=200)
+    purpose: str = Field(default="", max_length=4000)
