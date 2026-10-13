@@ -120,3 +120,27 @@ async def test_automatic_uncertain_retry_reuses_key_after_restart(tmp_path):
     consumes = [params for method, params in calls if "consume" in method]
     assert len(consumes) == 2
     assert consumes[0] == consumes[1]
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+async def test_runtime_poll_respects_automatic_credit_reset_setting(tmp_path, monkeypatch, enabled):
+    from unittest.mock import AsyncMock
+    from hollywood_room.runtime import Runtime
+
+    store = Store(tmp_path / "runtime.db")
+    try:
+        runtime = Runtime(store, binary="unused", home=tmp_path, state=tmp_path,
+                          workspace=tmp_path, automatic_credit_reset=enabled)
+        runtime.ready = True
+        runtime.limits.automatic = AsyncMock()
+        runtime.limits.read = AsyncMock()
+
+        async def stop_after_one_poll(_):
+            runtime.stopping = True
+
+        monkeypatch.setattr("hollywood_room.runtime.asyncio.sleep", stop_after_one_poll)
+        await runtime.poll_limits()
+        assert runtime.limits.automatic.await_count == int(enabled)
+        assert runtime.limits.read.await_count == int(not enabled)
+    finally:
+        store.close()

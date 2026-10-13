@@ -591,6 +591,10 @@ def main():
     parser.add_argument("--reasoning-effort", default="low",
                         choices=("none", "minimal", "low", "medium", "high", "xhigh", "max"))
     parser.add_argument(
+        "--automatic-credit-reset", action=argparse.BooleanOptionalAction, default=True,
+        help="Automatically redeem earned reset credits when usage is exhausted",
+    )
+    parser.add_argument(
         "--max-turns", type=int, help="Optional running-turn ceiling; otherwise resource-derived"
     )
     parser.add_argument("--memory-per-turn-mb", type=int, default=1024)
@@ -625,6 +629,7 @@ def main():
         workspace_mode=args.workspace_mode,
         model=args.model,
         reasoning_effort=args.reasoning_effort,
+        automatic_credit_reset=args.automatic_credit_reset,
         max_turns=args.max_turns,
         memory_per_turn_mb=args.memory_per_turn_mb,
         reserve_memory_mb=args.reserve_memory_mb,

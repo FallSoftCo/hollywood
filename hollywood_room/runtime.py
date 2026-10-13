@@ -38,6 +38,7 @@ class Runtime:
         model="gpt-5.5",
         reasoning_effort="low",
         ephemeral=False,
+        automatic_credit_reset=True,
         workspace_mode="worktree",
         max_turns=None,
         memory_per_turn_mb=1024,
@@ -52,6 +53,7 @@ class Runtime:
         self.approvals = Approvals(store)
         self.model, self.ephemeral = model or "gpt-5.5", ephemeral
         self.reasoning_effort = reasoning_effort
+        self.automatic_credit_reset = automatic_credit_reset
         self.workspaces = Workspaces(
             self.workspace, Path(state) / "workspaces", mode=workspace_mode
         )
@@ -182,7 +184,10 @@ class Runtime:
         while not self.stopping:
             try:
                 if self.ready:
-                    await self.limits.automatic()
+                    if self.automatic_credit_reset:
+                        await self.limits.automatic()
+                    else:
+                        await self.limits.read()
                     current = self.limits.snapshot
                     if (
                         current
