@@ -98,6 +98,8 @@ class Store:
         if "after_event" not in {row["name"] for row in self.rows("PRAGMA table_info(device)")}:
             self.db.execute("ALTER TABLE device ADD COLUMN after_event INTEGER NOT NULL DEFAULT 0")
         ensure_presence_schema(self)
+        from .rooms import ensure_schema as ensure_room_schema
+        ensure_room_schema(self)
         if "team" not in {row["name"] for row in self.rows("PRAGMA table_info(task)")}:
             self.db.execute("ALTER TABLE task ADD COLUMN team TEXT NOT NULL DEFAULT 'default'")
         self.db.execute("CREATE INDEX IF NOT EXISTS task_team ON task(team,id)")

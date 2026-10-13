@@ -1,0 +1,64 @@
+Native rooms and Android navigation — executable slice, 2026-10-13
+
+Evidence:
+The actual paired handset runs NextComp alpha94, versionCode112. Its APK digest
+matches the release receipt based on source6949a40d. OZZZ-OS runs the upgraded
+versioned LAX package and maintained Hollywood wheel. A real handset READY
+message received a native response. Existing UI exposes teams/tasks rather than
+the proposed room catalog. A teammate currently belongs to one team, with a
+different native thread for each task. Broad LAX qualification still has67
+failures; it is not fully production-qualified.
+
+Decision:
+Hollywood owns durable authority, room, actor and membership identities.
+Room purpose explains relevance; title is presentation, never identity.
+Existing task IDs remain compatibility aliases and local execution context keys.
+One actor can participate in many rooms. Participation creates no model turn and
+grants no filesystem permission. Native threads remain room-local. A role name
+is not identity, and sharing an actor does not merge histories or memories.
+Broadcast remains room-local. An explicit message target controls dispatch.
+Room-to-room delivery must carry explicit source/target/provenance and permission
+checks; catalog discovery does not silently forward anything.
+
+Slice1, implementation now:
+Add additive SQLite catalog tables, durable UUIDs, authenticated team-scoped
+catalog/detail reads, revision-checked purpose updates and idempotent desired-
+state joins. Map existing coordinators and native bindings without replaying
+commands. Test stable identities through restart, actor membership in multiple
+rooms, rejected foreign team access and zero model/delivery creation on join.
+This release retains the owner-token trust model. Team scoping is routing
+validation; it is not independent tenant authorization.
+
+NextComp:
+Start with a Rooms list containing purpose, member activity and distinct room
+identity. Open one room to read/speak, inspect its members and select an explicit
+recipient. Preserve scoped drafts, unknown command receipts, attention controls,
+native voice and the existing coordinator/direct Codex session views. Keep
+legacy backend labels/IDs as aliases during the LAX naming transition. Add
+only typed authenticated catalog routes to the gateway allowlist. Never invent
+rooms client-side or merge two rooms with the same display title.
+
+Subsequent slices:
+2. Membership changes and directed inter-room messages become audited native
+commands, with stable receipts, explicit delivery states and cancellation scoped
+to the selected room/context. Leave must never infer permission to kill a turn.
+3. Separate principal grants from actor memberships. Owner-authenticated current
+deployment remains single-owner until per-principal authorization, revocation,
+permission-filtered discovery and adversarial isolation tests pass.
+4. Host registry binds stable authority and execution/workspace/artifact IDs to
+authenticated routes. No shared filesystem assumption: artifact references name
+their origin, revision/content digest and retrieval permission. Linux directories,
+Git, mounts and ordinary tools remain work storage, not identity or transport.
+5. Qualify two hosts and two humans with agents in multiple rooms, disconnection,
+receipt lookup, unknown delivery, retries, actor stops and credential rotation.
+No exactly-once promise; ambiguous side effects require reconciliation.
+
+Rollout:
+Use permanent fork branches and exact packaged artifacts. Run tests before
+switching the architecture runtime. Observe live bindings and dispatch states
+before a bounded restart; never interrupt active user work to deliver a UI.
+Back up state consistently and keep prior wheel/APK/unit. Additive tables remain
+readable by prior releases; rolling back code retains existing history/deliveries.
+Do not restore an old database after new messages, since that loses accepted work.
+Android update must preserve package/signing identity and all three profiles.
+No historical session migration or stopped schedules are part of this slice.

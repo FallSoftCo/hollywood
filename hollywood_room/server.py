@@ -352,6 +352,27 @@ def application(service):
             "limit": min(max(int(request.query.get("limit", 100)), 1), 100),
         }
 
+    async def rooms(request):
+        from .rooms import catalog
+        return web.json_response(catalog(service.store, selected_team(request), **page_args(request)))
+
+    async def room_detail(request):
+        from .rooms import detail
+        return web.json_response(detail(service.store, request.match_info['room'], selected_team(request)))
+
+    async def room_purpose(request):
+        from .rooms import set_purpose
+        value = await request.json()
+        if type(value.get('revision')) is not int:
+            raise ValueError('Expected integer room revision')
+        return web.json_response(set_purpose(service.store, request.match_info['room'],
+            selected_team(request), value.get('purpose'), value['revision']))
+
+    async def room_join(request):
+        from .rooms import join
+        return web.json_response(join(service.store, request.match_info['room'],
+            selected_team(request), request.match_info['actor']))
+
     async def teams(request):
         return web.json_response(service.store.team_page(**page_args(request)))
 
@@ -526,6 +547,10 @@ def application(service):
         return web.json_response(result)
 
     routes = [
+        web.get("/hollywood/v2/rooms", rooms),
+        web.get("/hollywood/v2/rooms/{room}", room_detail),
+        web.put("/hollywood/v2/rooms/{room}/purpose", room_purpose),
+        web.put("/hollywood/v2/rooms/{room}/members/{actor}", room_join),
         web.get("/hollywood/v2/external-threads", external_threads),
         web.get("/hollywood/v2/external-threads/{id}", external_thread),
         web.post("/hollywood/v2/external-threads/{id}/association", external_association),
