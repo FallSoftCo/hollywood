@@ -539,7 +539,9 @@ class Runtime:
                         kind,
                         *key,
                         text[:12000],
-                        {"thread": thread, "item": item["id"], "phase": item.get("phase")},
+                        {"thread": thread, "item": item["id"], "phase": item.get("phase"),
+                         "turn": params.get("turnId"),
+                         "sourceEvent": active.get("delivery", {}).get("event")},
                         visibility=active.get("visibility", "room"),
                     )
         if method == "turn/completed":
@@ -554,7 +556,8 @@ class Runtime:
                     "turn",
                     *key,
                     turn["status"],
-                    {"turn": turn["id"], "error": turn.get("error")},
+                    {"turn": turn["id"], "error": turn.get("error"),
+                     "sourceEvent": active.get("delivery", {}).get("event")},
                     visibility=active.get("visibility", "room"),
                 )
             self.active.pop(key, None)

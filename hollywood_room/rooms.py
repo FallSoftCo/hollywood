@@ -55,11 +55,15 @@ def detail(store, room, team):
             "membershipGrantsExecution": False}
 
 
-def catalog(store, team, *, cursor="", limit=100):
+def catalog(store, team, *, cursor="", limit=100, task=None):
     synchronize(store)
     limit = min(max(int(limit), 1), 100)
-    rows = store.rows("""SELECT r.id FROM room_catalog r JOIN task t ON t.id=r.task
-        WHERE t.team=? AND r.id>? ORDER BY r.id LIMIT ?""", (team, cursor, limit + 1))
+    if task is not None:
+        store.validate_identity(task)
+        rows = store.rows("SELECT r.id FROM room_catalog r JOIN task t ON t.id=r.task WHERE t.team=? AND t.id=?", (team, task))
+    else:
+        rows = store.rows("""SELECT r.id FROM room_catalog r JOIN task t ON t.id=r.task
+            WHERE t.team=? AND r.id>? ORDER BY r.id LIMIT ?""", (team, cursor, limit + 1))
     return {"authorityId": store.rows("SELECT id FROM room_authority")[0]["id"],
             "rooms": [detail(store, row["id"], team) for row in rows[:limit]],
             "next_cursor": rows[limit-1]["id"] if len(rows) > limit else None}

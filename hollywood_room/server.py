@@ -358,7 +358,7 @@ def application(service):
 
     async def rooms(request):
         from .rooms import catalog
-        return web.json_response(catalog(service.store, selected_team(request), **page_args(request)))
+        return web.json_response(catalog(service.store, selected_team(request), task=request.query.get("task"), **page_args(request)))
 
     async def room_create(request):
         from .models import RoomCreate

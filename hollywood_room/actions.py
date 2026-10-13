@@ -61,6 +61,7 @@ async def perform(runtime, key, active, tool, args, call_id):
             authority="tool",
             visibility=active["visibility"],
             depth=depth,
+            reply_to=active["delivery"].get("event") if target_task == task else None,
         )
         active["published"] = True
         return {"published": event["id"], "targets": targets}

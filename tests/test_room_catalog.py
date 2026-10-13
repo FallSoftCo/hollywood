@@ -146,6 +146,12 @@ async def test_native_room_creation_requires_auth_and_rejects_work_payload(tmp_p
             assert (await client.post(base, json={'task': 'unsafe', 'title': 'Unsafe', 'targets': ['coordinator']})).status == 400
             assert store.rows('SELECT * FROM delivery') == [] and store.rows('SELECT * FROM binding') == []
             assert (await (await client.get(base + '/' + room['id'])).json())['purpose'] == 'Purpose'
+            found = await (await client.get(base + '?task=created-room')).json()
+            assert [r['id'] for r in found['rooms']] == [room['id']]
+            assert found['next_cursor'] is None
+            assert (await (await client.get(base + '?task=absent-room')).json())['rooms'] == []
+            assert (await client.get(base + '?task=invalid/identity')).status == 400
+
     finally:
         await runner.cleanup()
         store.close()

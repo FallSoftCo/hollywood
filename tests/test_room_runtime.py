@@ -128,3 +128,25 @@ async def test_progress_and_actions_are_visible_without_internal_reasoning(tmp_p
         assert all(e["kind"] == "message" for e in history_page(store, HistoryQuery())["data"])
     finally:
         store.close()
+
+
+async def test_reply_and_completion_identify_original_delivery(tmp_path):
+    store = Store(tmp_path / "room.db")
+    request = store.message("recording-a", task="lobby", author="you",
+                            body="Read status", targets=["maya"], authority="user")
+    delivery = store.rows("SELECT * FROM delivery WHERE event=?", (request["id"],))[0]
+    with store.db:
+        store.db.execute("UPDATE binding SET thread='thread-a' WHERE agent='maya'")
+    runtime = Runtime(store, binary="unused", home=tmp_path, state=tmp_path, workspace=tmp_path)
+    runtime.active[("lobby", "maya")] = {"visibility": "room", "delivery": delivery}
+    try:
+        await runtime.event("item/completed", {"threadId": "thread-a", "turnId": "turn-a",
+            "item": {"id": "answer-a", "type": "agentMessage", "phase": "final_answer", "text": "Verified status"}})
+        await runtime.event("turn/completed", {"threadId": "thread-a",
+            "turn": {"id": "turn-a", "status": "completed"}})
+        events = store.events(after=request["id"], task="lobby")
+        assert [e["kind"] for e in events] == ["message", "turn"]
+        assert all(e["data"]["sourceEvent"] == request["id"] for e in events)
+        assert all(e["data"]["turn"] == "turn-a" for e in events)
+    finally:
+        store.close()
