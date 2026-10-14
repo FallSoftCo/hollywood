@@ -574,6 +574,38 @@ class Runtime:
                 )
 
     async def tool(self, method, params):
+        if method != "item/tool/call":
+            return await self._tool(method, params)
+        thread, call = params["threadId"], params["callId"]
+        digest = hashlib.sha256(json.dumps(
+            [params.get("turnId"), params["tool"], params["arguments"]], sort_keys=True
+        ).encode()).hexdigest()
+
+        def refused(reason):
+            return {"success": False, "contentItems": [{"type": "inputText", "text": reason}]}
+
+        with self.store.db:
+            previous = self.store.rows("SELECT * FROM tool_receipt WHERE thread=? AND call=?", (thread, call))
+            if previous:
+                if previous[0]["digest"] != digest:
+                    return refused("Tool call identity reused with different contents; reconciliation required")
+                if previous[0]["result"] is None:
+                    return refused("Tool effect is unconfirmed; reconciliation required before retry")
+                return json.loads(previous[0]["result"])
+            if self.store.rows("SELECT call FROM tool_receipt WHERE thread=? AND result IS NULL", (thread,)):
+                return refused("An earlier tool effect is unconfirmed; reconcile this thread before new tool calls")
+            bindings = self.store.rows("SELECT task,agent FROM binding WHERE thread=?", (thread,))
+            if not bindings or (bindings[0]["task"], bindings[0]["agent"]) not in self.active:
+                return refused("No active owned turn; tool execution refused")
+            # Persist before awaiting any effect. A crash leaves an explicit unknown.
+            self.store.db.execute("INSERT INTO tool_receipt VALUES(?,?,?,NULL)", (thread, call, digest))
+        result = await self._tool(method, params)
+        with self.store.db:
+            self.store.db.execute("UPDATE tool_receipt SET result=? WHERE thread=? AND call=?",
+                                  (json.dumps(result), thread, call))
+        return result
+
+    async def _tool(self, method, params):
         binding = self.store.rows("SELECT * FROM binding WHERE thread=?", (params["threadId"],))[0]
         key = (binding["task"], binding["agent"])
         active = self.active[key]

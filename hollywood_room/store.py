@@ -59,6 +59,18 @@ class Store:
             CREATE TABLE IF NOT EXISTS command (
                 id TEXT PRIMARY KEY, digest TEXT NOT NULL, event INTEGER REFERENCES event(id)
             );
+            CREATE TABLE IF NOT EXISTS tool_receipt (
+                thread TEXT NOT NULL, call TEXT NOT NULL, digest TEXT NOT NULL,
+                result TEXT, PRIMARY KEY(thread,call)
+            );
+            CREATE TABLE IF NOT EXISTS work_order (
+                event INTEGER NOT NULL REFERENCES event(id),
+                owner TEXT NOT NULL REFERENCES teammate(id),
+                task TEXT NOT NULL REFERENCES task(id),
+                source INTEGER NOT NULL REFERENCES event(id),
+                dependencies TEXT NOT NULL, acceptance TEXT NOT NULL,
+                PRIMARY KEY(event,owner)
+            );
             CREATE TABLE IF NOT EXISTS delivery (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, event INTEGER NOT NULL REFERENCES event(id),
                 task TEXT NOT NULL, agent TEXT NOT NULL, authority TEXT NOT NULL,
@@ -247,9 +259,30 @@ class Store:
                 visibility=visibility,
             )
             self.db.execute("INSERT INTO command VALUES(?,?,?)", (command_id, digest, event_id))
+            if assignment is not None and assignment["source"] is not None:
+                source = self.get_event(assignment["source"])
+                if source["author"] != "you" or source["visibility"] != "room" or self.task_team(source["task"]) != self.task_team(task):
+                    raise ValueError("Work order requires a public human task request in the same team")
+                dependencies = assignment.get("dependencies", [])
+                acceptance = assignment.get("acceptance", "")
+                if not isinstance(dependencies, list) or len(dependencies) > 16 or any(
+                    not isinstance(item, int) or isinstance(item, bool) or not self.rows(
+                        "SELECT w.event FROM work_order w JOIN task t ON t.id=w.task WHERE w.event=? AND t.team=?",
+                        (item, self.task_team(task))) for item in dependencies
+                ):
+                    raise ValueError("Dependencies must identify at most 16 same-team work orders")
+                if not isinstance(acceptance, str) or len(acceptance) > 2000:
+                    raise ValueError("Acceptance must fit 2000 characters")
+                for owner in targets:
+                    self.db.execute("INSERT INTO work_order VALUES(?,?,?,?,?,?)",
+                        (event_id, owner, task, source["id"], json.dumps(dependencies), acceptance))
             if assignment is not None and assignment["source"] is None and authority == "user":
                 self.db.execute("UPDATE task SET source=? WHERE id=?", (event_id, task))
             for agent in targets:
+                if assignment is not None and assignment.get("dependencies"):
+                    # Persist the order, but no execution until dependency acceptance
+                    # and the native goal admission contract are implemented.
+                    continue
                 if (
                     assignment is not None
                     and assignment["source"] is not None
@@ -478,13 +511,24 @@ class Store:
                 self.db.execute("INSERT INTO command VALUES(?,?,?)", (command_id, digest, receipt))
             return {"id": event_id, "state": state, "dismissed": True}
 
-    def attention(self, task, agent, text, data=None, *, visibility="room"):
+    def attention(self, task, agent, text, data=None, *, visibility="room", command_id=None):
+        digest = hashlib.sha256(json.dumps(
+            ["attention", task, agent, text, data, visibility], sort_keys=True
+        ).encode()).hexdigest()
         with self.db:
+            if command_id is not None:
+                previous = self.rows("SELECT * FROM command WHERE id=?", (command_id,))
+                if previous:
+                    if previous[0]["digest"] != digest:
+                        raise Conflict("Question command ID already used with different contents")
+                    return previous[0]["event"]
             event = self.event("attention", task, agent, text, data, visibility=visibility)
             self.db.execute(
                 "INSERT INTO attention(id,task,agent) VALUES(?,?,?)", (event, task, agent)
             )
             self.db.execute("INSERT INTO push_outbox(event) VALUES(?)", (event,))
+            if command_id is not None:
+                self.db.execute("INSERT INTO command VALUES(?,?,?)", (command_id, digest, event))
             return event
 
     def close(self):

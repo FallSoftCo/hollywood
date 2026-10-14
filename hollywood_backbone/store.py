@@ -1,0 +1,563 @@
+"""PostgreSQL authority and atomic communication/execution-intent receipts.
+
+No model, shell, host provisioning or UI code belongs in this store.
+"""
+
+import hashlib
+import json
+import secrets
+import uuid
+from pathlib import Path
+
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
+from psycopg_pool import ConnectionPool
+
+
+class Denied(Exception):
+    pass
+
+
+class Conflict(Exception):
+    pass
+
+
+def digest(value):
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+def uid():
+    return str(uuid.uuid4())
+
+
+def json_value(value):
+    return json.loads(json.dumps(value, default=str))
+
+
+class Store:
+    def __init__(self, config):
+        self.pool = ConnectionPool(
+            kwargs={**config, "row_factory": dict_row}, min_size=1, max_size=8, open=True
+        )
+        self.pool.wait(timeout=15)
+
+    def close(self):
+        self.pool.close()
+
+    def migrate(self):
+        with self.pool.connection() as c:
+            c.execute("SELECT pg_advisory_xact_lock(1742014101)")
+            c.execute(Path(__file__).with_name("schema.sql").read_text())
+
+    def bootstrap(self, authority, name, plan):
+        """Local installer operation; never exposed through an anonymous HTTP route."""
+        with self.pool.connection() as c:
+            c.execute("SELECT pg_advisory_xact_lock(1742014102)")
+            if c.execute("SELECT id FROM hb_authority WHERE id=%s", (authority,)).fetchone():
+                for credential in plan["credentials"].values():
+                    row = c.execute(
+                        "SELECT p.id FROM hb_principal p JOIN hb_token t ON t.principal=p.id WHERE p.authority=%s AND p.id=%s AND t.digest=%s AND NOT t.revoked",
+                        (authority, credential["principalId"], digest(credential["token"])),
+                    ).fetchone()
+                    if not row:
+                        raise Conflict(
+                            "Bootstrap identity/credential differs from accepted installation"
+                        )
+                room = c.execute(
+                    "SELECT id FROM hb_room WHERE id=%s AND authority=%s",
+                    (plan["globalRoomId"], authority),
+                ).fetchone()
+                if not room:
+                    raise Conflict("Bootstrap room differs from accepted installation")
+                return {
+                    "authorityId": authority,
+                    "globalRoomId": plan["globalRoomId"],
+                    "created": False,
+                }
+            c.execute("INSERT INTO hb_authority(id,name) VALUES(%s,%s)", (authority, name))
+            owner = plan["credentials"]["Owner"]["principalId"]
+            global_agent = plan["credentials"]["Global"]["principalId"]
+            room = plan["globalRoomId"]
+            credentials = plan["credentials"]
+            for identity, label, kind in [
+                (owner, "Owner", "human"),
+                (global_agent, "Global", "agent"),
+            ]:
+                c.execute(
+                    "INSERT INTO hb_principal(id,authority,name,kind,administrator) VALUES(%s,%s,%s,%s,true)",
+                    (identity, authority, label, kind),
+                )
+                token = credentials[label]["token"]
+                c.execute("INSERT INTO hb_token VALUES(%s,%s,false)", (digest(token), identity))
+            c.execute(
+                "INSERT INTO hb_room(id,authority,name,purpose,owner) VALUES(%s,%s,'Global',%s,%s)",
+                (room, authority, "Enterprise coordination and administration", global_agent),
+            )
+            return {"authorityId": authority, "globalRoomId": room, "created": True}
+
+    def authenticate(self, token):
+        with self.pool.connection() as c:
+            row = c.execute(
+                "SELECT p.* FROM hb_principal p JOIN hb_token t ON t.principal=p.id WHERE t.digest=%s AND NOT t.revoked AND p.active",
+                (digest(token),),
+            ).fetchone()
+            if not row:
+                raise Denied("Unauthenticated")
+            return json_value(row)
+
+    @staticmethod
+    def actor(c, identity):
+        row = c.execute(
+            "SELECT * FROM hb_principal WHERE id=%s AND active FOR SHARE", (identity,)
+        ).fetchone()
+        if not row:
+            raise Denied("Principal inactive")
+        return row
+
+    @staticmethod
+    def admin(actor):
+        if not actor["administrator"]:
+            raise Denied("Administrator required")
+
+    @staticmethod
+    def room(c, actor, identity, action="can_read"):
+        row = c.execute(
+            "SELECT * FROM hb_room WHERE id=%s AND authority=%s", (identity, actor["authority"])
+        ).fetchone()
+        if not row:
+            raise Denied("Room unavailable")
+        if not actor["administrator"]:
+            grant = c.execute(
+                "SELECT * FROM hb_membership WHERE room=%s AND principal=%s FOR SHARE",
+                (identity, actor["id"]),
+            ).fetchone()
+            if not grant or not grant[action]:
+                raise Denied("Room action denied")
+        return row
+
+    @staticmethod
+    def readable_event(c, actor, identity):
+        row = c.execute(
+            "SELECT * FROM hb_event WHERE id=%s AND authority=%s", (identity, actor["authority"])
+        ).fetchone()
+        if not row:
+            raise Denied("Event unavailable")
+        Store.room(c, actor, row["room"])
+        if (
+            row["audience"] == "direct"
+            and not actor["administrator"]
+            and actor["id"] not in (row["author"], row["recipient"])
+        ):
+            raise Denied("Private audience denied")
+        return row
+
+    @staticmethod
+    def event(
+        c, actor, room, kind, body, *, recipient=None, audience="room", source=None, data=None
+    ):
+        # This row lock makes sequence order agree with commit order. BIGSERIAL alone
+        # would let a reconnect cursor skip a transaction that commits out of order.
+        seq = c.execute(
+            "UPDATE hb_authority SET next_seq=next_seq+1 WHERE id=%s RETURNING next_seq",
+            (actor["authority"],),
+        ).fetchone()["next_seq"]
+        identity = uid()
+        c.execute(
+            "INSERT INTO hb_event(id,authority,seq,room,author,recipient,kind,audience,body,source,data) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            (
+                identity,
+                actor["authority"],
+                seq,
+                room,
+                actor["id"],
+                recipient,
+                kind,
+                audience,
+                body,
+                source,
+                Jsonb({**(data or {}), "authorKind": actor["kind"]}),
+            ),
+        )
+        return identity
+
+    def principal(self, actor_id, identity, name, kind):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            self.admin(a)
+            row = c.execute("SELECT * FROM hb_principal WHERE id=%s", (identity,)).fetchone()
+            if row:
+                if (str(row["authority"]), row["name"], row["kind"]) != (
+                    str(a["authority"]),
+                    name,
+                    kind,
+                ):
+                    raise Conflict("Principal identity conflict")
+                return {"principalId": identity, "created": False}
+            c.execute(
+                "INSERT INTO hb_principal(id,authority,name,kind) VALUES(%s,%s,%s,%s)",
+                (identity, a["authority"], name, kind),
+            )
+            token = secrets.token_urlsafe(40)
+            c.execute("INSERT INTO hb_token VALUES(%s,%s,false)", (digest(token), identity))
+            return {"principalId": identity, "created": True, "token": token}
+
+    def create_room(self, actor_id, identity, name, purpose, owner):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            self.admin(a)
+            target = c.execute(
+                "SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent' AND active",
+                (owner, a["authority"]),
+            ).fetchone()
+            if not target:
+                raise Denied("Room owner must be an active agent in this authority")
+            row = c.execute("SELECT * FROM hb_room WHERE id=%s", (identity,)).fetchone()
+            if row:
+                if (str(row["authority"]), row["name"], row["purpose"], str(row["owner"])) != (
+                    str(a["authority"]),
+                    name,
+                    purpose,
+                    owner,
+                ):
+                    raise Conflict("Room identity conflict")
+                return json_value(row)
+            c.execute(
+                "INSERT INTO hb_room(id,authority,name,purpose,owner) VALUES(%s,%s,%s,%s,%s)",
+                (identity, a["authority"], name, purpose, owner),
+            )
+            c.execute(
+                "INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
+                (a["authority"], identity, owner),
+            )
+            return json_value(
+                c.execute("SELECT * FROM hb_room WHERE id=%s", (identity,)).fetchone()
+            )
+
+    def membership(self, actor_id, room, principal, grants, revision):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            self.admin(a)
+            self.room(c, a, room)
+            if not c.execute(
+                "SELECT id FROM hb_principal WHERE id=%s AND authority=%s",
+                (principal, a["authority"]),
+            ).fetchone():
+                raise Denied("Foreign principal")
+            row = c.execute(
+                "SELECT * FROM hb_membership WHERE room=%s AND principal=%s FOR UPDATE",
+                (room, principal),
+            ).fetchone()
+            wanted = [grants["can_read"], grants["can_post"], grants["can_request"]]
+            if row and [row[k] for k in ["can_read", "can_post", "can_request"]] == wanted:
+                return json_value(row)
+            if (row["revision"] if row else 0) != revision:
+                raise Conflict("Membership revision changed")
+            c.execute(
+                "INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(room,principal) DO UPDATE SET can_read=EXCLUDED.can_read,can_post=EXCLUDED.can_post,can_request=EXCLUDED.can_request,revision=hb_membership.revision+1",
+                (a["authority"], room, principal, *wanted),
+            )
+            return json_value(
+                c.execute(
+                    "SELECT * FROM hb_membership WHERE room=%s AND principal=%s", (room, principal)
+                ).fetchone()
+            )
+
+    def catalog(self, actor_id):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            rows = c.execute(
+                "SELECT r.* FROM hb_room r WHERE r.authority=%s AND (%s OR EXISTS(SELECT 1 FROM hb_membership m WHERE m.room=r.id AND m.principal=%s AND m.can_read)) ORDER BY r.name LIMIT 100",
+                (a["authority"], a["administrator"], a["id"]),
+            ).fetchall()
+            return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}
+
+    def post(self, actor_id, room_id, operation, payload):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            kind, audience = payload["kind"], payload["audience"]
+            room = self.room(c, a, room_id, "can_request" if kind == "request" else "can_post")
+            fingerprint = digest({"roomId": room_id, **payload})
+            # Serialize command identity before its first acceptance, including requests
+            # to different rooms. Existing receipts retain their original resolution.
+            c.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+                (str(a["id"]) + ":" + operation,),
+            )
+            old = c.execute(
+                "SELECT * FROM hb_command WHERE principal=%s AND operation=%s", (a["id"], operation)
+            ).fetchone()
+            if old:
+                if old["digest"] != fingerprint:
+                    raise Conflict("Operation ID reused with changed contents")
+                self.readable_event(c, a, old["event"])
+                return self.receipt(c, old["event"])
+            recipient = payload.get("recipientId")
+            if kind == "request" and not recipient:
+                recipient = str(room["owner"])
+            if recipient:
+                target = c.execute(
+                    "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND active",
+                    (recipient, a["authority"]),
+                ).fetchone()
+                if not target or (kind == "request" and target["kind"] != "agent"):
+                    raise Denied("Invalid execution recipient")
+                if (
+                    not target["administrator"]
+                    and not c.execute(
+                        "SELECT 1 FROM hb_membership WHERE room=%s AND principal=%s AND can_read",
+                        (room_id, recipient),
+                    ).fetchone()
+                ):
+                    raise Denied("Recipient cannot access the room")
+            if audience == "direct" and not recipient:
+                raise Conflict("Private message requires an explicit recipient")
+            source = payload.get("sourceEventId")
+            if source:
+                parent = self.readable_event(c, a, source)
+                if parent["audience"] == "direct":
+                    original = {str(parent["author"]), str(parent["recipient"])}
+                    reply = {str(a["id"]), recipient}
+                    if str(parent["room"]) != room_id or audience != "direct" or reply != original:
+                        raise Denied("Private source cannot expand its audience")
+            event = self.event(
+                c,
+                a,
+                room_id,
+                kind,
+                payload["body"],
+                recipient=recipient,
+                audience=audience,
+                source=source,
+            )
+            c.execute(
+                "INSERT INTO hb_command VALUES(%s,%s,%s,%s,%s)",
+                (a["authority"], a["id"], operation, fingerprint, event),
+            )
+            if kind == "request":
+                c.execute(
+                    "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
+                    (uid(), a["authority"], event, recipient),
+                )
+            return self.receipt(c, event)
+
+    @staticmethod
+    def receipt(c, event):
+        e = c.execute("SELECT * FROM hb_event WHERE id=%s", (event,)).fetchone()
+        deliveries = c.execute("SELECT * FROM hb_delivery WHERE event=%s", (event,)).fetchall()
+        return {"accepted": True, "event": json_value(e), "deliveries": json_value(deliveries)}
+
+    def command(self, actor_id, operation):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            row = c.execute(
+                "SELECT * FROM hb_command WHERE principal=%s AND operation=%s", (a["id"], operation)
+            ).fetchone()
+            if not row:
+                raise Denied("Command unavailable")
+            self.readable_event(c, a, row["event"])
+            return self.receipt(c, row["event"])
+
+    def history(self, actor_id, room, after, limit):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            self.room(c, a, room)
+            ceiling = c.execute(
+                "SELECT next_seq FROM hb_authority WHERE id=%s", (a["authority"],)
+            ).fetchone()["next_seq"]
+            rows = c.execute(
+                "SELECT * FROM hb_event WHERE room=%s AND seq>%s AND seq<=%s AND (%s OR audience='room' OR author=%s OR recipient=%s) ORDER BY seq LIMIT %s",
+                (room, after, ceiling, a["administrator"], a["id"], a["id"], limit),
+            ).fetchall()
+            return {
+                "authorityId": str(a["authority"]),
+                "roomId": room,
+                "events": json_value(rows),
+                "nextCursor": rows[-1]["seq"] if len(rows) == limit else ceiling,
+            }
+
+    def placement(self, actor_id, host, name, fingerprint, capabilities, agent):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            self.admin(a)
+            if not c.execute(
+                "SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
+                (agent, a["authority"]),
+            ).fetchone():
+                raise Denied("Agent unavailable")
+            old = c.execute("SELECT * FROM hb_host WHERE id=%s", (host,)).fetchone()
+            if old and (str(old["authority"]), old["identity_fingerprint"]) != (
+                str(a["authority"]),
+                fingerprint,
+            ):
+                raise Conflict("Host identity changed")
+            c.execute(
+                "INSERT INTO hb_host VALUES(%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
+                (host, a["authority"], name, fingerprint, Jsonb(capabilities)),
+            )
+            old = c.execute(
+                "SELECT * FROM hb_placement WHERE agent=%s FOR UPDATE", (agent,)
+            ).fetchone()
+            if old and str(old["host"]) != host:
+                raise Conflict("Agent already placed; fenced transfer required")
+            c.execute(
+                "INSERT INTO hb_placement(authority,agent,host) VALUES(%s,%s,%s) ON CONFLICT(agent) DO NOTHING",
+                (a["authority"], agent, host),
+            )
+            return {"agentId": agent, "hostId": host, "enrolled": True}
+
+    def claim(self, actor_id, operation, host):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            if a["kind"] != "agent":
+                raise Denied("Only an execution connector may claim work")
+            c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (str(a["id"]),))
+            placement = c.execute(
+                "SELECT * FROM hb_placement WHERE agent=%s AND host=%s AND enabled FOR SHARE",
+                (a["id"], host),
+            ).fetchone()
+            if not placement:
+                raise Denied("Connector host not enrolled for this agent")
+            previous = c.execute(
+                "SELECT * FROM hb_claim WHERE agent=%s AND operation=%s", (a["id"], operation)
+            ).fetchone()
+            if previous:
+                if str(previous["host"]) != host:
+                    raise Conflict("Claim host changed")
+                if previous["delivery"]:
+                    row = c.execute(
+                        "SELECT e.room FROM hb_delivery d JOIN hb_event e ON e.id=d.event WHERE d.id=%s",
+                        (previous["delivery"],),
+                    ).fetchone()
+                    self.room(c, a, row["room"])
+                return self.claim_receipt(c, previous["delivery"])
+            busy = c.execute(
+                "SELECT id FROM hb_delivery WHERE agent=%s AND state IN ('claimed','running','unknown','cancel_requested')",
+                (a["id"],),
+            ).fetchone()
+            row = (
+                None
+                if busy
+                else c.execute(
+                    "SELECT d.* FROM hb_delivery d JOIN hb_event e ON e.id=d.event WHERE d.agent=%s AND d.state='pending' ORDER BY e.seq FOR UPDATE OF d SKIP LOCKED LIMIT 1",
+                    (a["id"],),
+                ).fetchone()
+            )
+            identity = row["id"] if row else None
+            if row:
+                self.room(
+                    c,
+                    a,
+                    c.execute("SELECT room FROM hb_event WHERE id=%s", (row["event"],)).fetchone()[
+                        "room"
+                    ],
+                )
+                c.execute(
+                    "UPDATE hb_delivery SET state='claimed',host=%s,claim_id=%s,generation=generation+1,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
+                    (host, operation, identity),
+                )
+            c.execute(
+                "INSERT INTO hb_claim VALUES(%s,%s,%s,%s)", (a["id"], operation, host, identity)
+            )
+            return self.claim_receipt(c, identity)
+
+    @staticmethod
+    def claim_receipt(c, identity):
+        if identity is None:
+            return {"delivery": None}
+        d = c.execute("SELECT * FROM hb_delivery WHERE id=%s", (identity,)).fetchone()
+        e = c.execute("SELECT * FROM hb_event WHERE id=%s", (d["event"],)).fetchone()
+        return {"delivery": json_value(d), "request": json_value(e)}
+
+    def transition(self, actor_id, identity, operation, payload):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            d = c.execute(
+                "SELECT * FROM hb_delivery WHERE id=%s AND agent=%s FOR UPDATE", (identity, a["id"])
+            ).fetchone()
+            if not d:
+                raise Denied("Delivery unavailable")
+            if d["generation"] != payload["generation"] or d["claim_id"] != payload["claimId"]:
+                raise Conflict("Stale execution owner")
+            previous = c.execute(
+                "SELECT * FROM hb_transition WHERE delivery=%s AND operation=%s",
+                (identity, operation),
+            ).fetchone()
+            fingerprint = digest(payload)
+            if previous:
+                if previous["digest"] != fingerprint:
+                    raise Conflict("Transition operation changed")
+                return previous["result"]
+            allowed = {
+                "claimed": {"running", "failed", "unknown", "cancelled"},
+                "running": {"completed", "failed", "unknown"},
+                "cancel_requested": {"cancelled", "completed", "failed", "unknown"},
+                "unknown": {"running", "completed", "failed", "cancelled"},
+            }
+            state = payload["state"]
+            if state not in allowed.get(d["state"], set()):
+                raise Conflict("Invalid execution transition")
+            e = c.execute("SELECT * FROM hb_event WHERE id=%s", (d["event"],)).fetchone()
+            self.room(c, a, e["room"], "can_post")
+            if state == "running" and not payload.get("nativeTurn"):
+                raise Conflict("Running requires a native turn receipt")
+            terminal = state in ("completed", "failed", "cancelled")
+            result = None
+            if terminal:
+                if not payload.get("body"):
+                    raise Conflict("Terminal transition requires an explicit result")
+                result = self.event(
+                    c,
+                    a,
+                    e["room"],
+                    "result",
+                    payload["body"],
+                    audience=e["audience"],
+                    recipient=e["author"] if e["audience"] == "direct" else None,
+                    source=e["id"],
+                    data={"deliveryId": identity, "state": state, "generation": d["generation"]},
+                )
+            c.execute(
+                "UPDATE hb_delivery SET state=%s,native_thread=COALESCE(%s,native_thread),native_turn=COALESCE(%s,native_turn),result_event=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
+                (state, payload.get("nativeThread"), payload.get("nativeTurn"), result, identity),
+            )
+            out = self.claim_receipt(c, identity)
+            c.execute(
+                "INSERT INTO hb_transition VALUES(%s,%s,%s,%s)",
+                (identity, operation, fingerprint, Jsonb(out)),
+            )
+            return out
+
+    def cancel(self, actor_id, identity):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            d = c.execute(
+                "SELECT * FROM hb_delivery WHERE id=%s AND authority=%s FOR UPDATE",
+                (identity, a["authority"]),
+            ).fetchone()
+            if not d:
+                raise Denied("Delivery unavailable")
+            e = self.readable_event(c, a, d["event"])
+            if not a["administrator"] and a["id"] != e["author"]:
+                raise Denied("Only requester or administrator may cancel")
+            if d["state"] in ("pending", "claimed", "running"):
+                # Claimed work may already be executing: cancellation is a request,
+                # never evidence that a shell, model turn or external effect stopped.
+                state = "cancelled" if d["state"] == "pending" else "cancel_requested"
+                c.execute(
+                    "UPDATE hb_delivery SET state=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
+                    (state, identity),
+                )
+                self.event(
+                    c,
+                    a,
+                    e["room"],
+                    "control",
+                    "Cancellation " + state,
+                    audience=e["audience"],
+                    recipient=e["recipient"],
+                    source=e["id"],
+                    data={"deliveryId": identity, "state": state},
+                )
+            return self.claim_receipt(c, identity)

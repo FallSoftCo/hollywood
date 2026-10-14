@@ -69,7 +69,14 @@ class Service:
             if named and (mention or named[1].lower() in roster):
                 targets = [named[1].lower()]
             else:
-                targets = [self.store.coordinator(task)]
+                from .rooms import default_recipient
+                prior = self.store.rows("SELECT event FROM command WHERE id=?", (message.commandId,))
+                original = self.store.get_event(prior[0]["event"]) if prior else None
+                # A routing upgrade must not change an already accepted command.
+                if original and original["author"] == "you" and original["task"] == task:
+                    targets = original["data"].get("targets", [])
+                else:
+                    targets = [default_recipient(self.store, task)]
         self.check_task(task, team)
         if any(target not in roster for target in targets):
             raise ValueError("Unknown recipient. Available: " + ", ".join(roster))

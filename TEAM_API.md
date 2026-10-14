@@ -1,5 +1,52 @@
 # Resource-scaled teams API
 
+Coordinator-native `hollywood_provision` accepts `task, agent, role, source, request_id`.
+It registers one teammate and joins an existing room in the coordinator's team.
+`source` must identify a public human message in the calling room; the coordinator
+must select a message explicitly authorizing this setup. Peer messages and private
+contexts cannot authorize provisioning. Existing identities must match team and
+role exactly. Registration and membership create no deliveries, bindings, threads,
+filesystem permissions or execution grants. Work still requires separate assignment.
+
+Reuse `request_id` after an uncertain result: a namespaced command digest returns
+the original audited receipt, including stable actor and room IDs, across restart.
+Changed contents conflict; existing command receipts and room history are retained.
+
+Provisioning also records an explicit accountable room owner in additive
+`room_owner` metadata. A conflicting owner is rejected. Joining a room alone never
+sets its owner. Room detail adds nullable `owner` (agent ID). Unaddressed human
+messages in the team lobby select its coordinator. Other rooms require an
+explicit owner or reject the unnamed send with a recipient-selection error.
+Unaddressed human messages select that explicit owner. Explicit recipients, mentions and reply correlations take
+precedence. Retried accepted commands retain their original recipients across
+routing upgrades. Tool summaries retain tool authority and do not become human
+requests. Existing provision receipts are returned unchanged; deployments must
+review explicit owner mappings for previously provisioned rooms rather than infer
+ownership from membership or silently rewrite old receipts.
+
+Assignments now persist `work_order` rows keyed by assignment event and owner,
+with original human source, owning task, dependency event IDs and acceptance text.
+`hollywood_assign` adds optional `dependencies` (up to 16 same-team work-order
+event IDs) and `acceptance` (up to 2000 characters). Existing calls retain their
+schema and command digests. A nonempty dependency list records the order with
+`admission: held_dependencies` and creates no execution deliveries. Automatic
+dependency acceptance/release awaits the native goal contract; it is not supplied
+by room membership, copied history or a model's completion assertion.
+
+Owner `blocked`/`completed` reports remain durable in the owning room with task
+and owner metadata. They do not automatically queue coordinator turns in Global
+or a parent room. Global reads the owning room for results and questions. Explicit
+cross-room communication requires a scoped reason; status publication does not
+implicitly mirror messages, memberships or execution contexts.
+
+Peer reports addressed to the coordinator in the team lobby are observation-only:
+even `response: required` does not admit a coordinator turn there.
+`hollywood_brief` publishes in the owning context without starting a coordinator
+turn. Human explicit recipients/direct addressing are unchanged. Accepted older
+tool commands retain their original targets/receipts on retry without redispatch.
+Client defaults must distinguish lobby coordinator selection from an explicit
+human recipient choice; room membership lists are not broadcast recipient lists.
+
 Authoritative implementation contract; legacy `/hollywood/v2/...` conversation routes select `default`. New team conversation routes use `/hollywood/v2/teams/{teamId}/{same-suffix}`. Bearer token identifies the environment owner, who can access all teams. Agent tools are restricted to their own team and private identity.
 
 - `GET /hollywood/v2/teams` returns `{teams:[{id,name,coordinator,lobby,members:[agentId]}]}`. IDs are globally unique slugs. Existing default team retains `lobby`, coordinator/maya/theo/rowan. New team lobby is `team-{teamId}`.

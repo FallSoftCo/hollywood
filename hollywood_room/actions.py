@@ -1,5 +1,7 @@
 """Validated team tool actions, separate from transport and turn lifecycle."""
 
+import hashlib
+import json
 import re
 
 from .tools import bounded
@@ -17,6 +19,11 @@ async def perform(runtime, key, active, tool, args, call_id):
     if tool == "hollywood_control" and args["agent"] not in roster:
         raise ValueError("Unknown teammate")
     depth = active["delivery"]["depth"] + 1
+    if tool == "hollywood_provision":
+        if active["visibility"] != "room":
+            raise ValueError("Provisioning requires a public room context")
+        from .rooms import provision
+        return provision(runtime.store, task, agent, **args)
     if tool == "hollywood_rooms":
         from .rooms import catalog
         page = catalog(runtime.store, team, cursor=args["cursor"], limit=1)
@@ -52,6 +59,14 @@ async def perform(runtime, key, active, tool, args, call_id):
         if active["visibility"] != "room" and (target != "room" or target_task != task):
             raise ValueError("Use hollywood_brief to share a private task change")
         targets = [target] if args["response"] == "required" and target != "room" else []
+        lobby = runtime.store.rows("SELECT lobby FROM team WHERE id=?", (team,))[0]["lobby"]
+        if target_task == lobby and target == coordinator and agent != coordinator:
+            # Global observes reports; peer publication cannot self-admit a
+            # coordinator turn in the human coordination room.
+            targets = []
+        previous = runtime.store.rows("SELECT event FROM command WHERE id=?", (call_id,))
+        if previous:
+            targets = runtime.store.get_event(previous[0]["event"])["data"].get("targets", targets)
         event = runtime.store.message(
             call_id,
             task=target_task,
@@ -89,32 +104,43 @@ async def perform(runtime, key, active, tool, args, call_id):
             targets=[target],
             authority="tool",
             depth=depth,
-            assignment={"source": source_id, "title": args["title"], "team": team},
+            assignment={"source": source_id, "title": args["title"], "team": team,
+                        **({"dependencies": args["dependencies"]} if "dependencies" in args else {}),
+                        **({"acceptance": args["acceptance"]} if "acceptance" in args else {})},
         )
-        return {"assigned": target, "task": target_task, "event": event["id"]}
+        return {"assigned": target, "task": target_task, "event": event["id"],
+                **({"admission": "held_dependencies"} if args.get("dependencies") else {})}
     if tool == "hollywood_task":
         action = args["action"]
         if action == "status":
             return {**runtime.store.snapshot(team), "team": roster}
         if action not in ("working", "blocked", "completed"):
             raise ValueError("Unknown task state")
+        from .store import Conflict
+        summary = bounded(args["summary"], 700)
+        digest = hashlib.sha256(json.dumps(
+            ["task", task, agent, action, summary, active["visibility"]]
+        ).encode()).hexdigest()
         with runtime.store.db:
+            previous = runtime.store.rows("SELECT * FROM command WHERE id=?", (call_id,))
+            if previous:
+                if previous[0]["digest"] != digest:
+                    raise Conflict("Task command ID already used with different contents")
+                return {"task": task, "status": action}
             runtime.store.db.execute("UPDATE task SET status=? WHERE id=?", (action, task))
             event = runtime.store.event(
                 "task",
                 task,
                 agent,
-                bounded(args["summary"], 700),
-                {"status": action},
+                summary,
+                {"status": action, "owningTask": task, "owner": agent},
                 visibility=active["visibility"],
             )
-            source = runtime.store.rows("SELECT source FROM task WHERE id=?", (task,))[0]["source"]
-            if source and active["visibility"] == "room":
-                parent_task = runtime.store.get_event(source)["task"]
-                if parent_task != task:
-                    runtime.store.queue(event, parent_task, coordinator, "tool", depth=depth)
+            # Status belongs to its owning room. Reading a result does not admit
+            # a new coordinator turn or mirror the worker into another context.
             if action == "completed":
                 runtime.store.db.execute("INSERT INTO push_outbox(event) VALUES(?)", (event,))
+            runtime.store.db.execute("INSERT INTO command VALUES(?,?,?)", (call_id, digest, event))
         return {"task": task, "status": action}
     if tool == "hollywood_read_room":
         events = runtime.store.events(
@@ -124,16 +150,19 @@ async def perform(runtime, key, active, tool, args, call_id):
     if tool == "hollywood_ask":
         return {
             "attention": runtime.store.attention(
-                task, agent, bounded(args["question"], 700), visibility=active["visibility"]
+                task, agent, bounded(args["question"], 700), visibility=active["visibility"],
+                command_id=call_id,
             )
         }
     if tool == "hollywood_brief":
+        previous = runtime.store.rows("SELECT event FROM command WHERE id=?", (call_id,))
+        targets = runtime.store.get_event(previous[0]["event"])["data"].get("targets", []) if previous else []
         return runtime.store.message(
             call_id,
             task=task,
             author=agent,
             body=bounded(args["summary"], 700),
-            targets=[coordinator],
+            targets=targets,
             authority="tool",
             depth=depth,
         )

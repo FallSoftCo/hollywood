@@ -48,6 +48,16 @@ def instruction(agent, task, roster=None, coordinator="coordinator"):
 
 def specs():
     definitions = {
+        "hollywood_provision": (
+            "Coordinator only: register one human-authorized teammate and join an existing room without starting work. Supply the public human source event ID; reuse request_id for retries.",
+            {
+                "task": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}$"},
+                "agent": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}$"},
+                "role": {"type": "string", "minLength": 1, "maxLength": 2000},
+                "source": {"type": "integer", "minimum": 1},
+                "request_id": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}$"},
+            },
+        ),
         "hollywood_rooms": (
             "Discover purpose-scoped rooms in your team without waking agents. Each page contains one room. Use its task key with existing communication tools.",
             {"cursor": {"type": "string", "maxLength": 64}},
@@ -76,6 +86,8 @@ def specs():
                 "title": {"type": "string", "maxLength": 100},
                 "agent": {"type": "string", "pattern": "^[a-z0-9_-]{1,64}$"},
                 "brief": {"type": "string", "maxLength": 600},
+                "dependencies": {"type": "array", "maxItems": 16, "items": {"type": "integer", "minimum": 1}},
+                "acceptance": {"type": "string", "maxLength": 2000},
             },
         ),
         "hollywood_task": (
@@ -97,7 +109,7 @@ def specs():
             {"question": {"type": "string", "maxLength": 600}},
         ),
         "hollywood_brief": (
-            "Share a committed task change from a direct conversation with the coordinator.",
+            "Publish a committed task summary in its owning context for coordinator review; does not start a coordinator turn.",
             {"summary": {"type": "string", "maxLength": 600}},
         ),
         "hollywood_control": (
@@ -117,7 +129,7 @@ def specs():
             "inputSchema": {
                 "type": "object",
                 "properties": props,
-                "required": list(props),
+                "required": [key for key in props if name != "hollywood_assign" or key not in {"dependencies", "acceptance"}],
                 "additionalProperties": False,
             },
         }
