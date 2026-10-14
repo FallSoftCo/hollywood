@@ -226,6 +226,10 @@ async def rooms(request):
     return await invoke(request, "catalog")
 
 
+async def room_detail(request):
+    return await invoke(request, "room_detail", str(UUID(request.match_info["room"])))
+
+
 async def room_create(request):
     p = await body(request, Room)
     return await invoke(request, "create_room", str(p.id), p.name, p.purpose, str(p.ownerId))
@@ -272,12 +276,15 @@ async def post(request):
 
 
 async def history(request):
+    if "before" in request.query and "after" in request.query:
+        raise ValueError("Choose one history direction")
     return await invoke(
         request,
         "history",
         str(UUID(request.match_info["room"])),
         max(0, int(request.query.get("after", "0"))),
         min(100, max(1, int(request.query.get("limit", "100")))),
+        max(1, int(request.query["before"])) if "before" in request.query else None,
     )
 
 
@@ -462,6 +469,7 @@ def application(store):
         [
             web.get("/health", health),
             web.get("/hollywood/v3/rooms", rooms),
+            web.get("/hollywood/v3/rooms/{room}", room_detail),
             web.post("/hollywood/v3/rooms", room_create),
             web.post("/hollywood/v3/principals", principal_create),
             web.get("/hollywood/v3/principals/{principal}", principal_read),

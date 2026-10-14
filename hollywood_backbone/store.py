@@ -366,6 +366,51 @@ class Store:
             ).fetchall()
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}
 
+    def room_detail(self, actor_id, identity):
+        with self.pool.connection() as c:
+            a = self.actor(c, actor_id)
+            room = self.room(c, a, identity)
+            own = c.execute(
+                "SELECT * FROM hb_membership WHERE room=%s AND principal=%s", (identity, a["id"])
+            ).fetchone()
+            permissions = {
+                key: bool(a["administrator"] or own and own[key])
+                for key in ("can_read", "can_post", "can_request")
+            }
+            actors = c.execute(
+                """SELECT p.id,p.name,p.kind,r.primary_role,r.home_room,r.purpose
+                        FROM hb_principal p LEFT JOIN hb_agent_role r ON r.principal=p.id
+                        WHERE p.authority=%s AND p.active AND (p.id=%s OR EXISTS
+                         (SELECT 1 FROM hb_membership m WHERE m.room=%s AND m.principal=p.id AND m.can_read))
+                        ORDER BY p.name,p.id""",
+                (a["authority"], room["owner"], identity),
+            ).fetchall()
+            work = c.execute(
+                """SELECT d.*,e.author AS requester,e.seq AS request_seq,
+                          (e.author=%s OR %s) AS can_cancel
+                          FROM hb_delivery d JOIN hb_event e ON e.id=d.event
+                          WHERE d.authority=%s AND e.room=%s
+                          AND d.state IN ('pending','claimed','running','cancel_requested','unknown')
+                          AND (%s OR e.audience='room' OR e.author=%s OR e.recipient=%s)
+                          ORDER BY e.seq LIMIT 100""",
+                (
+                    a["id"],
+                    a["administrator"],
+                    a["authority"],
+                    identity,
+                    a["administrator"],
+                    a["id"],
+                    a["id"],
+                ),
+            ).fetchall()
+            return {
+                "authorityId": str(a["authority"]),
+                "room": json_value(room),
+                "permissions": permissions,
+                "actors": json_value(actors),
+                "deliveries": json_value(work),
+            }
+
     def post(self, actor_id, room_id, operation, payload):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
@@ -452,13 +497,27 @@ class Store:
             self.readable_event(c, a, row["event"])
             return self.receipt(c, row["event"])
 
-    def history(self, actor_id, room, after, limit):
+    def history(self, actor_id, room, after, limit, before=None):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             self.room(c, a, room)
             ceiling = c.execute(
                 "SELECT next_seq FROM hb_authority WHERE id=%s", (a["authority"],)
             ).fetchone()["next_seq"]
+            if before is not None:
+                rows = c.execute(
+                    "SELECT * FROM hb_event WHERE room=%s AND seq<%s AND seq<=%s AND (%s OR audience='room' OR author=%s OR recipient=%s) ORDER BY seq DESC LIMIT %s",
+                    (room, before, ceiling, a["administrator"], a["id"], a["id"], limit + 1),
+                ).fetchall()
+                more = len(rows) > limit
+                rows = list(reversed(rows[:limit]))
+                return {
+                    "authorityId": str(a["authority"]),
+                    "roomId": room,
+                    "events": json_value(rows),
+                    "nextCursor": ceiling,
+                    "olderCursor": rows[0]["seq"] if more else None,
+                }
             rows = c.execute(
                 "SELECT * FROM hb_event WHERE room=%s AND seq>%s AND seq<=%s AND (%s OR audience='room' OR author=%s OR recipient=%s) ORDER BY seq LIMIT %s",
                 (room, after, ceiling, a["administrator"], a["id"], a["id"], limit),
