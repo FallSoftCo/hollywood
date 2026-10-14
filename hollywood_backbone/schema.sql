@@ -29,6 +29,18 @@ CREATE TABLE IF NOT EXISTS hb_membership (
  FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
  FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id)
 );
+CREATE TABLE IF NOT EXISTS hb_agent_role (
+ principal uuid PRIMARY KEY, authority uuid NOT NULL,
+ primary_role text NOT NULL, home_room uuid, purpose text NOT NULL DEFAULT '',
+ revision bigint NOT NULL DEFAULT 1,
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,home_room) REFERENCES hb_room(authority,id)
+);
+INSERT INTO hb_agent_role(principal,authority,primary_role,home_room,purpose)
+ SELECT p.id,p.authority,CASE WHEN p.administrator THEN 'global' ELSE 'worker' END,
+ (SELECT r.id FROM hb_room r WHERE r.owner=p.id ORDER BY r.name LIMIT 1),
+ CASE WHEN p.administrator THEN 'Enterprise coordination and administration' ELSE 'Own explicitly addressed work' END
+ FROM hb_principal p WHERE p.kind='agent' ON CONFLICT DO NOTHING;
 CREATE TABLE IF NOT EXISTS hb_host (
  id uuid PRIMARY KEY, authority uuid NOT NULL, name text NOT NULL,
  identity_fingerprint text NOT NULL, capabilities jsonb NOT NULL,

@@ -9,6 +9,7 @@ import asyncio
 import hashlib
 import json
 import os
+import secrets
 import subprocess
 import uuid
 from pathlib import Path
@@ -67,17 +68,18 @@ async def main(args):
         prefix = "/hollywood/v3"
         keys = {}
         for name in ["engineering", "marketing", "alice", "bob"]:
-            result = await call(
-                owner,
-                "POST",
-                prefix + "/principals",
-                {
-                    "id": run[name],
-                    "name": name,
-                    "kind": "agent" if name in ["engineering", "marketing"] else "human",
-                },
-            )
-            keys[name] = result["token"]
+            keys[name] = secrets.token_urlsafe(40)
+            (root / "integration-private-credentials.json").write_text(json.dumps(keys))
+            request = {
+                "id": run[name],
+                "name": name,
+                "kind": "agent" if name in ["engineering", "marketing"] else "human",
+                "enrollmentCredential": keys[name],
+            }
+            result = await call(owner, "POST", prefix + "/principals", request)
+            assert "token" not in result
+            repeated = await call(owner, "POST", prefix + "/principals", request)
+            assert repeated["principalId"] == result["principalId"] and not repeated["created"]
         (root / "integration-private-credentials.json").write_text(json.dumps(keys))
         await call(
             owner,
@@ -343,6 +345,7 @@ async def main(args):
             {"operationId": "unknown-claim", "hostId": run["host"]},
         )
         d = admitted["delivery"]
+        assert d["event"] == unknown["event"]["id"]
         await call(
             keys["engineering"],
             "POST",

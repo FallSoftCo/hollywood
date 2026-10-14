@@ -8,8 +8,8 @@ from typing import Literal
 from uuid import UUID
 
 from aiohttp import web
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from psycopg import errors as pg_errors
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .store import Conflict, Denied, Store
 
@@ -31,6 +31,7 @@ class Principal(Input):
     id: UUID
     name: str = Field(min_length=1, max_length=128)
     kind: Literal["human", "agent"]
+    enrollmentCredential: str = Field(pattern=r"^[A-Za-z0-9_-]{40,128}$")
 
 
 class Room(Input):
@@ -69,6 +70,13 @@ class Transition(Input):
     nativeThread: str | None = Field(default=None, max_length=128)
     nativeTurn: str | None = Field(default=None, max_length=128)
     body: str | None = Field(default=None, max_length=6000)
+
+
+class Role(Input):
+    primary: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]*$")
+    purpose: str = Field(min_length=1, max_length=4000)
+    homeRoomId: UUID | None = None
+    revision: int = Field(ge=0)
 
 
 STORE = web.AppKey("store", Store)
@@ -116,7 +124,15 @@ async def room_create(request):
 
 async def principal_create(request):
     p = await body(request, Principal)
-    return await invoke(request, "principal", str(p.id), p.name, p.kind)
+    return await invoke(request, "principal", str(p.id), p.name, p.kind, p.enrollmentCredential)
+
+
+async def principal_read(request):
+    return await invoke(request, "principal_read", str(UUID(request.match_info["principal"])))
+
+
+async def role_read(request):
+    return await invoke(request, "role_read", str(UUID(request.match_info["agent"])))
 
 
 async def membership(request):
@@ -210,6 +226,10 @@ async def claim(request):
     return await invoke(request, "claim", p.operationId, str(p.hostId))
 
 
+async def connector_pending(request):
+    return await invoke(request, "connector_pending", str(UUID(request.query["hostId"])))
+
+
 async def transition(request):
     p = await body(request, Transition)
     return await invoke(
@@ -226,6 +246,27 @@ async def cancel(request):
     return await invoke(request, "cancel", str(UUID(request.match_info["delivery"])))
 
 
+async def delivery(request):
+    return await invoke(request, "delivery", str(UUID(request.match_info["delivery"])))
+
+
+async def context(request):
+    return await invoke(request, "execution_context", str(UUID(request.match_info["delivery"])))
+
+
+async def role(request):
+    p = await body(request, Role)
+    return await invoke(
+        request,
+        "role",
+        str(UUID(request.match_info["agent"])),
+        p.primary,
+        p.purpose,
+        str(p.homeRoomId) if p.homeRoomId else None,
+        p.revision,
+    )
+
+
 def application(store):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
@@ -235,6 +276,7 @@ def application(store):
             web.get("/hollywood/v3/rooms", rooms),
             web.post("/hollywood/v3/rooms", room_create),
             web.post("/hollywood/v3/principals", principal_create),
+            web.get("/hollywood/v3/principals/{principal}", principal_read),
             web.put("/hollywood/v3/rooms/{room}/membership", membership),
             web.post("/hollywood/v3/rooms/{room}/messages", post),
             web.get("/hollywood/v3/rooms/{room}/history", history),
@@ -242,8 +284,13 @@ def application(store):
             web.get("/hollywood/v3/commands/{operation}", command),
             web.post("/hollywood/v3/placements", placement),
             web.post("/hollywood/v3/connector/claim", claim),
+            web.get("/hollywood/v3/connector/pending", connector_pending),
             web.post("/hollywood/v3/deliveries/{delivery}/transition", transition),
             web.post("/hollywood/v3/deliveries/{delivery}/cancel", cancel),
+            web.get("/hollywood/v3/deliveries/{delivery}", delivery),
+            web.get("/hollywood/v3/connector/deliveries/{delivery}/context", context),
+            web.put("/hollywood/v3/agents/{agent}/role", role),
+            web.get("/hollywood/v3/agents/{agent}/role", role_read),
         ]
     )
     return app
