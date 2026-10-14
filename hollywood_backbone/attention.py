@@ -331,3 +331,23 @@ def acknowledge(store, actor_id, identity, operation, payload):
             (identity, a["id"], operation, fingerprint, Jsonb(out)),
         )
         return out
+
+
+def command(store, actor_id, identity, operation):
+    """Read this actor's original response receipt without replaying its write."""
+    with store.pool.connection() as c:
+        a = store.actor(c, actor_id)
+        row = c.execute(
+            "SELECT * FROM hb_attention WHERE id=%s AND authority=%s", (identity, a["authority"])
+        ).fetchone()
+        if not row:
+            raise Denied("Attention unavailable")
+        d = c.execute("SELECT * FROM hb_delivery WHERE id=%s", (row["delivery"],)).fetchone()
+        receipt(store, c, a, row, d)
+        old = c.execute(
+            "SELECT result FROM hb_attention_command WHERE attention=%s AND principal=%s AND operation=%s",
+            (identity, actor_id, operation),
+        ).fetchone()
+        if not old:
+            raise Denied("Attention command unavailable")
+        return old["result"]

@@ -36,6 +36,11 @@ def json_value(value):
 
 
 class Store:
+    def attention_command(self, actor_id, identity, operation):
+        from .attention import command
+
+        return command(self, actor_id, identity, operation)
+
     def activity_append(self, actor_id, identity, payload):
         from .activity import append
 
@@ -594,6 +599,8 @@ class Store:
             ):
                 if supplied and d[field] and supplied != d[field]:
                     raise Conflict("Native execution pointer changed")
+            e = self.readable_event(c, a, d["event"])
+            self.room(c, a, e["room"], "can_post")
             previous = c.execute(
                 "SELECT * FROM hb_transition WHERE delivery=%s AND operation=%s",
                 (identity, operation),
@@ -612,8 +619,6 @@ class Store:
             state = payload["state"]
             if state not in allowed.get(d["state"], set()):
                 raise Conflict("Invalid execution transition")
-            e = c.execute("SELECT * FROM hb_event WHERE id=%s", (d["event"],)).fetchone()
-            self.room(c, a, e["room"], "can_post")
             if state == "running" and not payload.get("nativeTurn"):
                 raise Conflict("Running requires a native turn receipt")
             terminal = state in ("completed", "failed", "cancelled")

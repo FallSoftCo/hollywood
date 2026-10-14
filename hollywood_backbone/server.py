@@ -99,6 +99,7 @@ class QuestionDetails(Input):
 
 
 class ApprovalDetails(Input):
+    nativeContext: dict = Field(default_factory=dict)
     command: str | None = Field(default=None, min_length=1, max_length=6000)
     cwd: str | None = Field(default=None, max_length=4096)
     reason: str | None = Field(default=None, max_length=2000)
@@ -445,6 +446,15 @@ async def attention_acknowledge(request):
     )
 
 
+async def attention_command(request):
+    operation = request.match_info["operation"]
+    if not 1 <= len(operation) <= 128:
+        raise ValueError("Invalid attention command")
+    return await invoke(
+        request, "attention_command", str(UUID(request.match_info["attention"])), operation
+    )
+
+
 def application(store):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
@@ -472,6 +482,7 @@ def application(store):
             web.get("/hollywood/v3/agents/{agent}/role", role_read),
             web.post("/hollywood/v3/attention", attention_create),
             web.get("/hollywood/v3/attention/{attention}", attention_read),
+            web.get("/hollywood/v3/attention/{attention}/commands/{operation}", attention_command),
             web.get("/hollywood/v3/rooms/{room}/attention", attention_inbox),
             web.post("/hollywood/v3/attention/{attention}/response", attention_response),
             web.post("/hollywood/v3/attention/{attention}/acknowledge", attention_acknowledge),
