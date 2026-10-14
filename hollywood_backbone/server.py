@@ -188,6 +188,71 @@ class Activity(Input):
     item: ActivityItem
 
 
+class GoalCreate(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    id: UUID
+    sourceEventId: UUID
+    title: str = Field(min_length=1, max_length=200)
+    objective: str = Field(min_length=1, max_length=6000)
+    acceptance: str = Field(min_length=1, max_length=4000)
+    reviewBudget: int = Field(ge=0, le=16)
+
+
+class WorkCreate(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    revision: int = Field(ge=1)
+    id: UUID
+    roomId: UUID
+    ownerId: UUID
+    specification: str = Field(min_length=1, max_length=6000)
+    acceptance: str = Field(min_length=1, max_length=4000)
+    dependencies: list[UUID] = Field(max_length=16)
+
+
+class WorkflowRevision(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    revision: int = Field(ge=1)
+
+
+class ArtifactEvidence(Input):
+    hostId: UUID
+    workspaceId: UUID
+    relativePath: str = Field(min_length=1, max_length=2048)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    size: int = Field(ge=0)
+
+
+class WorkReport(WorkflowRevision):
+    claimId: str = Field(min_length=1, max_length=128)
+    generation: int = Field(ge=1)
+    state: Literal["submitted", "blocked"]
+    note: str = Field(min_length=1, max_length=4000)
+    evidence: list[ArtifactEvidence] = Field(max_length=16)
+
+
+class WorkReview(WorkflowRevision):
+    decision: Literal["accepted", "rejected"]
+    note: str = Field(min_length=1, max_length=4000)
+
+
+class WorkCancel(WorkflowRevision):
+    note: str = Field(min_length=1, max_length=4000)
+
+
+class GoalState(WorkflowRevision):
+    state: Literal["active", "paused", "accepted", "cancelled"]
+    note: str = Field(min_length=1, max_length=4000)
+
+
+class ReviewDispatch(Input):
+    hostId: UUID
+
+
+class SupervisionAck(Input):
+    sequence: int = Field(ge=0, le=9007199254740991)
+    revision: int = Field(ge=0)
+
+
 STORE = web.AppKey("store", Store)
 
 
@@ -479,12 +544,125 @@ async def attention_command(request):
     )
 
 
+async def workflow(request):
+    action = request.match_info["action"]
+    model = {
+        "assign": WorkflowRevision,
+        "report": WorkReport,
+        "review": WorkReview,
+        "cancel": WorkCancel,
+    }[action]
+    p = await body(request, model)
+    payload = p.model_dump(mode="json", exclude={"operationId"})
+    if action == "report":
+        from pathlib import PurePosixPath
+
+        for evidence in payload["evidence"]:
+            path = PurePosixPath(evidence["relativePath"])
+            if path.is_absolute() or ".." in path.parts or "\\" in evidence["relativePath"]:
+                raise ValueError("Evidence requires a relative workspace path")
+    return await invoke(
+        request,
+        "workflow",
+        "work." + action,
+        str(UUID(request.match_info["work"])),
+        p.operationId,
+        payload,
+    )
+
+
+async def goal_create(request):
+    p = await body(request, GoalCreate)
+    return await invoke(
+        request,
+        "workflow",
+        "goal.create",
+        str(UUID(request.match_info["room"])),
+        p.operationId,
+        p.model_dump(mode="json", exclude={"operationId"}),
+    )
+
+
+async def work_create(request):
+    p = await body(request, WorkCreate)
+    if len(set(p.dependencies)) != len(p.dependencies):
+        raise ValueError("Duplicate dependencies")
+    return await invoke(
+        request,
+        "workflow",
+        "goal.work",
+        str(UUID(request.match_info["goal"])),
+        p.operationId,
+        p.model_dump(mode="json", exclude={"operationId"}),
+    )
+
+
+async def goal_state(request):
+    p = await body(request, GoalState)
+    return await invoke(
+        request,
+        "workflow",
+        "goal.state",
+        str(UUID(request.match_info["goal"])),
+        p.operationId,
+        p.model_dump(mode="json", exclude={"operationId"}),
+    )
+
+
+async def goal_read(request):
+    return await invoke(request, "goal_read", str(UUID(request.match_info["goal"])))
+
+
+async def work_read(request):
+    return await invoke(request, "work_read", str(UUID(request.match_info["work"])))
+
+
+async def goal_list(request):
+    if set(request.query) - {"after", "limit"}:
+        raise ValueError("Unknown goal query")
+    after = str(UUID(request.query["after"])) if "after" in request.query else None
+    limit = int(request.query.get("limit", "100"))
+    if not 1 <= limit <= 100:
+        raise ValueError("Invalid goal limit")
+    return await invoke(request, "goal_list", str(UUID(request.match_info["room"])), after, limit)
+
+
+async def review_dispatch(request):
+    p = await body(request, ReviewDispatch)
+    return await invoke(request, "review_dispatch", str(p.hostId))
+
+
+async def supervision(request):
+    if set(request.query) - {"after", "limit"}:
+        raise ValueError("Unknown supervision query")
+    after = int(request.query["after"]) if "after" in request.query else None
+    limit = int(request.query.get("limit", "100"))
+    if (after is not None and not 0 <= after <= 9007199254740991) or not 1 <= limit <= 100:
+        raise ValueError("Invalid supervision cursor")
+    return await invoke(request, "supervision", after, limit)
+
+
+async def supervision_ack(request):
+    p = await body(request, SupervisionAck)
+    return await invoke(request, "supervision_ack", p.sequence, p.revision)
+
+
 def application(store):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
     app.add_routes(
         [
             web.get("/health", health),
+            web.get("/hollywood/v3/rooms/{room}/goals", goal_list),
+            web.post("/hollywood/v3/rooms/{room}/goals", goal_create),
+            web.get("/hollywood/v3/goals/{goal}", goal_read),
+            web.post("/hollywood/v3/goals/{goal}/work", work_create),
+            web.post("/hollywood/v3/goals/{goal}/state", goal_state),
+            web.get("/hollywood/v3/work/{work}", work_read),
+            web.post("/hollywood/v3/work/{work}/{action:assign|report|review|cancel}", workflow),
+            web.post("/hollywood/v3/connector/reviews", review_dispatch),
+            web.get("/hollywood/v3/supervision", supervision),
+            web.put("/hollywood/v3/supervision/cursor", supervision_ack),
             web.get("/hollywood/v3/inbox", inbox),
             web.get("/hollywood/v3/inbox/pending", inbox),
             web.get("/hollywood/v3/inbox/events/{event}", inbox_event),

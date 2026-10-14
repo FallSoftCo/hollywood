@@ -171,3 +171,50 @@ LAX turn asking through Hollywood, receiving the exact answer in the same turn,
 writing the proof file and publishing command phases. NextComp's Kotlin
 projection consumed that actual feed. This is not physical-phone, native
 approval, original-installation migration or production-cutover certification.
+
+## Durable goal and work coordination candidate
+
+Hollywood now has an additive goal/work schema and authenticated API. A goal
+records its desired outcome, acceptance criteria, source request and accountable
+room owner. Its revisioned work set and immutable prerequisite edges form its
+plan. Creating this state admits no execution. Explicit assignment creates one
+request/delivery atomically; dependencies require accepted work before admission.
+
+Worker submission is fenced to the original delivery claim/generation and records
+host/workspace-relative evidence references. It is not a native completion receipt
+or a verified artifact download. Review requires completed execution and an
+explicit authorized acceptance/rejection. Goal acceptance requires every work
+item accepted and an attributable review statement. Actual artifact verification
+and authorized cross-host retrieval remain further gates.
+
+Pause prevents new work claims; it does not assert that active effects stopped.
+Work cancellation records request versus settled cancellation separately. A goal
+cannot become cancelled while its work has running, claimed, unknown or
+cancellation-pending execution. Terminal goals cannot silently resume.
+
+An explicitly configured review budget permits bounded review admission after
+another worker's material report and terminal/unknown execution state. The
+metadata dispatcher coalesces an outstanding review, persists causal deduplication
+and spends the budget atomically. Ordinary chat, observation and a coordinator's
+own reports cannot manufacture review loops. No dispatcher timer or model worker
+is enabled by this implementation. LAX must call the enrolled connector
+reconciliation endpoint and respect its captured execution claim.
+
+The supervision feed provides authorized event hints across rooms and a durable
+CAS cursor. It includes execution activity without injecting all raw commands
+into a model context. Room grants/private audiences remain authoritative on each
+read. This primitive does not yet provide a complete Global attention policy,
+backlog prioritization, or proven continuous supervision.
+
+Current API qualification exercised actual PostgreSQL and authenticated HTTP:
+dependency admission, separate submission/completion/acceptance, original
+assignment receipt recovery across API restart, bounded review deduplication,
+pause/resume/cancellation and durable supervision cursors. Its native execution
+receipts were synthetic. It is not real-agent or production-cutover proof.
+
+This first workflow contract accepts room-visible goal sources. Private-source
+cross-room sharing must be explicit and is currently denied. Goal lists page by
+stable UUID; a goal's plan returns a marked 100-item bound and still needs plan
+pagination for scale. Editing/replacing plans, optional/waived work, additional
+attempts, native goal bindings and native structured-plan projection remain
+unfinished. Original v2 work orders and accepted receipts have not been migrated.

@@ -36,6 +36,41 @@ def json_value(value):
 
 
 class Store:
+    def workflow(self, actor_id, action, identity, operation, payload):
+        from .work import mutation
+
+        return mutation(self, actor_id, action, identity, operation, payload)
+
+    def goal_read(self, actor_id, identity):
+        from .work import read
+
+        return read(self, actor_id, identity)
+
+    def work_read(self, actor_id, identity):
+        from .work import read
+
+        return read(self, actor_id, identity, work=True)
+
+    def goal_list(self, actor_id, room, after, limit):
+        from .work import listing
+
+        return listing(self, actor_id, room, after, limit)
+
+    def review_dispatch(self, actor_id, host):
+        from .work import dispatch_reviews
+
+        return dispatch_reviews(self, actor_id, host)
+
+    def supervision(self, actor_id, after, limit):
+        from .work import supervision
+
+        return supervision(self, actor_id, after, limit)
+
+    def supervision_ack(self, actor_id, seq, revision):
+        from .work import acknowledge
+
+        return acknowledge(self, actor_id, seq, revision)
+
     def inbox(self, actor_id, after, limit, pending=False):
         from .inbox import feed
 
@@ -504,8 +539,11 @@ class Store:
             ).fetchone()
             if not row:
                 raise Denied("Command unavailable")
-            self.readable_event(c, a, row["event"])
-            return self.receipt(c, row["event"])
+            event = self.readable_event(c, a, row["event"])
+            receipt = self.receipt(c, row["event"])
+            if event["data"].get("workflowReceipt"):
+                receipt["workflow"] = event["data"]["workflowReceipt"]
+            return receipt
 
     def history(self, actor_id, room, after, limit, before=None):
         with self.pool.connection() as c:
@@ -598,14 +636,9 @@ class Store:
                 "SELECT id FROM hb_delivery WHERE agent=%s AND state IN ('claimed','running','unknown','cancel_requested')",
                 (a["id"],),
             ).fetchone()
-            row = (
-                None
-                if busy
-                else c.execute(
-                    "SELECT d.* FROM hb_delivery d JOIN hb_event e ON e.id=d.event WHERE d.agent=%s AND d.state='pending' ORDER BY e.seq FOR UPDATE OF d SKIP LOCKED LIMIT 1",
-                    (a["id"],),
-                ).fetchone()
-            )
+            from .work import claim_candidate
+
+            row = None if busy else claim_candidate(self, c, a)
             identity = row["id"] if row else None
             if row:
                 self.room(
@@ -639,7 +672,7 @@ class Store:
                 (a["id"],),
             ).fetchone()
             pending = c.execute(
-                "SELECT d.id FROM hb_delivery d JOIN hb_event e ON e.id=d.event WHERE d.agent=%s AND d.state='pending' ORDER BY e.seq LIMIT 1",
+                "SELECT d.id FROM hb_delivery d JOIN hb_event e ON e.id=d.event WHERE d.agent=%s AND d.state='pending' AND NOT EXISTS (SELECT 1 FROM hb_work w JOIN hb_goal g ON g.id=w.goal WHERE w.delivery=d.id AND g.state<>'active') ORDER BY e.seq LIMIT 1",
                 (a["id"],),
             ).fetchone()
             return json_value({"enabled": placement["enabled"], "busy": busy, "pending": pending})
@@ -808,6 +841,10 @@ class Store:
                     "roomPurpose": room["purpose"],
                     "roomOwnerId": room["owner"],
                     "requestId": e["id"],
+                    "goalId": e["data"].get("goalId"),
+                    "workId": e["data"].get("workId"),
+                    "workAcceptance": e["data"].get("acceptance"),
+                    "goalReview": bool(e["data"].get("goalReview")),
                     "sourceEventId": e["source"],
                     "senderId": e["author"],
                     "senderKind": e["data"].get("authorKind"),

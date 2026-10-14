@@ -133,3 +133,58 @@ CREATE TABLE IF NOT EXISTS hb_activity (
  event uuid NOT NULL REFERENCES hb_event(id),
  PRIMARY KEY(delivery,generation,native_turn,item_id,phase)
 );
+
+-- Goals describe desired outcomes. Work submission, native completion and
+-- acceptance are separate records; none implies the other.
+CREATE TABLE IF NOT EXISTS hb_goal (
+ id uuid PRIMARY KEY, authority uuid NOT NULL REFERENCES hb_authority(id),
+ room uuid NOT NULL, owner uuid NOT NULL, creator uuid NOT NULL,
+ source uuid NOT NULL, title text NOT NULL, objective text NOT NULL,
+ acceptance text NOT NULL, state text NOT NULL DEFAULT 'active'
+ CHECK(state IN ('active','paused','accepted','cancelled')),
+ revision bigint NOT NULL DEFAULT 1, review_remaining integer NOT NULL DEFAULT 0,
+ review_digest text, review_request uuid,
+ UNIQUE(authority,id),
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
+ FOREIGN KEY(authority,owner) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,creator) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,source) REFERENCES hb_event(authority,id),
+ FOREIGN KEY(authority,review_request) REFERENCES hb_event(authority,id),
+ CHECK(review_remaining BETWEEN 0 AND 16)
+);
+CREATE INDEX IF NOT EXISTS hb_goal_owner ON hb_goal(owner,state,review_remaining);
+CREATE TABLE IF NOT EXISTS hb_work (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, goal uuid NOT NULL,
+ room uuid NOT NULL, owner uuid NOT NULL, specification text NOT NULL,
+ acceptance text NOT NULL, state text NOT NULL DEFAULT 'planned'
+ CHECK(state IN ('planned','assigned','blocked','submitted','accepted','rejected','cancel_requested','cancelled')),
+ revision bigint NOT NULL DEFAULT 1, request_event uuid, delivery uuid,
+ report_event uuid, evidence jsonb NOT NULL DEFAULT '[]', note text NOT NULL DEFAULT '',
+ UNIQUE(authority,id), UNIQUE(authority,goal,id),
+ FOREIGN KEY(authority,goal) REFERENCES hb_goal(authority,id),
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
+ FOREIGN KEY(authority,owner) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,request_event) REFERENCES hb_event(authority,id),
+ FOREIGN KEY(authority,delivery) REFERENCES hb_delivery(authority,id),
+ FOREIGN KEY(authority,report_event) REFERENCES hb_event(authority,id)
+);
+CREATE INDEX IF NOT EXISTS hb_work_goal ON hb_work(goal,id);
+CREATE UNIQUE INDEX IF NOT EXISTS hb_work_delivery ON hb_work(delivery) WHERE delivery IS NOT NULL;
+CREATE TABLE IF NOT EXISTS hb_work_dependency (
+ authority uuid NOT NULL, goal uuid NOT NULL, work uuid NOT NULL, prerequisite uuid NOT NULL,
+ PRIMARY KEY(work,prerequisite), CHECK(work<>prerequisite),
+ FOREIGN KEY(authority,goal,work) REFERENCES hb_work(authority,goal,id),
+ FOREIGN KEY(authority,goal,prerequisite) REFERENCES hb_work(authority,goal,id)
+);
+CREATE TABLE IF NOT EXISTS hb_goal_review (
+ goal uuid NOT NULL REFERENCES hb_goal(id), trigger_digest text NOT NULL,
+ request_event uuid NOT NULL REFERENCES hb_event(id), PRIMARY KEY(goal,trigger_digest)
+);
+CREATE TABLE IF NOT EXISTS hb_supervision_cursor (
+ authority uuid NOT NULL REFERENCES hb_authority(id),
+ principal uuid PRIMARY KEY REFERENCES hb_principal(id), seq bigint NOT NULL DEFAULT 0,
+ revision bigint NOT NULL DEFAULT 1
+);
+
+-- Additive workflow schema; prior communication state is retained.
+INSERT INTO hb_schema VALUES (2) ON CONFLICT DO NOTHING;
