@@ -140,3 +140,34 @@ second-host authenticated execution/artifact retrieval, the full installer and
 upgrade/backup/restore, migration/rollback, multi-human shared workspaces,
 enterprise VM isolation, scalable subscriptions/availability and deployed cutover.
 This candidate is not production-ready or an architecture-complete claim.
+
+
+## Native activity and human control
+
+Hollywood owns the room transcript. The authenticated native activity route
+appends immutable phases bound to the original delivery, generation, host,
+agent and native thread/turn. It derives the room and audience rather than
+accepting those from the caller. Original log identities deduplicate; changed
+payloads conflict. Activity never admits work or wakes observers.
+
+LAX saves intent plus the native item in a protected filesystem journal before
+publishing. A separate outbox retries only the same log record. Output/diff
+excerpts are marked; raw read-tool payloads remain protected because access to
+another room does not permit republishing its private history. Question tool
+activity is private to the attributable human. NextComp reuses its session Runs
+renderer, coalescing start/completion into one stable row while retaining both
+underlying events and agent/host/context attribution.
+
+Durable attention is bound to the originating source human, delivery generation,
+native request slot and action digest. Questions require a human; Global/admin
+can act on native approvals with its own identity. Response accepted, written
+into the original RPC connection and execution completed are distinct facts. A
+write is not proof of consumption. An uncertain result cannot replay an approval
+into a new native process. Terminal execution closes or expires actionable old
+prompts and preserves unknown response outcomes.
+
+Actual qualification: authenticated PostgreSQL/HTTP restart and one real xhigh
+LAX turn asking through Hollywood, receiving the exact answer in the same turn,
+writing the proof file and publishing command phases. NextComp's Kotlin
+projection consumed that actual feed. This is not physical-phone, native
+approval, original-installation migration or production-cutover certification.

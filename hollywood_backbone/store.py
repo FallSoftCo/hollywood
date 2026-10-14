@@ -36,6 +36,36 @@ def json_value(value):
 
 
 class Store:
+    def activity_append(self, actor_id, identity, payload):
+        from .activity import append
+
+        return append(self, actor_id, identity, payload)
+
+    def attention_create(self, actor_id, identity, payload):
+        from .attention import create
+
+        return create(self, actor_id, identity, payload)
+
+    def attention_read(self, actor_id, identity):
+        from .attention import read
+
+        return read(self, actor_id, identity)
+
+    def attention_inbox(self, actor_id, room, after, limit):
+        from .attention import inbox
+
+        return inbox(self, actor_id, room, after, limit)
+
+    def attention_response(self, actor_id, identity, operation, payload):
+        from .attention import respond
+
+        return respond(self, actor_id, identity, operation, payload)
+
+    def attention_acknowledge(self, actor_id, identity, operation, payload):
+        from .attention import acknowledge
+
+        return acknowledge(self, actor_id, identity, operation, payload)
+
     def __init__(self, config):
         self.pool = ConnectionPool(
             kwargs={**config, "row_factory": dict_row}, min_size=1, max_size=8, open=True
@@ -286,7 +316,7 @@ class Store:
                 (a["authority"], identity, owner),
             )
             c.execute(
-                "UPDATE hb_agent_role SET home_room=%s WHERE principal=%s AND home_room IS NULL",
+                "UPDATE hb_agent_role SET home_room=%s,revision=revision+1 WHERE principal=%s AND home_room IS NULL",
                 (identity, owner),
             )
             return json_value(
@@ -558,6 +588,12 @@ class Store:
                 raise Denied("Delivery unavailable")
             if d["generation"] != payload["generation"] or d["claim_id"] != payload["claimId"]:
                 raise Conflict("Stale execution owner")
+            for field, supplied in (
+                ("native_thread", payload.get("nativeThread")),
+                ("native_turn", payload.get("nativeTurn")),
+            ):
+                if supplied and d[field] and supplied != d[field]:
+                    raise Conflict("Native execution pointer changed")
             previous = c.execute(
                 "SELECT * FROM hb_transition WHERE delivery=%s AND operation=%s",
                 (identity, operation),
@@ -600,6 +636,18 @@ class Store:
                 "UPDATE hb_delivery SET state=%s,native_thread=COALESCE(%s,native_thread),native_turn=COALESCE(%s,native_turn),result_event=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
                 (state, payload.get("nativeThread"), payload.get("nativeTurn"), result, identity),
             )
+            if terminal:
+                # Terminal execution cannot retain an actionable old native prompt.
+                # A submitted response's consumption remains a separate fact.
+                c.execute(
+                    """UPDATE hb_attention SET state=CASE
+                          WHEN state='pending' THEN 'expired'
+                          WHEN state='native_submitted' THEN 'closed'
+                          ELSE 'unknown' END, revision=revision+1,updated_at=clock_timestamp()
+                          WHERE delivery=%s AND generation=%s
+                          AND state IN ('pending','response_submitted','native_submitted')""",
+                    (identity, d["generation"]),
+                )
             out = self.claim_receipt(c, identity)
             c.execute(
                 "INSERT INTO hb_transition VALUES(%s,%s,%s,%s)",

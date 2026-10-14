@@ -100,3 +100,36 @@ CREATE TABLE IF NOT EXISTS hb_transition (
  digest text NOT NULL, result jsonb NOT NULL,
  PRIMARY KEY(delivery,operation)
 );
+CREATE TABLE IF NOT EXISTS hb_attention (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, delivery uuid NOT NULL,
+ agent uuid NOT NULL, human uuid NOT NULL, room uuid NOT NULL, event uuid NOT NULL,
+ generation bigint NOT NULL, claim_id text NOT NULL,
+ native_thread text NOT NULL, native_turn text NOT NULL, native_slot text NOT NULL,
+ method text NOT NULL, request jsonb NOT NULL, digest text NOT NULL,
+ state text NOT NULL DEFAULT 'pending' CHECK(state IN
+ ('pending','response_submitted','native_submitted','closed','expired','unknown')),
+ response jsonb, response_author uuid, response_event uuid, revision bigint NOT NULL DEFAULT 1,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(delivery,native_turn,native_slot), UNIQUE(authority,id),
+ FOREIGN KEY(authority,delivery) REFERENCES hb_delivery(authority,id),
+ FOREIGN KEY(authority,agent) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,human) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
+ FOREIGN KEY(authority,event) REFERENCES hb_event(authority,id),
+ FOREIGN KEY(authority,response_author) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,response_event) REFERENCES hb_event(authority,id)
+);
+CREATE INDEX IF NOT EXISTS hb_attention_inbox ON hb_attention(human,state,created_at);
+CREATE TABLE IF NOT EXISTS hb_attention_command (
+ attention uuid NOT NULL REFERENCES hb_attention(id), principal uuid NOT NULL REFERENCES hb_principal(id),
+ operation text NOT NULL, digest text NOT NULL, result jsonb NOT NULL,
+ PRIMARY KEY(attention,principal,operation)
+);
+CREATE TABLE IF NOT EXISTS hb_activity (
+ delivery uuid NOT NULL REFERENCES hb_delivery(id), generation bigint NOT NULL,
+ native_thread text NOT NULL, native_turn text NOT NULL, item_id text NOT NULL,
+ phase text NOT NULL CHECK(phase IN ('started','completed')), digest text NOT NULL,
+ event uuid NOT NULL REFERENCES hb_event(id),
+ PRIMARY KEY(delivery,generation,native_turn,item_id,phase)
+);
