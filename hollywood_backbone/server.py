@@ -320,6 +320,23 @@ async def stream(request):
         return response
 
 
+async def inbox(request):
+    if set(request.query) - {"after", "limit"}:
+        raise ValueError("Unknown inbox query")
+    after = int(request.query["after"]) if "after" in request.query else None
+    limit = int(request.query.get("limit", "100"))
+    if (after is not None and not 0 <= after <= 9007199254740991) or not 1 <= limit <= 100:
+        raise ValueError("Invalid inbox cursor or limit")
+    pending = request.path.endswith("/pending")
+    if pending and after is None:
+        after = 0
+    return await invoke(request, "inbox", after, limit, pending)
+
+
+async def inbox_event(request):
+    return await invoke(request, "inbox_event", str(UUID(request.match_info["event"])))
+
+
 async def command(request):
     return await invoke(request, "command", request.match_info["operation"])
 
@@ -468,6 +485,9 @@ def application(store):
     app.add_routes(
         [
             web.get("/health", health),
+            web.get("/hollywood/v3/inbox", inbox),
+            web.get("/hollywood/v3/inbox/pending", inbox),
+            web.get("/hollywood/v3/inbox/events/{event}", inbox_event),
             web.get("/hollywood/v3/rooms", rooms),
             web.get("/hollywood/v3/rooms/{room}", room_detail),
             web.post("/hollywood/v3/rooms", room_create),

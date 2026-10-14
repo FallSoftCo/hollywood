@@ -36,6 +36,16 @@ def json_value(value):
 
 
 class Store:
+    def inbox(self, actor_id, after, limit, pending=False):
+        from .inbox import feed
+
+        return feed(self, actor_id, after, limit, pending)
+
+    def inbox_event(self, actor_id, identity):
+        from .inbox import read
+
+        return read(self, actor_id, identity)
+
     def attention_command(self, actor_id, identity, operation):
         from .attention import command
 
@@ -710,6 +720,11 @@ class Store:
                           ELSE 'unknown' END, revision=revision+1,updated_at=clock_timestamp()
                           WHERE delivery=%s AND generation=%s
                           AND state IN ('pending','response_submitted','native_submitted')""",
+                    (identity, d["generation"]),
+                )
+            if state == "unknown":
+                c.execute(
+                    "UPDATE hb_attention SET state='unknown',revision=revision+1,updated_at=clock_timestamp() WHERE delivery=%s AND generation=%s AND state IN ('pending','response_submitted','native_submitted')",
                     (identity, d["generation"]),
                 )
             out = self.claim_receipt(c, identity)
