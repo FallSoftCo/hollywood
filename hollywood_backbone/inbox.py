@@ -1,10 +1,10 @@
 """Principal-scoped communication hints. Reads never admit or wake execution."""
 
-from .attention import human_owner
 from .store import Conflict, Denied, json_value
 
 
 KINDS = ("message", "result", "question", "approval")
+NOTIFICATION_POLICY_REVISION = 2
 
 
 def hint(store, c, actor, event):
@@ -15,10 +15,10 @@ def hint(store, c, actor, event):
     ).fetchone()
     notify = False
     reason = "room_update"
-    revision = 1
+    revision = NOTIFICATION_POLICY_REVISION
     attention_id = None
     if attention:
-        revision = attention["revision"] + attention["delivery_revision"]
+        revision = attention["revision"] + attention["delivery_revision"] + NOTIFICATION_POLICY_REVISION
         attention_id = attention["id"]
         if attention["human"] == actor["id"]:
             if attention["state"] == "pending" and attention["delivery_state"] in ("claimed", "running"):
@@ -28,15 +28,20 @@ def hint(store, c, actor, event):
             else:
                 reason = "attention_resolved"
     elif event["author"] != actor["id"]:
-        if event["recipient"] == actor["id"]:
+        if event["audience"] == "direct" and event["recipient"] == actor["id"]:
             notify, reason = True, "direct_message" if event["kind"] == "message" else "work_result"
-        elif event["source"]:
-            try:
-                owner = human_owner(c, event)
-            except Conflict:
-                owner = None
-            if owner == actor["id"]:
-                notify, reason = True, "work_result" if event["kind"] == "result" else "work_message"
+        elif event["source"] and event["kind"] == "result":
+            # A human's request has one terminal response. Delegated descendants
+            # and intermediate contributions stay in rooms; ancestry is not an
+            # instruction to interrupt the human for every agent's activity.
+            source = c.execute(
+                "SELECT author,kind FROM hb_event WHERE id=%s AND authority=%s",
+                (event["source"], event["authority"]),
+            ).fetchone()
+            if source and source["author"] == actor["id"] and source["kind"] == "request":
+                notify, reason = True, "request_result"
+            else:
+                reason = "agent_work_update"
     return json_value({
         "eventId": event["id"], "sequence": event["seq"], "authorityId": event["authority"],
         "principalId": actor["id"], "roomId": event["room"], "roomName": room["name"],
