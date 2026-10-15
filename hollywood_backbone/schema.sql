@@ -436,3 +436,29 @@ CREATE TABLE IF NOT EXISTS hb_portfolio_command (
  digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(principal,operation)
 );
 INSERT INTO hb_schema VALUES (11) ON CONFLICT DO NOTHING;
+
+-- Human guidance targets one existing native turn and never creates a delivery.
+CREATE TABLE IF NOT EXISTS hb_native_control (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, delivery uuid NOT NULL,
+ agent uuid NOT NULL, human uuid NOT NULL, room uuid NOT NULL, event uuid NOT NULL,
+ generation bigint NOT NULL, claim_id text NOT NULL,
+ native_thread text NOT NULL, native_turn text NOT NULL,
+ operation text NOT NULL, body text NOT NULL, digest text NOT NULL, captured_scope jsonb NOT NULL,
+ state text NOT NULL DEFAULT 'pending' CHECK(state IN
+ ('pending','dispatching','native_admitted','native_recorded','unknown','rejected')),
+ evidence jsonb NOT NULL DEFAULT '{}', revision bigint NOT NULL DEFAULT 1,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(human,operation), UNIQUE(authority,id),
+ FOREIGN KEY(authority,delivery) REFERENCES hb_delivery(authority,id),
+ FOREIGN KEY(authority,agent) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,human) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
+ FOREIGN KEY(authority,event) REFERENCES hb_event(authority,id)
+);
+CREATE INDEX IF NOT EXISTS hb_native_control_pending ON hb_native_control(delivery,state);
+CREATE TABLE IF NOT EXISTS hb_native_control_command (
+ control uuid NOT NULL REFERENCES hb_native_control(id), operation text NOT NULL,
+ digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(control,operation)
+);
+INSERT INTO hb_schema VALUES (12) ON CONFLICT DO NOTHING;

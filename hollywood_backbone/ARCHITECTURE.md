@@ -446,3 +446,35 @@ general role stop/reassignment, cross-host artifact capabilities, credential
 separation, full restore and the physical NextComp journey remain release gates.
 Rollback requires fencing current writers and preserving new history; schema
 downgrade or restoring an old dump over accepted new work is not safe rollback.
+
+
+## Human guidance for an active native turn
+
+Schema 12 adds canonical native-control receipts. An explicit human control is
+communication about an existing execution, not a new execution request. It
+captures authority, delivery, agent, room, audience, host, generation, native
+thread/turn and original source request. A stable human operation and control
+identity retain the original payload. Guidance creates no delivery or admission
+reservation.
+
+Only the attributable causal human or a human administrator with current room
+request permission may guide that work. Agent peers retain their existing
+communication/tool authority; they cannot impersonate human input. The native
+owner rechecks current human rights and execution scope before dispatch. Private
+work remains private. A new connector capability is required, and stale or
+unsupported owners do not receive silently queued native controls.
+
+Pending, dispatching, native-admitted, native-recorded, unknown and rejected
+retain distinct meanings. A native receipt is not proof of model consumption,
+business acceptance or human presentation. Terminal execution rejects undispatched
+input; a possible native submission stays unknown. PostgreSQL stores the
+canonical control/event and immutable command receipts. LAX owns native effects
+and its protected prior-intent journal. No model is launched by reading or
+reconciling control metadata.
+
+The authenticated PostgreSQL/HTTP integration scenario exercises causal-human
+rights, private audience, exact scope, payload identity, current revocation,
+restart and terminal/unknown boundaries. Its native pointers are explicitly
+synthetic. The separate native LAX driver exercises actual models and artifacts;
+use its retained result rather than attributing provider evidence to this HTTP
+scenario.

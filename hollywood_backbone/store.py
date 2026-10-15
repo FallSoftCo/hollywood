@@ -36,6 +36,22 @@ def json_value(value):
 
 
 class Store:
+    def native_control_create(self, actor_id, identity, operation, payload):
+        from .native_controls import create
+        return create(self, actor_id, identity, operation, payload)
+
+    def native_control_read(self, actor_id, identity):
+        from .native_controls import read
+        return read(self, actor_id, identity)
+
+    def native_control_pending(self, actor_id, identity, payload):
+        from .native_controls import pending
+        return pending(self, actor_id, identity, payload)
+
+    def native_control_update(self, actor_id, identity, operation, payload):
+        from .native_controls import update
+        return update(self, actor_id, identity, operation, payload)
+
     def portfolio_read(self, actor_id, agent, after=None, limit=100):
         from .portfolio import read
 
@@ -513,6 +529,17 @@ class Store:
                     a["id"],
                 ),
             ).fetchall()
+            from .native_controls import scope as control_scope, human_allowed, capable
+            for item in work:
+                event = self.readable_event(c, a, item["event"])
+                permitted = False
+                try:
+                    human_allowed(self, c, a, event)
+                    permitted = item["state"] == "running" and not item["cancellation_requested"] and capable(c, item)
+                except (Denied, Conflict):
+                    pass
+                item["can_steer"] = permitted
+                item["control_scope"] = control_scope(item, event) if permitted else None
             return {
                 "authorityId": str(a["authority"]),
                 "room": json_value(room),
@@ -902,6 +929,8 @@ class Store:
 
                 settle_goal_cancellation(self, c, work)
             if terminal:
+                from .native_controls import terminal as settle_controls
+                settle_controls(self, c, a, d)
                 # Terminal execution cannot retain an actionable old native prompt.
                 # A submitted response's consumption remains a separate fact.
                 c.execute(

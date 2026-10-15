@@ -27,6 +27,41 @@ class Message(Input):
     sourceEventId: UUID | None = None
 
 
+class NativeControlScope(Input):
+    authorityId: UUID
+    deliveryId: UUID
+    agentId: UUID
+    roomId: UUID
+    hostId: UUID
+    generation: int = Field(ge=1)
+    nativeThread: str = Field(min_length=1, max_length=128)
+    nativeTurn: str = Field(min_length=1, max_length=128)
+    sourceRequestId: UUID
+    audience: Literal["room", "direct"]
+
+
+class NativeControlCreate(Input):
+    id: UUID
+    operationId: str = Field(min_length=1, max_length=128)
+    scope: NativeControlScope
+    body: str = Field(min_length=1, max_length=6000)
+
+
+class NativeControlPending(Input):
+    claimId: str = Field(min_length=1, max_length=128)
+    generation: int = Field(ge=1)
+    hostId: UUID
+
+
+class NativeControlUpdate(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    claimId: str = Field(min_length=1, max_length=128)
+    generation: int = Field(ge=1)
+    scope: NativeControlScope
+    state: Literal["dispatching", "native_admitted", "native_recorded", "unknown", "rejected"]
+    evidence: dict = Field(default_factory=dict)
+
+
 class Principal(Input):
     id: UUID
     name: str = Field(min_length=1, max_length=128)
@@ -591,6 +626,31 @@ async def transition(request):
     )
 
 
+async def native_control_create(request):
+    p = await body(request, NativeControlCreate)
+    if str(p.scope.deliveryId) != str(UUID(request.match_info["delivery"])) or not p.body.strip() or len(p.body.encode()) > 6000:
+        raise ValueError("Invalid captured guidance")
+    return await invoke(request, "native_control_create", str(p.id), p.operationId,
+                        p.model_dump(mode="json", exclude={"id", "operationId"}))
+
+
+async def native_control_read(request):
+    return await invoke(request, "native_control_read", str(UUID(request.match_info["control"])))
+
+
+async def native_control_pending(request):
+    p = await body(request, NativeControlPending)
+    return await invoke(request, "native_control_pending", str(UUID(request.match_info["delivery"])), p.model_dump(mode="json"))
+
+
+async def native_control_update(request):
+    p = await body(request, NativeControlUpdate)
+    if len(json.dumps(p.evidence).encode()) > 4000:
+        raise ValueError("Guidance receipt exceeds limit")
+    return await invoke(request, "native_control_update", str(UUID(request.match_info["control"])),
+                        p.operationId, p.model_dump(mode="json", exclude={"operationId"}))
+
+
 async def cancel(request):
     # Idempotent desired state. It cannot claim that an admitted effect was undone.
     return await invoke(request, "cancel", str(UUID(request.match_info["delivery"])))
@@ -928,6 +988,10 @@ def application(store):
             web.post("/hollywood/v3/hosts/{host}/capacity", host_sample),
             web.get("/hollywood/v3/connector/pending", connector_pending),
             web.post("/hollywood/v3/deliveries/{delivery}/transition", transition),
+            web.post("/hollywood/v3/deliveries/{delivery}/guidance", native_control_create),
+            web.get("/hollywood/v3/native-controls/{control}", native_control_read),
+            web.post("/hollywood/v3/connector/deliveries/{delivery}/guidance", native_control_pending),
+            web.post("/hollywood/v3/connector/native-controls/{control}", native_control_update),
             web.post("/hollywood/v3/deliveries/{delivery}/cancel", cancel),
             web.get("/hollywood/v3/deliveries/{delivery}", delivery),
             web.get("/hollywood/v3/connector/deliveries/{delivery}/context", context),
