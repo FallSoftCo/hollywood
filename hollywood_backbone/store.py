@@ -534,8 +534,47 @@ class Store:
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             rows = c.execute(
-                "SELECT r.* FROM hb_room r WHERE r.authority=%s AND (%s OR EXISTS(SELECT 1 FROM hb_membership m WHERE m.room=r.id AND m.principal=%s AND m.can_read)) ORDER BY r.name LIMIT 100",
-                (a["authority"], a["administrator"], a["id"]),
+                """WITH readable_rooms AS (
+                       SELECT r.* FROM hb_room r WHERE r.authority=%s
+                       AND (%s OR EXISTS(SELECT 1 FROM hb_membership m
+                         WHERE m.room=r.id AND m.principal=%s AND m.can_read))
+                       ORDER BY r.name LIMIT 100
+                   ), counts AS (
+                       SELECT e.room,
+                         count(*) FILTER (WHERE d.state='pending') AS pending,
+                         count(*) FILTER (WHERE d.state='claimed') AS claimed,
+                         count(*) FILTER (WHERE d.state='running') AS running,
+                         count(*) FILTER (WHERE d.state='cancel_requested') AS cancelling,
+                         count(*) FILTER (WHERE d.state='unknown') AS unknown,
+                         count(*) FILTER (WHERE EXISTS(
+                           SELECT 1 FROM hb_attention h WHERE h.delivery=d.id
+                           AND h.generation=d.generation AND h.claim_id=d.claim_id
+                           AND h.state='pending' AND (%s OR h.human=%s)
+                         )) AS waiting
+                       FROM hb_delivery d JOIN hb_event e ON e.id=d.event
+                       JOIN readable_rooms r ON r.id=e.room
+                       WHERE d.authority=%s
+                       AND d.state IN ('pending','claimed','running','cancel_requested','unknown')
+                       AND (%s OR e.audience='room' OR e.author=%s OR e.recipient=%s)
+                       GROUP BY e.room
+                   )
+                   SELECT r.*,jsonb_build_object(
+                     'version',1,
+                     'observedAt',floor(extract(epoch FROM statement_timestamp())*1000)::bigint,
+                     'pending',coalesce(c.pending,0),
+                     'claimed',coalesce(c.claimed,0),
+                     'running',coalesce(c.running,0),
+                     'cancelRequested',coalesce(c.cancelling,0),
+                     'unknown',coalesce(c.unknown,0),
+                     'waitingForHuman',coalesce(c.waiting,0)
+                   ) AS activity
+                   FROM readable_rooms r LEFT JOIN counts c ON c.room=r.id
+                   ORDER BY r.name""",
+                (
+                    a["authority"], a["administrator"], a["id"],
+                    a["administrator"], a["id"],
+                    a["authority"], a["administrator"], a["id"], a["id"],
+                ),
             ).fetchall()
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}
 

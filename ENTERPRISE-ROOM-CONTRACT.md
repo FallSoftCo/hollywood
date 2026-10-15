@@ -124,3 +124,21 @@ required for contract design. A later implementation needs isolated candidate
 tests, reviewed grants and an idle-boundary release preserving accepted and
 unknown receipts. Keep code114 and existing owner-token clients compatible;
 principal tokens must never silently inherit owner privileges.
+
+
+### Canonical catalog activity
+
+Each readable catalog room includes an additive activity object with version 1,
+observedAt as Unix epoch milliseconds from the database statement timestamp,
+and integer counts pending, claimed, running, cancelRequested, unknown,
+and waitingForHuman. Counts cover viewer-visible unsettled deliveries originating
+in that room. Private requests keep the same author/recipient/administrator
+visibility as room detail. Waiting counts only viewer-authorized pending attention
+for the current delivery generation and claim. It overlaps the delivery counts;
+clients must not sum the categories.
+
+The catalog uses one SQL snapshot, without a history scan or per-room HTTP reads.
+An all-zero valid snapshot means no visible unsettled delivery at that observation.
+It does not establish host connectivity or agent health. Missing, invalid or failed
+activity reads must stay unavailable in clients, rather than becoming idle. The
+timestamp is observation time, not work recency or an instruction to reorder rooms.
