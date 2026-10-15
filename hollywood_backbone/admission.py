@@ -1,4 +1,4 @@
-"""Durable host admission. Unknown execution retains capacity; control APIs do not queue.
+"""Durable host admission. Unattested executors retain capacity; semantic holds remain explicit.
 
 Host controllers attest resources. Policy and reserved control agents are
 administrator-owned. Connectors observe and claim; this module starts no models.
@@ -205,9 +205,10 @@ def diagnose(store, c, actor, host, capabilities, record=False):
         (actor["id"], actor["administrator"], actor["id"]),
     ).fetchone()
     busy = c.execute(
-        """SELECT id,state,native_thread,native_turn FROM hb_delivery
-           WHERE agent=%s AND state IN ('claimed','running','unknown','cancel_requested')
-           ORDER BY updated_at LIMIT 1""",
+        """SELECT d.id,d.state,d.native_thread,d.native_turn,x.state AS resource_state
+           FROM hb_delivery d LEFT JOIN hb_executor x ON x.delivery=d.id AND x.generation=d.generation
+           WHERE d.agent=%s AND d.state IN ('claimed','running','unknown','cancel_requested')
+           ORDER BY d.updated_at LIMIT 1""",
         (actor["id"],),
     ).fetchone()
     result = {
@@ -243,7 +244,10 @@ def diagnose(store, c, actor, host, capabilities, record=False):
             """SELECT count(*) AS total,
                count(*) FILTER (WHERE COALESCE(t.queue_class,'worker')='worker') AS workers
                FROM hb_delivery d LEFT JOIN hb_admission_trace t ON t.delivery=d.id
-               WHERE d.host=%s AND d.state IN ('claimed','running','unknown','cancel_requested')""",
+               LEFT JOIN hb_executor x ON x.delivery=d.id AND x.generation=d.generation
+               WHERE d.host=%s AND (
+                 (x.id IS NULL AND d.state IN ('claimed','running','unknown','cancel_requested'))
+                 OR (x.id IS NOT NULL AND x.state<>'stopped'))""",
             (host,),
         ).fetchone()
         free = max(

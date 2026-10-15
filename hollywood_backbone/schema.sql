@@ -479,3 +479,24 @@ CREATE TABLE IF NOT EXISTS hb_administrative_command (
  FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id)
 );
 INSERT INTO hb_schema VALUES (14) ON CONFLICT DO NOTHING;
+
+-- Resource liveness is independent from delivery/effect outcome.
+CREATE TABLE IF NOT EXISTS hb_executor (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, delivery uuid NOT NULL,
+ agent uuid NOT NULL, host uuid NOT NULL, generation bigint NOT NULL, claim_id text NOT NULL,
+ descriptor jsonb NOT NULL, descriptor_digest text NOT NULL,
+ state text NOT NULL DEFAULT 'captured' CHECK(state IN ('captured','live','unknown','stopped')),
+ controller uuid, evidence jsonb, revision bigint NOT NULL DEFAULT 1,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(), observed_at timestamptz,
+ UNIQUE(delivery,generation),
+ FOREIGN KEY(authority,delivery) REFERENCES hb_delivery(authority,id),
+ FOREIGN KEY(authority,agent) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,host) REFERENCES hb_host(authority,id),
+ FOREIGN KEY(authority,controller) REFERENCES hb_principal(authority,id)
+);
+CREATE INDEX IF NOT EXISTS hb_executor_host_state ON hb_executor(host,state);
+CREATE TABLE IF NOT EXISTS hb_executor_command (
+ principal uuid NOT NULL REFERENCES hb_principal(id), operation text NOT NULL,
+ digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(principal,operation)
+);
+INSERT INTO hb_schema VALUES (15) ON CONFLICT DO NOTHING;

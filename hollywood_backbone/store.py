@@ -36,6 +36,22 @@ def json_value(value):
 
 
 class Store:
+    def executor_begin(self, actor_id, delivery, payload):
+        from .executors import begin
+        return begin(self, actor_id, delivery, payload)
+
+    def executor_read(self, actor_id, identity):
+        from .executors import read
+        return read(self, actor_id, identity)
+
+    def executor_list(self, actor_id, host, after=None, limit=256):
+        from .executors import listing
+        return listing(self, actor_id, host, after, limit)
+
+    def executor_observe(self, actor_id, host, identity, payload):
+        from .executors import observe
+        return observe(self, actor_id, host, identity, payload)
+
     def administrative_command(self, actor_id, operation):
         from .administrative import read
         return read(self, actor_id, operation)
