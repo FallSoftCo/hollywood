@@ -558,3 +558,13 @@ CREATE TABLE IF NOT EXISTS hb_imported_event (
  FOREIGN KEY(authority,event) REFERENCES hb_event(authority,id)
 );
 INSERT INTO hb_schema VALUES (19) ON CONFLICT DO NOTHING;
+
+-- Recovery is explicit new intent, retaining immutable original attempt evidence.
+CREATE TABLE IF NOT EXISTS hb_work_recovery (
+ delivery uuid PRIMARY KEY REFERENCES hb_work_attempt(delivery),
+ authority uuid NOT NULL REFERENCES hb_authority(id),
+ work uuid NOT NULL REFERENCES hb_work(id), event uuid UNIQUE NOT NULL REFERENCES hb_event(id),
+ principal uuid NOT NULL REFERENCES hb_principal(id), evidence jsonb NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+INSERT INTO hb_schema VALUES (20) ON CONFLICT DO NOTHING;

@@ -379,6 +379,9 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                     "UPDATE hb_work SET state='assigned',request_event=%s,delivery=%s,revision=revision+1 WHERE id=%s",
                     (request, delivery, identity),
                 )
+            elif action == "work.recover":
+                from .recovery import prepare
+                recovery = prepare(store, c, a, work, payload)
             elif action == "work.revise":
                 # Rework is new intent after completed, independently rejected work.
                 if work["state"] != "rejected" or not work["delivery"]:
@@ -567,6 +570,8 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
         )
         if action == "goal.cooperation":
             receipt["cooperation"] = cooperation.view(c, goal["id"], a["id"])
+        if action == "work.recover":
+            receipt["recovery"] = json_value(recovery)
         event = store.event(
             c,
             a,
@@ -610,6 +615,14 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                 ),
             },
         )
+        if action == "work.recover":
+            c.execute(
+                """INSERT INTO hb_work_recovery
+                   (delivery,authority,work,event,principal,evidence)
+                   VALUES(%s,%s,%s,%s,%s,%s)""",
+                (payload["priorDeliveryId"], a["authority"], work["id"],
+                 event, a["id"], Jsonb(json_value(recovery))),
+            )
         receipt["eventId"] = event
         c.execute(
             "UPDATE hb_event SET data=jsonb_set(data,'{workflowReceipt}',%s) WHERE id=%s",

@@ -383,6 +383,15 @@ class WorkReview(WorkflowRevision):
     note: str = Field(min_length=1, max_length=4000)
 
 
+class WorkRecover(WorkflowRevision):
+    priorDeliveryId: UUID
+    resultEventId: UUID
+    executorId: UUID
+    outcome: Literal["pre_turn_denied"]
+    reconciliationSha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    note: str = Field(min_length=1, max_length=4000)
+
+
 class WorkRevise(WorkflowRevision):
     ownerId: UUID
     specification: str = Field(min_length=1, max_length=6000)
@@ -912,6 +921,7 @@ async def workflow(request):
         "review": WorkReview,
         "cancel": WorkCancel,
         "revise": WorkRevise,
+        "recover": WorkRecover,
     }[action]
     p = await body(request, model)
     payload = p.model_dump(mode="json", exclude={"operationId"})
@@ -1102,7 +1112,7 @@ def application(store):
             web.post("/hollywood/v3/rooms/{room}/decisions", decisions),
             web.get("/hollywood/v3/connector/deliveries/{delivery}/briefing", briefing),
             web.post(
-                "/hollywood/v3/work/{work}/{action:assign|claim|report|review|cancel|revise}",
+                "/hollywood/v3/work/{work}/{action:assign|claim|report|review|cancel|revise|recover}",
                 workflow,
             ),
             web.post("/hollywood/v3/connector/reviews", review_dispatch),
