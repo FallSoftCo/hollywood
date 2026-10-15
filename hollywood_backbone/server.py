@@ -58,6 +58,7 @@ class Placement(Input):
 
 
 class Claim(Input):
+    capabilities: list[str] = Field(default_factory=list, max_length=16)
     operationId: str = Field(min_length=1, max_length=128)
     hostId: UUID
 
@@ -73,6 +74,7 @@ class Transition(Input):
 
 
 class Role(Input):
+    nativeGoalScope: Literal["role", "work"] | None = None
     primary: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]*$")
     purpose: str = Field(min_length=1, max_length=4000)
     homeRoomId: UUID | None = None
@@ -177,6 +179,8 @@ class NativeGoalProgress(Input):
 
 
 class NativeGoalBinding(Input):
+    bindingKind: Literal["role", "work", "coordination"] | None = None
+    roleRevision: int | None = Field(default=None, ge=1)
     claimId: str = Field(min_length=1, max_length=128)
     generation: int = Field(ge=1)
     goalId: UUID | None = None
@@ -272,6 +276,7 @@ class GoalState(WorkflowRevision):
 
 
 class ReviewDispatch(Input):
+    capabilities: list[str] = Field(default_factory=list, max_length=16)
     hostId: UUID
 
 
@@ -448,7 +453,7 @@ async def placement(request):
 
 async def claim(request):
     p = await body(request, Claim)
-    return await invoke(request, "claim", p.operationId, str(p.hostId))
+    return await invoke(request, "claim", p.operationId, str(p.hostId), p.capabilities)
 
 
 async def connector_pending(request):
@@ -514,6 +519,7 @@ async def role(request):
         p.purpose,
         str(p.homeRoomId) if p.homeRoomId else None,
         p.revision,
+        p.nativeGoalScope,
     )
 
 
@@ -681,7 +687,7 @@ async def work_list(request):
 
 async def review_dispatch(request):
     p = await body(request, ReviewDispatch)
-    return await invoke(request, "review_dispatch", str(p.hostId))
+    return await invoke(request, "review_dispatch", str(p.hostId), p.capabilities)
 
 
 async def supervision(request):

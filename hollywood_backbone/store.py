@@ -66,10 +66,10 @@ class Store:
 
         return work_listing(self, actor_id, identity, after, limit, by_goal)
 
-    def review_dispatch(self, actor_id, host):
+    def review_dispatch(self, actor_id, host, capabilities=()):
         from .work import dispatch_reviews
 
-        return dispatch_reviews(self, actor_id, host)
+        return dispatch_reviews(self, actor_id, host, capabilities)
 
     def supervision(self, actor_id, after, limit):
         from .work import supervision
@@ -185,7 +185,7 @@ class Store:
                 (room, authority, "Enterprise coordination and administration", global_agent),
             )
             c.execute(
-                "INSERT INTO hb_agent_role(principal,authority,primary_role,home_room,purpose) VALUES(%s,%s,'global',%s,%s)",
+                "INSERT INTO hb_agent_role(principal,authority,primary_role,home_room,purpose,native_goal_scope) VALUES(%s,%s,'global',%s,%s,'role')",
                 (
                     global_agent,
                     authority,
@@ -639,7 +639,29 @@ class Store:
             )
             return {"agentId": agent, "hostId": host, "enrolled": True}
 
-    def claim(self, actor_id, operation, host):
+    @staticmethod
+    def native_role_capability(c, actor, capabilities):
+        role = c.execute(
+            "SELECT native_goal_scope,revision FROM hb_agent_role WHERE principal=%s FOR SHARE",
+            (actor["id"],),
+        ).fetchone()
+        if (
+            role
+            and c.execute(
+                """SELECT 1 FROM hb_native_role_goal WHERE principal=%s
+               AND (role_revision<>%s OR %s<>'role') LIMIT 1""",
+                (actor["id"], role["revision"], role["native_goal_scope"]),
+            ).fetchone()
+        ):
+            raise Conflict("Existing native responsibility requires explicit role reconciliation")
+        if (
+            role
+            and role["native_goal_scope"] == "role"
+            and "native-role-goals/v1" not in capabilities
+        ):
+            raise Conflict("Native role lifecycle connector capability required")
+
+    def claim(self, actor_id, operation, host, capabilities=()):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             if a["kind"] != "agent":
@@ -651,6 +673,7 @@ class Store:
             ).fetchone()
             if not placement:
                 raise Denied("Connector host not enrolled for this agent")
+            self.native_role_capability(c, a, capabilities)
             previous = c.execute(
                 "SELECT * FROM hb_claim WHERE agent=%s AND operation=%s", (a["id"], operation)
             ).fetchone()
@@ -715,10 +738,9 @@ class Store:
             return {"delivery": None}
         d = c.execute("SELECT * FROM hb_delivery WHERE id=%s", (identity,)).fetchone()
         e = c.execute("SELECT * FROM hb_event WHERE id=%s", (d["event"],)).fetchone()
-        binding = c.execute(
-            "SELECT * FROM hb_native_goal_binding WHERE delivery=%s AND generation=%s",
-            (identity, d["generation"]),
-        ).fetchone()
+        from .native_bindings import read as read_binding
+
+        binding = read_binding(c, identity, d["generation"])
         return {
             "delivery": json_value(d),
             "request": json_value(e),
@@ -898,6 +920,7 @@ class Store:
                     "agentId": a["id"],
                     "primaryRole": policy["primary_role"],
                     "roleRevision": policy["revision"],
+                    "nativeGoalScope": policy["native_goal_scope"],
                     "homeRoomId": policy["home_room"],
                     "rolePurpose": policy["purpose"],
                     "activeRoomId": e["room"],
@@ -926,7 +949,7 @@ class Store:
                 }
             )
 
-    def role(self, actor_id, agent, primary, purpose, home_room, revision):
+    def role(self, actor_id, agent, primary, purpose, home_room, revision, native_goal_scope=None):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             self.admin(a)
@@ -941,17 +964,23 @@ class Store:
             old = c.execute(
                 "SELECT * FROM hb_agent_role WHERE principal=%s FOR UPDATE", (agent,)
             ).fetchone()
+            scope = native_goal_scope or (
+                old["native_goal_scope"] if old else "role" if primary == "global" else "work"
+            )
+            if scope not in ("role", "work") or (primary == "global" and scope != "role"):
+                raise ValueError("Global requires an ongoing native responsibility")
             if old and (
+                old["native_goal_scope"],
                 old["primary_role"],
                 old["purpose"],
                 str(old["home_room"]) if old["home_room"] else None,
-            ) == (primary, purpose, home_room):
+            ) == (scope, primary, purpose, home_room):
                 return json_value(old)
             if (old["revision"] if old else 0) != revision:
                 raise Conflict("Role revision changed")
             c.execute(
-                "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose,home_room) VALUES(%s,%s,%s,%s,%s) ON CONFLICT(principal) DO UPDATE SET primary_role=EXCLUDED.primary_role,purpose=EXCLUDED.purpose,home_room=EXCLUDED.home_room,revision=hb_agent_role.revision+1",
-                (agent, a["authority"], primary, purpose, home_room),
+                "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose,home_room,native_goal_scope) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(principal) DO UPDATE SET primary_role=EXCLUDED.primary_role,purpose=EXCLUDED.purpose,home_room=EXCLUDED.home_room,native_goal_scope=EXCLUDED.native_goal_scope,revision=hb_agent_role.revision+1",
+                (agent, a["authority"], primary, purpose, home_room, scope),
             )
             return json_value(
                 c.execute("SELECT * FROM hb_agent_role WHERE principal=%s", (agent,)).fetchone()

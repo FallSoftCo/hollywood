@@ -78,6 +78,14 @@ async def main():
     async with ClientSession() as session:
 
         async def call(who, method, path, payload=None, status=200):
+            if (
+                method == "POST"
+                and path in ("connector/claim", "connector/reviews")
+                and not (payload or {}).get("withoutRoleCapability")
+            ):
+                payload = {**payload, "capabilities": ["native-role-goals/v1"]}
+            if payload and payload.get("withoutRoleCapability"):
+                payload = {k: v for k, v in payload.items() if k != "withoutRoleCapability"}
             async with session.request(
                 method,
                 base + path,
@@ -198,6 +206,21 @@ async def main():
                     "audience": "room",
                 },
             )
+            for route in ("connector/claim", "connector/reviews"):
+                await call(
+                    "Global",
+                    "POST",
+                    route,
+                    {
+                        "hostId": ids["host"],
+                        "withoutRoleCapability": True,
+                        **({"operationId": "legacy-role-claim"} if route.endswith("claim") else {}),
+                    },
+                    409,
+                )
+            checks.append(
+                "Legacy connectors cannot admit ongoing role execution or spend its review budget"
+            )
             # Settle initial synthetic coordinator turn; this is not native model evidence.
             claim = await call(
                 "Global",
@@ -227,8 +250,74 @@ async def main():
                     },
                 )
 
+            role = await call(
+                "Global", "GET", "agents/" + credentials["Global"]["principalId"] + "/role"
+            )
+            assert role["native_goal_scope"] == "role"
+            worker_role = await call("Worker", "GET", "agents/" + ids["worker"] + "/role")
+            assert worker_role["native_goal_scope"] == "work"
+            role_binding = {
+                "claimId": claim["delivery"]["claim_id"],
+                "generation": claim["delivery"]["generation"],
+                "goalId": None,
+                "workId": None,
+                "bindingKind": "role",
+                "roleRevision": role["revision"],
+                "nativeThread": "fixture-" + credentials["Global"]["principalId"],
+                "nativeGoalId": str(uuid4()),
+                "contextId": hashlib.sha256(ids["room"].encode()).hexdigest(),
+                "workspaceId": ids["workspace"],
+                "objectiveDigest": hashlib.sha256(b"fixture-role").hexdigest(),
+            }
+            path = f"connector/deliveries/{claim['delivery']['id']}/goal-binding"
+            first_binding = await call("Global", "POST", path, role_binding)
+            assert first_binding["binding_kind"] == "role" and first_binding["goal"] is None
+            assert await call("Global", "POST", path, role_binding) == first_binding
+            await call(
+                "Global", "POST", path, {**role_binding, "roleRevision": role["revision"] + 1}, 409
+            )
             await transition("Global", claim, "running", "global-initial-running")
             await transition("Global", claim, "completed", "global-initial-complete")
+            await call(
+                "Owner",
+                "POST",
+                f"rooms/{ids['room']}/messages",
+                {
+                    "operationId": "role-followup",
+                    "kind": "request",
+                    "body": "Metadata role instance fencing qualification.",
+                    "audience": "room",
+                    "recipientId": credentials["Global"]["principalId"],
+                },
+            )
+            second = await call(
+                "Global",
+                "POST",
+                "connector/claim",
+                {
+                    "operationId": "role-followup-claim",
+                    "hostId": ids["host"],
+                },
+            )
+            second_payload = {
+                **role_binding,
+                "claimId": second["delivery"]["claim_id"],
+                "generation": second["delivery"]["generation"],
+            }
+            path2 = f"connector/deliveries/{second['delivery']['id']}/goal-binding"
+            await call(
+                "Global", "POST", path2, {**second_payload, "nativeGoalId": str(uuid4())}, 409
+            )
+            await call(
+                "Global", "POST", path2, {**second_payload, "workspaceId": str(uuid4())}, 409
+            )
+            linked = await call("Global", "POST", path2, second_payload)
+            assert linked["native_goal_id"] == first_binding["native_goal_id"]
+            await transition("Global", second, "running", "role-followup-running")
+            await transition("Global", second, "completed", "role-followup-complete")
+            checks.append(
+                "Role responsibility survives deliveries; duplicate linkage is stable and stale revision, replacement instance and workspace changes are denied"
+            )
             payload = {
                 "operationId": "goal-create",
                 "id": ids["goal"],
@@ -826,6 +915,40 @@ async def main():
             ] == "cancelled"
             checks.append(
                 "One goal stop cancels pending work, requests the running owner to stop and closes only after acknowledgement"
+            )
+            current_role = await call(
+                "Owner", "GET", "agents/" + credentials["Global"]["principalId"] + "/role"
+            )
+            original_binding = await call("Owner", "GET", "deliveries/" + claim["delivery"]["id"])
+            await call(
+                "Owner",
+                "PUT",
+                "agents/" + credentials["Global"]["principalId"] + "/role",
+                {
+                    "primary": current_role["primary_role"],
+                    "purpose": current_role["purpose"] + " revised",
+                    "homeRoomId": current_role["home_room"],
+                    "revision": current_role["revision"],
+                    "nativeGoalScope": "role",
+                },
+            )
+            await call(
+                "Global",
+                "POST",
+                "connector/claim",
+                {
+                    "operationId": "changed-role-held",
+                    "hostId": ids["host"],
+                },
+                409,
+            )
+            await call("Global", "POST", "connector/reviews", {"hostId": ids["host"]}, 409)
+            assert (
+                await call("Owner", "GET", "deliveries/" + claim["delivery"]["id"])
+                == original_binding
+            )
+            checks.append(
+                "A changed bound role is held before admission/review, while its original receipt remains readable"
             )
             result = {
                 "state": "passed",

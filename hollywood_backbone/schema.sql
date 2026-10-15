@@ -217,3 +217,48 @@ DO $$ BEGIN
   INSERT INTO hb_schema VALUES (5);
  END IF;
 END $$;
+
+-- Ongoing native responsibilities are separate from canonical business goals.
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=6) THEN
+  ALTER TABLE hb_agent_role ADD COLUMN native_goal_scope text NOT NULL DEFAULT 'work'
+   CHECK(native_goal_scope IN ('role','work'));
+  UPDATE hb_agent_role SET native_goal_scope='role' WHERE primary_role='global';
+  ALTER TABLE hb_native_goal_binding ADD COLUMN binding_kind text NOT NULL DEFAULT 'coordination'
+   CHECK(binding_kind IN ('role','work','coordination'));
+  ALTER TABLE hb_native_goal_binding ADD COLUMN role_revision bigint CHECK(role_revision>0);
+  UPDATE hb_native_goal_binding SET binding_kind='work' WHERE work IS NOT NULL;
+  INSERT INTO hb_schema VALUES (6);
+ END IF;
+END $$;
+
+
+CREATE TABLE IF NOT EXISTS hb_native_role_goal (
+ principal uuid NOT NULL REFERENCES hb_principal(id), context_id text NOT NULL,
+ role_revision bigint NOT NULL CHECK(role_revision>0),
+ host uuid NOT NULL REFERENCES hb_host(id), workspace_id uuid NOT NULL,
+ room uuid NOT NULL REFERENCES hb_room(id), audience text NOT NULL, direct_sender uuid,
+ native_thread text NOT NULL, native_goal_id text NOT NULL, objective_digest text NOT NULL,
+ PRIMARY KEY(principal,context_id)
+);
+
+
+-- Preserve the legacy binding row shape for read compatibility and bounded-work
+-- rollback. New role writers still require the matching connector capability.
+CREATE TABLE IF NOT EXISTS hb_native_goal_scope (
+ delivery uuid NOT NULL, generation bigint NOT NULL,
+ binding_kind text NOT NULL CHECK(binding_kind IN ('role','work','coordination')),
+ role_revision bigint CHECK(role_revision>0),
+ PRIMARY KEY(delivery,generation),
+ FOREIGN KEY(delivery,generation) REFERENCES hb_native_goal_binding(delivery,generation),
+ CHECK((binding_kind='role') = (role_revision IS NOT NULL))
+);
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=7) THEN
+  INSERT INTO hb_native_goal_scope
+   SELECT delivery,generation,binding_kind,role_revision FROM hb_native_goal_binding;
+  ALTER TABLE hb_native_goal_binding DROP COLUMN binding_kind;
+  ALTER TABLE hb_native_goal_binding DROP COLUMN role_revision;
+  INSERT INTO hb_schema VALUES (7);
+ END IF;
+END $$;

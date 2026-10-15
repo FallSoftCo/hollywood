@@ -296,3 +296,44 @@ deferred effect, both bound native objectives paused, and the late answer was
 rejected. API qualification separately covers direct goal-stop fanout across
 running and pending work. These are one-host candidate proofs; production,
 physical phone, all-context role lifecycle and enterprise migration remain gates.
+
+
+## Native responsibility scopes
+
+Business goals, dependency plans and acceptance belong to Hollywood; they are not
+the single native goal of a supervisory context. Agent role metadata declares
+native_goal_scope (role or work). Global bootstrap uses role; other primaries
+may be explicitly configured by an administrator, without granting extra access.
+
+A role-scoped delivery binds no business goal/work ID. Its current role revision
+is checked, and hb_native_role_goal retains one native instance for that agent
+and private context, including host, workspace, room/audience and direct sender.
+The per-delivery binding remains immutable. Stale role revisions, changed native
+instances or substituted workspaces are conflicts, not automatic migrations.
+Assigned work must still bind its own goal/work and cannot claim a role instance.
+
+Business acceptance/cancellation changes only its canonical business lifecycle
+and child execution. It never completes or suspends the supervisor's broader
+native responsibility. LAX retains native accounting and plan notifications while
+the external role controller owns goal lifecycle and every execution admission.
+Role objectives do not create timer/model continuation loops.
+
+Schema 6 adds explicit role/binding scopes and the retained role-instance record.
+Existing coordination bindings keep their digest/identity and remain historical
+facts. No live context is adopted, cleared or replaced by migration. Converting
+existing contexts and exposing general role stop/resume remain explicit gates.
+
+
+Role protocol upgrade and rollback: schema 7 moves role/binding metadata into a
+separate table, retaining the original ten-column binding row shape and every
+recorded digest. Claims and automatic review dispatch for role-scoped actors
+require the native-role-goals/v1 connector capability. A missing capability
+rejects admission without consuming work/review policy; original receipts remain
+readable through their authenticated read routes.
+
+An older server can read legacy binding records, but cannot execute new role
+semantics safely. Rollback therefore requires draining/stopping role writers and
+disabling their placements before switching the authority runtime. Preserve the
+database and new history; do not restore an old dump over accepted new work or
+start an old coordinator against a role context. Use the coupled current package
+to reconcile original receipts. Production migration remains held.

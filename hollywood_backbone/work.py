@@ -475,7 +475,7 @@ def mutation(store, actor_id, action, identity, operation, payload):
         return receipt
 
 
-def dispatch_reviews(store, actor_id, host):
+def dispatch_reviews(store, actor_id, host, capabilities=()):
     """Desired-state reconciliation keyed by material worker reports; no timed goals."""
     with store.pool.connection() as c:
         a = store.actor(c, actor_id)
@@ -487,6 +487,7 @@ def dispatch_reviews(store, actor_id, host):
             ).fetchone()
         ):
             raise Denied("Enrolled execution owner required")
+        store.native_role_capability(c, a, capabilities)
         goals = c.execute(
             "SELECT * FROM hb_goal WHERE owner=%s AND state='active' AND review_remaining>0 ORDER BY id LIMIT 16 FOR UPDATE SKIP LOCKED",
             (actor_id,),
@@ -773,37 +774,94 @@ def native_binding(store, actor_id, identity, payload):
                 and e["data"].get("goalReferenceId") != goal
             ):
                 raise Denied("Goal is outside this admitted coordination request")
-        else:
-            raise ValueError("A canonical goal or work binding is required")
-        key = digest(payload)
-        old = c.execute(
-            "SELECT * FROM hb_native_goal_binding WHERE delivery=%s AND generation=%s",
-            (identity, d["generation"]),
-        ).fetchone()
+        kind = payload.get("bindingKind") or ("work" if work else "coordination")
+        role_revision = payload.get("roleRevision")
+        if kind == "role":
+            policy = c.execute(
+                "SELECT * FROM hb_agent_role WHERE principal=%s FOR SHARE", (a["id"],)
+            ).fetchone()
+            if goal or work or e["data"].get("workId"):
+                raise Denied("Role responsibility cannot claim business work")
+            if not policy or policy["native_goal_scope"] != "role":
+                raise Denied("Agent has no ongoing native responsibility")
+            if role_revision != policy["revision"]:
+                raise Conflict("Native role revision changed")
+        elif kind != ("work" if work else "coordination") or not goal or role_revision is not None:
+            raise Denied("Native binding scope differs from admitted work")
+        # Preserve the digest of pre-role bindings when optional fields were absent.
+        normalized = {
+            k: v
+            for k, v in payload.items()
+            if k not in ("bindingKind", "roleRevision") or v is not None
+        }
+        key = digest(normalized)
+        from .native_bindings import read as read_binding
+
+        old = read_binding(c, identity, d["generation"])
         if old:
             if old["digest"] != key:
                 raise Conflict("Native goal binding changed")
             return json_value(old)
         if d["state"] not in ("claimed", "running"):
             raise Conflict("Native goal binding is not admitted")
+        if kind == "role":
+            expected = (
+                role_revision,
+                str(d["host"]),
+                payload["workspaceId"],
+                str(e["room"]),
+                e["audience"],
+                str(e["author"]) if e["audience"] == "direct" else None,
+                payload["nativeThread"],
+                payload["nativeGoalId"],
+                payload["objectiveDigest"],
+            )
+            c.execute(
+                """INSERT INTO hb_native_role_goal
+                (principal,context_id,role_revision,host,workspace_id,room,audience,direct_sender,native_thread,native_goal_id,objective_digest)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                (a["id"], payload["contextId"], *expected),
+            )
+            original = c.execute(
+                "SELECT * FROM hb_native_role_goal WHERE principal=%s AND context_id=%s FOR SHARE",
+                (a["id"], payload["contextId"]),
+            ).fetchone()
+            actual = (
+                original["role_revision"],
+                str(original["host"]),
+                str(original["workspace_id"]),
+                str(original["room"]),
+                original["audience"],
+                str(original["direct_sender"]) if original["direct_sender"] else None,
+                original["native_thread"],
+                original["native_goal_id"],
+                original["objective_digest"],
+            )
+            if actual != expected:
+                raise Conflict("Original role instance or scope requires explicit reconciliation")
         c.execute(
             "UPDATE hb_delivery SET native_thread=COALESCE(native_thread,%s) WHERE id=%s",
             (payload["nativeThread"], identity),
         )
-        return json_value(
-            c.execute(
-                """INSERT INTO hb_native_goal_binding VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
-                (
-                    identity,
-                    d["generation"],
-                    goal,
-                    work,
-                    payload["nativeThread"],
-                    payload["nativeGoalId"],
-                    payload["contextId"],
-                    payload["workspaceId"],
-                    payload["objectiveDigest"],
-                    key,
-                ),
-            ).fetchone()
+        c.execute(
+            """INSERT INTO hb_native_goal_binding
+            (delivery,generation,goal,work,native_thread,native_goal_id,context_id,workspace_id,objective_digest,digest)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+            (
+                identity,
+                d["generation"],
+                goal,
+                work,
+                payload["nativeThread"],
+                payload["nativeGoalId"],
+                payload["contextId"],
+                payload["workspaceId"],
+                payload["objectiveDigest"],
+                key,
+            ),
         )
+        c.execute(
+            "INSERT INTO hb_native_goal_scope VALUES(%s,%s,%s,%s)",
+            (identity, d["generation"], kind, role_revision),
+        )
+        return json_value(read_binding(c, identity, d["generation"]))
