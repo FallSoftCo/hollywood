@@ -447,8 +447,12 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                     (payload["state"], Jsonb(payload["evidence"]), payload["note"], identity),
                 )
             elif action == "work.review":
-                if work["state"] != "submitted":
-                    raise Conflict("Only submitted work can be reviewed")
+                if work["state"] != "submitted" and not (
+                    work["state"] == "blocked" and payload["decision"] == "rejected"
+                ):
+                    raise Conflict(
+                        "Review requires submitted work; blocked work may only be rejected"
+                    )
                 d = c.execute(
                     "SELECT * FROM hb_delivery WHERE id=%s FOR SHARE", (work["delivery"],)
                 ).fetchone()

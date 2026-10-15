@@ -37,3 +37,20 @@ never reached native-submission-intent, their exact executors were independently
 stopped, and the deterministic goal validation error was reproduced with zero
 model turns. Full tasks remain in Hollywood; native goals now reference the
 exact contract rather than duplicating long assignments and acceptance text.
+
+
+## A completed worker reports a blocker
+
+A manager or designated independent verifier may explicitly reject a blocked
+report only after its original native execution is authoritatively complete.
+This retains the original report and attempt, never accepts missing evidence,
+and permits the existing revise-then-assign rework protocol. Revision and
+assignment are distinct audited decisions. A revised assignment should target
+the specific unmet prerequisite and inspect existing artifacts before doing
+additional work; it does not authorize replaying historical external effects.
+Unknown, running, cancelled or unconfirmed executions do not use this path.
+
+The native connector returns the public code NATIVE_WORK_GOAL_INCOMPLETE when
+a submission precedes completion of its bounded native work goal. It supplies
+the corrective lifecycle action without exposing arbitrary exception details.
+Completing that finite goal does not complete the enterprise goal.
