@@ -136,6 +136,41 @@ async def main():
                     "revision": 0,
                 },
             )
+            detail = await call("Owner", "GET", f"rooms/{target}")
+            membership = next(m for m in detail["memberships"] if m["principal"] == ids["worker"])
+            assert membership["revision"] == 1
+            await call(
+                "Owner",
+                "PUT",
+                f"rooms/{target}/membership",
+                {
+                    "principalId": ids["worker"],
+                    "can_read": True,
+                    "can_post": True,
+                    "can_request": False,
+                    "revision": 0,
+                },
+                409,
+            )
+            own_detail = await call("Worker", "GET", f"rooms/{target}")
+            assert own_detail["memberships"] and all(
+                m["principal"] == ids["worker"] for m in own_detail["memberships"]
+            )
+            await call(
+                "Owner",
+                "PUT",
+                f"rooms/{target}/membership",
+                {
+                    "principalId": ids["worker"],
+                    "can_read": True,
+                    "can_post": True,
+                    "can_request": False,
+                    "revision": membership["revision"],
+                },
+            )
+            checks.append(
+                "Current membership inspection enables revision correction; non-administrators see only their own grants"
+            )
             for name, aid in [
                 ("Global", credentials["Global"]["principalId"]),
                 ("Worker", ids["worker"]),
@@ -213,6 +248,24 @@ async def main():
                 409,
             )
             await call("Viewer", "GET", f"goals/{ids['goal']}", status=403)
+            reply = await call(
+                "Owner",
+                "POST",
+                f"rooms/{ids['room']}/messages",
+                {
+                    "operationId": "explicit-goal-followup",
+                    "kind": "request",
+                    "audience": "room",
+                    "recipientId": credentials["Global"]["principalId"],
+                    "sourceEventId": source["event"]["id"],
+                    "body": "Explicit source-bound goal control fixture; no model admission",
+                },
+            )
+            assert reply["event"]["data"]["goalReferenceId"] == ids["goal"]
+            assert "goalId" not in reply["event"]["data"]
+            await call(
+                "Owner", "POST", "deliveries/" + reply["deliveries"][0]["id"] + "/cancel", {}
+            )
             goal = await call("Global", "GET", f"goals/{ids['goal']}")
             for key, deps in [("w1", []), ("w2", [ids["w1"]])]:
                 await call(
@@ -483,19 +536,50 @@ async def main():
             )
             assert cancelled["state"] == "cancel_requested"
             g = await call("Global", "GET", f"goals/{ids['goal2']}")
+            pending_goal = await call(
+                "Global",
+                "POST",
+                f"goals/{ids['goal2']}/state",
+                {
+                    "operationId": "request-goal2-stop",
+                    "revision": g["goal"]["revision"],
+                    "state": "cancelled",
+                    "note": "Stop request must remain pending until native acknowledgement",
+                },
+            )
+            assert pending_goal["state"] == "cancel_requested"
+            observed_goal = await call("Global", "GET", f"goals/{ids['goal2']}")
             await call(
                 "Global",
                 "POST",
                 f"goals/{ids['goal2']}/state",
                 {
-                    "operationId": "premature-cancel-goal2",
-                    "revision": g["goal"]["revision"],
-                    "state": "cancelled",
-                    "note": "Cannot pretend running effects stopped",
+                    "operationId": "invalid-cancel-resume",
+                    "revision": observed_goal["goal"]["revision"],
+                    "state": "active",
+                    "note": "Must not silently undo an in-flight stop",
                 },
                 409,
             )
             await transition("Worker", c, "cancelled", "w3-cancel-ack")
+            assert (await call("Global", "GET", f"work/{ids['w3']}"))["work"][
+                "state"
+            ] == "cancelled"
+            settled_goal = await call("Global", "GET", f"goals/{ids['goal2']}")
+            assert settled_goal["goal"]["state"] == "cancelled"
+            goal_history = await call(
+                "Global", "GET", f"rooms/{ids['room']}/history?after=0&limit=100"
+            )
+            assert any(
+                e["data"].get("type") == "workflowState"
+                and e["data"].get("goalId") == ids["goal2"]
+                and e["data"].get("state") == "cancelled"
+                for e in goal_history["events"]
+            )
+            checks.append(
+                "Goal stop atomically closes admission and settles from original child acknowledgement with a causal service fact; no model polling"
+            )
+
             g = await call("Global", "GET", f"goals/{ids['goal2']}")
             await call(
                 "Global",
@@ -595,6 +679,153 @@ async def main():
             )
             checks.append(
                 "Revoked goal-room access denies retained management despite remaining work-room access"
+            )
+            admitted = await call(
+                "Owner",
+                "POST",
+                f"work/{w4}/assign",
+                {"operationId": "owner-assign-w4", "revision": 1},
+            )
+            claimed = await call(
+                "Worker",
+                "POST",
+                "connector/claim",
+                {"operationId": "unknown-w4-claim", "hostId": ids["host"]},
+            )
+            assert claimed["delivery"]["id"] == admitted["deliveryId"]
+            await transition("Worker", claimed, "running", "w4-running")
+            await transition("Worker", claimed, "unknown", "w4-unknown")
+            stopping = await call(
+                "Owner", "POST", f"deliveries/{admitted['deliveryId']}/cancel", {}
+            )
+            assert (
+                stopping["delivery"]["state"] == "unknown"
+                and stopping["delivery"]["cancellation_requested"]
+            )
+            again = await call("Owner", "POST", f"deliveries/{admitted['deliveryId']}/cancel", {})
+            assert stopping == again
+            await transition("Worker", claimed, "cancelled", "w4-stop-ack")
+            assert (await call("Owner", "GET", f"work/{w4}"))["work"]["state"] == "cancelled"
+            checks.append(
+                "Cancellation intent persists while execution is unknown; repeated stop is stable and only an acknowledgement cancels work"
+            )
+            checks.append(
+                "Explicit source reply carries a goal reference without manufacturing a work assignment"
+            )
+
+            failure_goal, failure_work = str(uuid4()), str(uuid4())
+            created_failure = await call(
+                "Owner",
+                "POST",
+                f"rooms/{ids['room']}/goals",
+                {**payload, "operationId": "failure-goal", "id": failure_goal, "reviewBudget": 1},
+            )
+            await call(
+                "Owner",
+                "POST",
+                f"goals/{failure_goal}/work",
+                {
+                    "operationId": "failure-plan",
+                    "revision": created_failure["goalRevision"],
+                    "id": failure_work,
+                    "roomId": target,
+                    "ownerId": ids["worker"],
+                    "specification": "Synthetic failed execution before a worker report",
+                    "acceptance": "No acceptance without evidence",
+                    "dependencies": [],
+                },
+            )
+            await call(
+                "Owner",
+                "POST",
+                f"work/{failure_work}/assign",
+                {"operationId": "failure-assign", "revision": 1},
+            )
+            failure_claim = await call(
+                "Worker",
+                "POST",
+                "connector/claim",
+                {"operationId": "failure-claim", "hostId": ids["host"]},
+            )
+            await transition("Worker", failure_claim, "running", "failure-running")
+            await transition("Worker", failure_claim, "failed", "failure-terminal")
+            review = await call("Global", "POST", "connector/reviews", {"hostId": ids["host"]})
+            assert len(review["admitted"]) == 1 and review["admitted"][0]["goalId"] == failure_goal
+            assert (await call("Global", "POST", "connector/reviews", {"hostId": ids["host"]}))[
+                "admitted"
+            ] == []
+            assert (await call("Owner", "GET", f"work/{failure_work}"))["work"][
+                "report_event"
+            ] is None
+            checks.append(
+                "Bounded Global review covers execution failure before any worker report, without fabricating evidence or replay"
+            )
+            fanout_goal, active_work, queued_work = str(uuid4()), str(uuid4()), str(uuid4())
+            await call(
+                "Owner",
+                "POST",
+                f"rooms/{ids['room']}/goals",
+                {**payload, "operationId": "fanout-goal", "id": fanout_goal, "reviewBudget": 0},
+            )
+            for n, work_id in enumerate((active_work, queued_work)):
+                current_goal = await call("Owner", "GET", f"goals/{fanout_goal}")
+                await call(
+                    "Owner",
+                    "POST",
+                    f"goals/{fanout_goal}/work",
+                    {
+                        "operationId": "fanout-plan-" + str(n),
+                        "revision": current_goal["goal"]["revision"],
+                        "id": work_id,
+                        "roomId": target,
+                        "ownerId": ids["worker"],
+                        "specification": "Synthetic goal-stop fanout " + str(n),
+                        "acceptance": "Stop within original ownership",
+                        "dependencies": [],
+                    },
+                )
+                await call(
+                    "Owner",
+                    "POST",
+                    f"work/{work_id}/assign",
+                    {"operationId": "fanout-assign-" + str(n), "revision": 1},
+                )
+            fanout_claim = await call(
+                "Worker",
+                "POST",
+                "connector/claim",
+                {"operationId": "fanout-running-claim", "hostId": ids["host"]},
+            )
+            await transition("Worker", fanout_claim, "running", "fanout-running")
+            current_goal = await call("Owner", "GET", f"goals/{fanout_goal}")
+            stopped_goal = await call(
+                "Owner",
+                "POST",
+                f"goals/{fanout_goal}/state",
+                {
+                    "operationId": "direct-goal-stop",
+                    "revision": current_goal["goal"]["revision"],
+                    "state": "cancelled",
+                    "note": "One control for running and queued work",
+                },
+            )
+            assert stopped_goal["state"] == "cancel_requested"
+            active_snapshot = await call("Owner", "GET", f"work/{active_work}")
+            queued_snapshot = await call("Owner", "GET", f"work/{queued_work}")
+            assert (
+                active_snapshot["execution"]["state"] == "cancel_requested"
+                and active_snapshot["execution"]["cancellation_requested"]
+            )
+            assert (
+                queued_snapshot["execution"]["state"] == "cancelled"
+                and queued_snapshot["work"]["state"] == "cancelled"
+            )
+            await transition("Worker", fanout_claim, "cancelled", "fanout-native-stop")
+            assert (await call("Owner", "GET", f"goals/{fanout_goal}"))["goal"][
+                "state"
+            ] == "cancelled"
+            checks.append(
+                "One goal stop cancels pending work, requests the running owner to stop and closes only after acknowledgement"
             )
             result = {
                 "state": "passed",

@@ -355,12 +355,15 @@ def mutation(store, actor_id, action, identity, operation, payload):
                     state = "cancel_requested"
                     if d["state"] in ("claimed", "running"):
                         c.execute(
-                            "UPDATE hb_delivery SET state='cancel_requested',revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
+                            "UPDATE hb_delivery SET state='cancel_requested',cancellation_requested=true,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
                             (d["id"],),
                         )
+                    c.execute(
+                        "UPDATE hb_delivery SET cancellation_requested=true WHERE id=%s", (d["id"],)
+                    )
                 elif d and d["state"] == "pending":
                     c.execute(
-                        "UPDATE hb_delivery SET state='cancelled',revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
+                        "UPDATE hb_delivery SET state='cancelled',cancellation_requested=true,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
                         (d["id"],),
                     )
                 c.execute(
@@ -371,6 +374,8 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 state = payload["state"]
                 if goal["state"] in ("accepted", "cancelled") and state != goal["state"]:
                     raise Conflict("Terminal goal cannot silently restart")
+                if goal["state"] == "cancel_requested" and state != "cancelled":
+                    raise Conflict("Cancellation must reconcile before resume or new work")
                 if state == "accepted":
                     rows = c.execute(
                         "SELECT state,room FROM hb_work WHERE goal=%s", (goal["id"],)
@@ -381,28 +386,36 @@ def mutation(store, actor_id, action, identity, operation, payload):
                         raise Conflict("Goal has unaccepted work")
                     if not payload["note"].strip():
                         raise Conflict("Goal acceptance requires explicit review")
-                if (
-                    state == "cancelled"
-                    and c.execute(
-                        """SELECT 1 FROM hb_work w JOIN hb_delivery d ON d.id=w.delivery WHERE w.goal=%s
-                       AND d.state IN ('claimed','running','unknown','cancel_requested') LIMIT 1""",
-                        (goal["id"],),
-                    ).fetchone()
-                ):
-                    raise Conflict("Admitted work requires cancellation reconciliation first")
                 if state == "cancelled":
                     for item in c.execute(
                         "SELECT room FROM hb_work WHERE goal=%s", (goal["id"],)
                     ).fetchall():
                         store.room(c, a, item["room"])
                     c.execute(
-                        "UPDATE hb_delivery SET state='cancelled',revision=revision+1 WHERE state='pending' AND id IN (SELECT delivery FROM hb_work WHERE goal=%s)",
+                        """UPDATE hb_delivery SET cancellation_requested=true,
+                        state=CASE WHEN state='pending' THEN 'cancelled'
+                                   WHEN state IN ('claimed','running') THEN 'cancel_requested' ELSE state END,
+                        revision=revision+1,updated_at=clock_timestamp()
+                        WHERE id IN (SELECT delivery FROM hb_work WHERE goal=%s)
+                        AND state IN ('pending','claimed','running','unknown','cancel_requested')
+                        AND NOT cancellation_requested""",
                         (goal["id"],),
                     )
                     c.execute(
-                        "UPDATE hb_work SET state='cancelled',revision=revision+1 WHERE goal=%s AND state<>'accepted'",
+                        """UPDATE hb_work w SET state=CASE WHEN EXISTS(
+                          SELECT 1 FROM hb_delivery d WHERE d.id=w.delivery
+                          AND d.state IN ('claimed','running','unknown','cancel_requested'))
+                          THEN 'cancel_requested' ELSE 'cancelled' END,
+                          revision=revision+1
+                          WHERE w.goal=%s AND w.state NOT IN ('accepted','cancelled')""",
                         (goal["id"],),
                     )
+                    if c.execute(
+                        """SELECT 1 FROM hb_work w JOIN hb_delivery d ON d.id=w.delivery
+                        WHERE w.goal=%s AND d.state IN ('claimed','running','unknown','cancel_requested') LIMIT 1""",
+                        (goal["id"],),
+                    ).fetchone():
+                        state = "cancel_requested"
                 c.execute("UPDATE hb_goal SET state=%s WHERE id=%s", (state, goal["id"]))
                 # Pause is admission control, not a claim that active effects stopped.
             else:
@@ -452,6 +465,11 @@ def mutation(store, actor_id, action, identity, operation, payload):
             "INSERT INTO hb_command VALUES(%s,%s,%s,%s,%s)",
             (a["authority"], a["id"], operation, fingerprint, event),
         )
+        if action == "goal.state" and payload["state"] == "cancelled":
+            c.execute(
+                "UPDATE hb_goal SET cancellation_event=COALESCE(cancellation_event,%s) WHERE id=%s",
+                (event, goal["id"]),
+            )
         if action == "work.report":
             c.execute("UPDATE hb_work SET report_event=%s WHERE id=%s", (event, work["id"]))
         return receipt
@@ -485,10 +503,13 @@ def dispatch_reviews(store, actor_id, host):
             ):
                 continue
             material = c.execute(
-                """SELECT w.id,w.report_event,w.owner,d.state,d.revision,e.seq
+                """SELECT w.id,COALESCE(w.report_event,d.result_event,w.request_event) AS report_event,
+                          w.owner,d.state,d.revision,e.seq
                    FROM hb_work w JOIN hb_delivery d ON d.id=w.delivery
-                   JOIN hb_event e ON e.id=w.report_event
-                   WHERE w.goal=%s AND w.owner<>%s AND w.state IN ('submitted','blocked')
+                   JOIN hb_event e ON e.id=COALESCE(w.report_event,d.result_event,w.request_event)
+                   WHERE w.goal=%s AND w.owner<>%s
+                   AND w.state NOT IN ('accepted','cancelled','cancel_requested')
+                   AND (w.state IN ('submitted','blocked') OR d.state IN ('failed','unknown'))
                    AND d.state IN ('completed','failed','cancelled','unknown') ORDER BY w.id""",
                 (goal["id"], actor_id),
             ).fetchall()
@@ -507,9 +528,9 @@ def dispatch_reviews(store, actor_id, host):
                 a,
                 goal["room"],
                 "request",
-                "Review material worker reports for goal "
+                "Review material worker reports or execution failure/uncertainty for goal "
                 + str(goal["id"])
-                + ". Read its current plan, inspect execution and artifact evidence, then explicitly accept, reject or report a blocker. This bounded review does not authorize new unrelated work.",
+                + ". Read its current plan, inspect original execution receipts and artifact evidence, then explicitly accept, reject or report a blocker. Unknown effects must be reconciled before any retry; this review does not authorize replay or unrelated work.",
                 recipient=actor_id,
                 source=source,
                 data={
@@ -571,6 +592,7 @@ def supervision(store, actor_id, after, limit):
                         "kind": e["kind"],
                         "material": bool(
                             e["data"].get("workflowAction")
+                            or e["data"].get("type") == "workflowState"
                             or e["kind"] in ("question", "approval", "result")
                         ),
                         "goalId": e["data"].get("goalId"),
@@ -636,6 +658,76 @@ def claim_candidate(store, c, actor):
     ).fetchone()
 
 
+def lock_delivery_goal(c, identity, authority):
+    """Take the lifecycle lock before delivery locks, including worker acknowledgements."""
+    work = c.execute(
+        "SELECT id,goal FROM hb_work WHERE delivery=%s AND authority=%s", (identity, authority)
+    ).fetchone()
+    if work:
+        c.execute("SELECT id FROM hb_goal WHERE id=%s FOR UPDATE", (work["goal"],))
+    return work
+
+
+def acknowledge_cancellation(c, work):
+    if not work:
+        return
+    changed = c.execute(
+        """UPDATE hb_work SET state='cancelled',revision=revision+1
+           WHERE id=%s AND state NOT IN ('accepted','cancelled') RETURNING id""",
+        (work["id"],),
+    ).fetchone()
+    if changed:
+        c.execute("UPDATE hb_goal SET revision=revision+1 WHERE id=%s", (work["goal"],))
+
+
+def settle_goal_cancellation(store, c, work):
+    if not work:
+        return
+    goal = c.execute("SELECT * FROM hb_goal WHERE id=%s", (work["goal"],)).fetchone()
+    if goal["state"] != "cancel_requested":
+        return
+    if c.execute(
+        """SELECT 1 FROM hb_work w JOIN hb_delivery d ON d.id=w.delivery
+        WHERE w.goal=%s AND d.state IN ('pending','claimed','running','unknown','cancel_requested') LIMIT 1""",
+        (goal["id"],),
+    ).fetchone():
+        return
+    c.execute(
+        "UPDATE hb_work SET state='cancelled',revision=revision+1 WHERE goal=%s AND state NOT IN ('accepted','cancelled')",
+        (goal["id"],),
+    )
+    c.execute("UPDATE hb_goal SET state='cancelled',revision=revision+1 WHERE id=%s", (goal["id"],))
+    cause = c.execute(
+        "SELECT * FROM hb_event WHERE id=%s", (goal["cancellation_event"],)
+    ).fetchone()
+    if not cause:
+        raise Conflict("Goal cancellation lacks its original causal control event")
+    actor = c.execute(
+        "SELECT * FROM hb_principal WHERE id=%s AND authority=%s",
+        (cause["author"], goal["authority"]),
+    ).fetchone()
+    # This is a service-generated fact causally attributed to its accepted control,
+    # not an agent message or a new execution request. No child/private body expands.
+    store.event(
+        c,
+        actor,
+        goal["room"],
+        "progress",
+        "Hollywood: goal cancellation acknowledged.",
+        source=cause["id"],
+        audience=cause["audience"],
+        recipient=cause["recipient"],
+        data={
+            "type": "workflowState",
+            "service": "Hollywood",
+            "projection": True,
+            "goalId": str(goal["id"]),
+            "state": "cancelled",
+            "causalControlEventId": str(cause["id"]),
+        },
+    )
+
+
 def native_binding(store, actor_id, identity, payload):
     with store.pool.connection() as c:
         a = store.actor(c, actor_id)
@@ -675,7 +767,11 @@ def native_binding(store, actor_id, identity, payload):
             g = goal_row(store, c, a, goal)
             if str(g["owner"]) != str(a["id"]) or str(g["room"]) != str(e["room"]):
                 raise Denied("Coordinator binding does not own this goal")
-            if str(g["source"]) != str(e["id"]) and e["data"].get("goalId") != goal:
+            if (
+                str(g["source"]) != str(e["id"])
+                and e["data"].get("goalId") != goal
+                and e["data"].get("goalReferenceId") != goal
+            ):
                 raise Denied("Goal is outside this admitted coordination request")
         else:
             raise ValueError("A canonical goal or work binding is required")

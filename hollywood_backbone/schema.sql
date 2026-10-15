@@ -198,3 +198,22 @@ CREATE TABLE IF NOT EXISTS hb_native_goal_binding (
  PRIMARY KEY(delivery,generation)
 );
 INSERT INTO hb_schema VALUES (3) ON CONFLICT DO NOTHING;
+
+-- Desired cancellation survives unknown execution; it is not a stop acknowledgement.
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=4) THEN
+  ALTER TABLE hb_delivery ADD COLUMN IF NOT EXISTS cancellation_requested boolean NOT NULL DEFAULT false;
+  UPDATE hb_delivery SET cancellation_requested=true WHERE state IN ('cancel_requested','cancelled');
+  INSERT INTO hb_schema VALUES (4);
+ END IF;
+END $$;
+
+-- Goal cancellation is a durable aggregate control, never a model polling loop.
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=5) THEN
+  ALTER TABLE hb_goal ADD COLUMN cancellation_event uuid REFERENCES hb_event(id);
+  ALTER TABLE hb_goal DROP CONSTRAINT hb_goal_state_check;
+  ALTER TABLE hb_goal ADD CONSTRAINT hb_goal_state_check CHECK(state IN ('active','paused','accepted','cancel_requested','cancelled'));
+  INSERT INTO hb_schema VALUES (5);
+ END IF;
+END $$;

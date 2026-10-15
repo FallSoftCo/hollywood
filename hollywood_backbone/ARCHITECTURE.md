@@ -245,3 +245,54 @@ reads this actual native history and preserves identity across restart. These
 proofs do not establish physical Android delivery, a second execution host,
 continuous Global supervision, full cancellation/crash recovery, or production
 cutover. Owned qualification agents are stopped after completion.
+
+
+## Desired cancellation and authoritative recovery
+
+Additive schema 4 retains `cancellation_requested` independently of observed
+execution state. Requesting stop while delivery is unknown preserves unknown and
+records the desired control. Repeating it does not imply execution stopped.
+An original fenced native stop acknowledgement atomically cancels associated
+work and advances its parent plan revision, under goal-before-delivery lock order.
+Pending work can be cancelled before admission. Goal cancellation still refuses
+to claim that active or unknown work has stopped.
+
+Delivery readback includes the original native goal binding. LAX recovery checks
+its context, workspace, native instance and objective digest before metadata
+control; it never creates/adopts a replacement goal or starts a model turn.
+Source-bound coordinator replies carry a separate `goalReferenceId`, so a
+conversation reference does not manufacture a work assignment or silently retarget
+an existing native goal. Current native coordination scope remains a release gate
+for simultaneous business goals and control across multiple contexts/hosts.
+
+Material supervision includes failed/unknown worker execution even when the
+worker could not publish a report. The same explicit budget, causal digest,
+outstanding-review coalescing and owner exclusion apply. It does not invent
+worker evidence or authorize retry of an uncertain effect. Administrative room
+inspection exposes all membership revisions to administrators and only the
+caller's own grants otherwise. Role names still confer no authority.
+
+Actual PostgreSQL/HTTP qualification covers unknown stop intent, stable repeated
+stop, acknowledged work cancellation, source-bound goal references, current
+membership revisions and pre-report failure review. Native cancellation/helper
+and late-answer qualification is recorded separately; a partially executed or
+failed probe is not a production release gate passing.
+
+
+Schema 5 makes a goal stop an asynchronous aggregate operation. It closes new
+admission, cancels pending work and records desired stop for active/unknown
+owners in one transaction. The goal remains cancel_requested until original
+acknowledgements establish that no active/unknown work remains. The final
+acknowledgement closes the goal and emits one service-generated state fact in
+its owning room, causally attributed to the accepted control. It expands no
+private child body and admits no model. Known completed effects remain facts;
+accepted work and original receipts/artifacts are retained.
+
+The installed dev6 candidate passed an actual three-turn Global/worker exercise:
+Global recovered a deliberately stale membership revision, provisioned a separate
+worker, delegated a helper plus native question, handled the human stop in the
+same context/goal instance, and closed the goal. The helper stopped without its
+deferred effect, both bound native objectives paused, and the late answer was
+rejected. API qualification separately covers direct goal-stop fanout across
+running and pending work. These are one-host candidate proofs; production,
+physical phone, all-context role lifecycle and enterprise migration remain gates.

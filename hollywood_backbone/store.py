@@ -463,6 +463,12 @@ class Store:
                 "room": json_value(room),
                 "permissions": permissions,
                 "actors": json_value(actors),
+                "memberships": json_value(
+                    c.execute(
+                        "SELECT * FROM hb_membership WHERE room=%s AND (%s OR principal=%s) ORDER BY principal",
+                        (identity, a["administrator"], a["id"]),
+                    ).fetchall()
+                ),
                 "deliveries": json_value(work),
             }
 
@@ -507,6 +513,7 @@ class Store:
             if audience == "direct" and not recipient:
                 raise Conflict("Private message requires an explicit recipient")
             source = payload.get("sourceEventId")
+            data = {}
             if source:
                 parent = self.readable_event(c, a, source)
                 if parent["audience"] == "direct":
@@ -514,6 +521,20 @@ class Store:
                     reply = {str(a["id"]), recipient}
                     if str(parent["room"]) != room_id or audience != "direct" or reply != original:
                         raise Denied("Private source cannot expand its audience")
+                if kind == "request" and str(parent["room"]) == room_id:
+                    goals = c.execute(
+                        """SELECT id FROM hb_goal WHERE authority=%s AND room=%s AND owner=%s
+                           AND (source=%s OR id::text=%s) ORDER BY id LIMIT 2""",
+                        (
+                            a["authority"],
+                            room_id,
+                            recipient,
+                            parent["id"],
+                            parent["data"].get("goalReferenceId", parent["data"].get("goalId")),
+                        ),
+                    ).fetchall()
+                    if len(goals) == 1:
+                        data["goalReferenceId"] = str(goals[0]["id"])
             event = self.event(
                 c,
                 a,
@@ -523,6 +544,7 @@ class Store:
                 recipient=recipient,
                 audience=audience,
                 source=source,
+                data=data,
             )
             c.execute(
                 "INSERT INTO hb_command VALUES(%s,%s,%s,%s,%s)",
@@ -693,11 +715,22 @@ class Store:
             return {"delivery": None}
         d = c.execute("SELECT * FROM hb_delivery WHERE id=%s", (identity,)).fetchone()
         e = c.execute("SELECT * FROM hb_event WHERE id=%s", (d["event"],)).fetchone()
-        return {"delivery": json_value(d), "request": json_value(e)}
+        binding = c.execute(
+            "SELECT * FROM hb_native_goal_binding WHERE delivery=%s AND generation=%s",
+            (identity, d["generation"]),
+        ).fetchone()
+        return {
+            "delivery": json_value(d),
+            "request": json_value(e),
+            **({"nativeGoalBinding": json_value(binding)} if binding else {}),
+        }
 
     def transition(self, actor_id, identity, operation, payload):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
+            from .work import acknowledge_cancellation, lock_delivery_goal
+
+            work = lock_delivery_goal(c, identity, a["authority"])
             d = c.execute(
                 "SELECT * FROM hb_delivery WHERE id=%s AND agent=%s FOR UPDATE", (identity, a["id"])
             ).fetchone()
@@ -753,6 +786,12 @@ class Store:
                 "UPDATE hb_delivery SET state=%s,native_thread=COALESCE(%s,native_thread),native_turn=COALESCE(%s,native_turn),result_event=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
                 (state, payload.get("nativeThread"), payload.get("nativeTurn"), result, identity),
             )
+            if state == "cancelled":
+                acknowledge_cancellation(c, work)
+            if terminal:
+                from .work import settle_goal_cancellation
+
+                settle_goal_cancellation(self, c, work)
             if terminal:
                 # Terminal execution cannot retain an actionable old native prompt.
                 # A submitted response's consumption remains a separate fact.
@@ -780,6 +819,9 @@ class Store:
     def cancel(self, actor_id, identity):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
+            from .work import acknowledge_cancellation, lock_delivery_goal
+
+            work = lock_delivery_goal(c, identity, a["authority"])
             d = c.execute(
                 "SELECT * FROM hb_delivery WHERE id=%s AND authority=%s FOR UPDATE",
                 (identity, a["authority"]),
@@ -789,14 +831,25 @@ class Store:
             e = self.readable_event(c, a, d["event"])
             if not a["administrator"] and a["id"] != e["author"]:
                 raise Denied("Only requester or administrator may cancel")
-            if d["state"] in ("pending", "claimed", "running"):
+            if (
+                d["state"] in ("pending", "claimed", "running", "unknown")
+                and not d["cancellation_requested"]
+            ):
                 # Claimed work may already be executing: cancellation is a request,
                 # never evidence that a shell, model turn or external effect stopped.
-                state = "cancelled" if d["state"] == "pending" else "cancel_requested"
+                state = (
+                    "cancelled"
+                    if d["state"] == "pending"
+                    else "unknown"
+                    if d["state"] == "unknown"
+                    else "cancel_requested"
+                )
                 c.execute(
-                    "UPDATE hb_delivery SET state=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
+                    "UPDATE hb_delivery SET state=%s,cancellation_requested=true,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
                     (state, identity),
                 )
+                if state == "cancelled":
+                    acknowledge_cancellation(c, work)
                 self.event(
                     c,
                     a,
@@ -852,6 +905,7 @@ class Store:
                     "roomOwnerId": room["owner"],
                     "requestId": e["id"],
                     "goalId": e["data"].get("goalId"),
+                    "goalReferenceId": e["data"].get("goalReferenceId"),
                     "workId": e["data"].get("workId"),
                     "workAcceptance": e["data"].get("acceptance"),
                     "goalReview": bool(e["data"].get("goalReview")),
