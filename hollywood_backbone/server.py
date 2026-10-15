@@ -261,6 +261,7 @@ class ArtifactEvidence(Input):
 
 
 class WorkReport(WorkflowRevision):
+    briefingSequence: int | None = Field(default=None, ge=0, le=9007199254740991)
     claimId: str = Field(min_length=1, max_length=128)
     generation: int = Field(ge=1)
     state: Literal["submitted", "blocked"]
@@ -271,6 +272,24 @@ class WorkReport(WorkflowRevision):
 class WorkReview(WorkflowRevision):
     decision: Literal["accepted", "rejected"]
     note: str = Field(min_length=1, max_length=4000)
+
+
+class WorkRevise(WorkflowRevision):
+    ownerId: UUID
+    specification: str = Field(min_length=1, max_length=6000)
+    acceptance: str = Field(min_length=1, max_length=4000)
+    note: str = Field(min_length=1, max_length=4000)
+
+
+class DecisionWrite(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    id: UUID
+    key: str = Field(min_length=1, max_length=128, pattern=r"^[a-z0-9][a-z0-9_./-]*$")
+    revision: int = Field(ge=0)
+    goalId: UUID | None = None
+    state: Literal["active", "retracted", "conflicted"]
+    body: str = Field(min_length=1, max_length=6000)
+    sourceEventId: UUID
 
 
 class WorkCancel(WorkflowRevision):
@@ -605,6 +624,7 @@ async def workflow(request):
         "report": WorkReport,
         "review": WorkReview,
         "cancel": WorkCancel,
+        "revise": WorkRevise,
     }[action]
     p = await body(request, model)
     payload = p.model_dump(mode="json", exclude={"operationId"})
@@ -677,6 +697,38 @@ async def goal_state(request):
     )
 
 
+async def decisions(request):
+    if request.method == "POST":
+        p = await body(request, DecisionWrite)
+        return await invoke(
+            request, "decision_write", str(UUID(request.match_info["room"])),
+            p.operationId, p.model_dump(mode="json", exclude={"operationId"}),
+        )
+    if set(request.query) - {"after", "limit", "goalId"}:
+        raise ValueError("Unknown decision query")
+    after = str(UUID(request.query["after"])) if "after" in request.query else None
+    goal = str(UUID(request.query["goalId"])) if "goalId" in request.query else None
+    limit = int(request.query.get("limit", "32"))
+    if not 1 <= limit <= 100:
+        raise ValueError("Invalid decision limit")
+    return await invoke(request, "decision_list",
+                        str(UUID(request.match_info["room"])), after, limit, goal)
+
+
+async def briefing(request):
+    return await invoke(request, "briefing", str(UUID(request.match_info["delivery"])))
+
+
+async def work_attempts(request):
+    if set(request.query) - {"after", "limit"}:
+        raise ValueError("Unknown attempt query")
+    after, limit = int(request.query.get("after", "0")), int(request.query.get("limit", "100"))
+    if not 0 <= after <= 9007199254740991 or not 1 <= limit <= 100:
+        raise ValueError("Invalid attempt page")
+    return await invoke(request, "work_attempts",
+                        str(UUID(request.match_info["work"])), after, limit)
+
+
 async def goal_read(request):
     return await invoke(request, "goal_read", str(UUID(request.match_info["goal"])))
 
@@ -742,8 +794,12 @@ def application(store):
             web.get("/hollywood/v3/rooms/{room}/work", work_list),
             web.post("/hollywood/v3/goals/{goal}/state", goal_state),
             web.get("/hollywood/v3/work/{work}", work_read),
+            web.get("/hollywood/v3/work/{work}/attempts", work_attempts),
+            web.get("/hollywood/v3/rooms/{room}/decisions", decisions),
+            web.post("/hollywood/v3/rooms/{room}/decisions", decisions),
+            web.get("/hollywood/v3/connector/deliveries/{delivery}/briefing", briefing),
             web.post(
-                "/hollywood/v3/work/{work}/{action:assign|claim|report|review|cancel}", workflow
+                "/hollywood/v3/work/{work}/{action:assign|claim|report|review|cancel|revise}", workflow
             ),
             web.post("/hollywood/v3/connector/reviews", review_dispatch),
             web.get("/hollywood/v3/supervision", supervision),

@@ -52,7 +52,8 @@ def configure(store, c, actor, goal, payload):
     if (old["revision"] if old else 0) != payload["cooperationRevision"]:
         raise Conflict("Cooperation revision changed")
     if c.execute(
-        "SELECT 1 FROM hb_work WHERE goal=%s AND delivery IS NOT NULL LIMIT 1", (goal["id"],)
+        """SELECT 1 FROM hb_work w WHERE w.goal=%s AND EXISTS(
+           SELECT 1 FROM hb_work_attempt a WHERE a.work=w.id) LIMIT 1""", (goal["id"],)
     ).fetchone():
         raise Conflict("Admitted work requires an explicit cooperation migration")
     ids = payload["executorIds"]

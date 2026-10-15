@@ -288,3 +288,50 @@ DO $$ BEGIN
   INSERT INTO hb_schema VALUES (8);
  END IF;
 END $$;
+
+
+-- Explicit current decisions and original work-attempt lineage.
+CREATE TABLE IF NOT EXISTS hb_decision (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, room uuid NOT NULL, goal uuid,
+ key text NOT NULL, creator uuid NOT NULL, revision bigint NOT NULL DEFAULT 0,
+ UNIQUE(authority,id), UNIQUE(room,key),
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
+ FOREIGN KEY(authority,goal) REFERENCES hb_goal(authority,id),
+ FOREIGN KEY(authority,creator) REFERENCES hb_principal(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_decision_revision (
+ decision uuid NOT NULL REFERENCES hb_decision(id), revision bigint NOT NULL CHECK(revision>0),
+ state text NOT NULL CHECK(state IN ('active','retracted','conflicted')),
+ body text NOT NULL, issuer uuid NOT NULL REFERENCES hb_principal(id),
+ source uuid NOT NULL REFERENCES hb_event(id), event uuid NOT NULL UNIQUE REFERENCES hb_event(id),
+ PRIMARY KEY(decision,revision)
+);
+CREATE TABLE IF NOT EXISTS hb_work_attempt (
+ delivery uuid PRIMARY KEY, authority uuid NOT NULL, work uuid NOT NULL,
+ number bigint NOT NULL CHECK(number>0), owner uuid NOT NULL,
+ request_event uuid NOT NULL, specification text NOT NULL, acceptance text NOT NULL,
+ origin text NOT NULL CHECK(origin IN ('native-admission','migration-current-binding')),
+ report_event uuid REFERENCES hb_event(id), evidence jsonb NOT NULL DEFAULT '[]',
+ report_note text NOT NULL DEFAULT '', review_event uuid REFERENCES hb_event(id),
+ review_decision text CHECK(review_decision IN ('accepted','rejected')),
+ review_note text NOT NULL DEFAULT '', briefing_sequence bigint, created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(work,number),
+ FOREIGN KEY(authority,delivery) REFERENCES hb_delivery(authority,id),
+ FOREIGN KEY(authority,work) REFERENCES hb_work(authority,id),
+ FOREIGN KEY(authority,owner) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,request_event) REFERENCES hb_event(authority,id)
+);
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=9) THEN
+  -- This retains the known current binding, not invented earlier attempts.
+  INSERT INTO hb_work_attempt
+   (delivery,authority,work,number,owner,request_event,specification,acceptance,origin,
+    report_event,evidence,report_note,review_decision,created_at)
+   SELECT w.delivery,w.authority,w.id,1,w.owner,w.request_event,w.specification,w.acceptance,
+    'migration-current-binding',w.report_event,w.evidence,w.note,
+    CASE WHEN w.state IN ('accepted','rejected') THEN w.state ELSE NULL END,e.created_at
+   FROM hb_work w JOIN hb_event e ON e.id=w.request_event
+   WHERE w.delivery IS NOT NULL;
+  INSERT INTO hb_schema VALUES (9);
+ END IF;
+END $$;

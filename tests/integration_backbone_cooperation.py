@@ -140,7 +140,7 @@ async def main():
                 },
             )
 
-        caps = ["native-role-goals/v1", "cooperation-plan/v1"]
+        caps = ["native-role-goals/v1", "cooperation-plan/v1", "work-attempts/v1", "room-briefing/v1"]
         try:
             for name in principals:
                 if name in ("Owner", "Global"):

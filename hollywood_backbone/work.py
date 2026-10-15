@@ -340,6 +340,7 @@ def mutation(store, actor_id, action, identity, operation, payload):
                     work["owner"] = a["id"]
                 cooperation.executor(store, c, goal, str(work["owner"]), work["room"])
                 policy = cooperation.row(c, goal["id"])
+                delivery = uid()
                 request = store.event(
                     c,
                     a,
@@ -356,14 +357,44 @@ def mutation(store, actor_id, action, identity, operation, payload):
                         "cooperationRevision": policy["revision"] if policy else None,
                     },
                 )
-                delivery = uid()
                 c.execute(
                     "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
                     (delivery, a["authority"], request, work["owner"]),
                 )
+                from .attempts import record as record_attempt
+
+                number = record_attempt(c, work, delivery, request)
+                c.execute(
+                    "UPDATE hb_event SET data=data || %s WHERE id=%s",
+                    (Jsonb({"attemptId": delivery, "attemptNumber": number}), request),
+                )
                 c.execute(
                     "UPDATE hb_work SET state='assigned',request_event=%s,delivery=%s,revision=revision+1 WHERE id=%s",
                     (request, delivery, identity),
+                )
+            elif action == "work.revise":
+                # Rework is new intent after completed, independently rejected work.
+                if work["state"] != "rejected" or not work["delivery"]:
+                    raise Conflict("Rework requires independently rejected completed work")
+                original = c.execute(
+                    "SELECT * FROM hb_delivery WHERE id=%s FOR SHARE", (work["delivery"],)
+                ).fetchone()
+                if (original["state"] != "completed" or not original["native_turn"]
+                        or not original["native_thread"]):
+                    raise Conflict("Original execution is not authoritatively complete")
+                if c.execute(
+                    """SELECT 1 FROM hb_attention WHERE delivery=%s
+                       AND state NOT IN ('closed','expired') LIMIT 1""",
+                    (original["id"],),
+                ).fetchone():
+                    raise Conflict("Original native attention remains unsettled")
+                cooperation.executor(store, c, goal, payload["ownerId"], work["room"])
+                c.execute(
+                    """UPDATE hb_work SET state='planned',owner=%s,specification=%s,
+                       acceptance=%s,request_event=NULL,delivery=NULL,report_event=NULL,
+                       evidence='[]',note=%s,revision=revision+1 WHERE id=%s""",
+                    (payload["ownerId"], payload["specification"], payload["acceptance"],
+                     payload["note"], identity),
                 )
             elif action == "work.report":
                 if a["id"] != work["owner"] or not work["delivery"]:
@@ -383,6 +414,15 @@ def mutation(store, actor_id, action, identity, operation, payload):
                     raise Denied("Artifact host differs from execution host")
                 if payload["state"] == "submitted" and not payload["evidence"]:
                     raise Conflict("Submitted work requires evidence")
+                if payload["state"] == "submitted":
+                    from .memory import current_sequence
+                    latest = current_sequence(c, work["room"], work["goal"])
+                    seen = payload.get("briefingSequence")
+                    head = c.execute(
+                        "SELECT next_seq FROM hb_authority WHERE id=%s", (a["authority"],)
+                    ).fetchone()["next_seq"]
+                    if latest and (seen is None or seen < latest or seen > head):
+                        raise Conflict("Current decisions changed; read the original work briefing")
                 c.execute(
                     "UPDATE hb_work SET state=%s,evidence=%s,note=%s,revision=revision+1 WHERE id=%s",
                     (payload["state"], Jsonb(payload["evidence"]), payload["note"], identity),
@@ -397,6 +437,16 @@ def mutation(store, actor_id, action, identity, operation, payload):
                     raise Conflict("Native execution has not completed")
                 if a["id"] == work["owner"] and not a["administrator"]:
                     raise Denied("Worker cannot accept its own work")
+                from .memory import current_sequence
+                latest = current_sequence(c, work["room"], work["goal"])
+                if payload["decision"] == "accepted":
+                    attempt = c.execute(
+                        "SELECT briefing_sequence FROM hb_work_attempt WHERE delivery=%s",
+                        (work["delivery"],),
+                    ).fetchone()
+                    if latest and (not attempt or attempt["briefing_sequence"] is None
+                                   or attempt["briefing_sequence"] < latest):
+                        raise Conflict("Evidence predates current decisions; explicit rework is required")
                 c.execute(
                     "UPDATE hb_work SET state=%s,note=%s,revision=revision+1 WHERE id=%s",
                     (payload["decision"], payload["note"], identity),
@@ -513,6 +563,15 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 "goalId": str(goal["id"]),
                 "workId": str(work["id"]) if work else None,
                 "workflowReceipt": receipt,
+                **({"workReport": {
+                    "state": payload["state"], "evidence": payload["evidence"],
+                    "note": payload["note"],
+                    "briefingSequence": payload.get("briefingSequence"),
+                }} if action == "work.report" else {}),
+                **({"workReview": {
+                    "decision": payload["decision"], "note": payload["note"],
+                    "decisionSequence": latest,
+                }} if action == "work.review" else {}),
             },
         )
         receipt["eventId"] = event
@@ -531,6 +590,16 @@ def mutation(store, actor_id, action, identity, operation, payload):
             )
         if action == "work.report":
             c.execute("UPDATE hb_work SET report_event=%s WHERE id=%s", (event, work["id"]))
+            c.execute(
+                "UPDATE hb_work_attempt SET report_event=%s,evidence=%s,report_note=%s,briefing_sequence=%s WHERE delivery=%s",
+                (event, Jsonb(payload["evidence"]), payload["note"],
+                 payload.get("briefingSequence"), work["delivery"]),
+            )
+        if action == "work.review":
+            c.execute(
+                "UPDATE hb_work_attempt SET review_event=%s,review_decision=%s,review_note=%s WHERE delivery=%s",
+                (event, payload["decision"], payload["note"], work["delivery"]),
+            )
         return receipt
 
 
@@ -661,7 +730,7 @@ def supervision(store, actor_id, after, limit):
                         "kind": e["kind"],
                         "material": bool(
                             e["data"].get("workflowAction")
-                            or e["data"].get("type") == "workflowState"
+                            or e["data"].get("type") in ("workflowState", "decisionState")
                             or e["kind"] in ("question", "approval", "result")
                         ),
                         "goalId": e["data"].get("goalId"),

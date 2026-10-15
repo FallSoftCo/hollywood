@@ -83,7 +83,7 @@ async def main():
                 and path in ("connector/claim", "connector/reviews")
                 and not (payload or {}).get("withoutRoleCapability")
             ):
-                payload = {**payload, "capabilities": ["native-role-goals/v1"]}
+                payload = {**payload, "capabilities": ["native-role-goals/v1", "work-attempts/v1", "room-briefing/v1"]}
             if payload and payload.get("withoutRoleCapability"):
                 payload = {k: v for k, v in payload.items() if k != "withoutRoleCapability"}
             async with session.request(

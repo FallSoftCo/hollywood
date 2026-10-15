@@ -36,6 +36,22 @@ def json_value(value):
 
 
 class Store:
+    def decision_write(self, actor_id, room, operation, payload):
+        from .memory import write
+        return write(self, actor_id, room, operation, payload)
+
+    def decision_list(self, actor_id, room, after, limit, goal=None):
+        from .memory import listing
+        return listing(self, actor_id, room, after, limit, goal)
+
+    def briefing(self, actor_id, delivery):
+        from .memory import briefing
+        return briefing(self, actor_id, delivery)
+
+    def work_attempts(self, actor_id, work, after, limit):
+        from .attempts import read
+        return read(self, actor_id, work, after, limit)
+
     def native_goal_binding(self, actor_id, identity, payload):
         from .work import native_binding
 
@@ -699,6 +715,8 @@ class Store:
                 from .cooperation import verify_admission
 
                 event = self.readable_event(c, a, row["event"])
+                from .memory import verify_admission as verify_briefing
+                verify_briefing(c, event, capabilities)
                 verify_admission(self, c, a, event, capabilities)
                 self.room(
                     c,
@@ -944,6 +962,12 @@ class Store:
                     "goalId": e["data"].get("goalId"),
                     "goalReferenceId": e["data"].get("goalReferenceId"),
                     "workId": e["data"].get("workId"),
+                    "attemptId": e["data"].get("attemptId"),
+                    "briefingReference": {
+                        "schema": "lax-work-briefing/v1",
+                        "deliveryId": str(d["id"]),
+                        "contentAuthority": "tool-data",
+                    },
                     "workAcceptance": e["data"].get("acceptance"),
                     "goalReview": bool(e["data"].get("goalReview")),
                     "sourceEventId": e["source"],
