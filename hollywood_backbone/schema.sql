@@ -467,3 +467,15 @@ INSERT INTO hb_schema VALUES (12) ON CONFLICT DO NOTHING;
 ALTER TABLE hb_command ADD COLUMN IF NOT EXISTS wire_request jsonb;
 ALTER TABLE hb_command ADD COLUMN IF NOT EXISTS accepted_result jsonb;
 INSERT INTO hb_schema VALUES (13) ON CONFLICT DO NOTHING;
+
+-- Original administrative acceptance is private to its still-authorized issuer.
+-- Only an exact request digest is retained; enrollment credentials are excluded.
+CREATE TABLE IF NOT EXISTS hb_administrative_command (
+ authority uuid NOT NULL, principal uuid NOT NULL, operation text NOT NULL,
+ method text NOT NULL CHECK(method IN ('POST','PUT')), path text NOT NULL,
+ wire_digest text NOT NULL, accepted_result jsonb NOT NULL,
+ accepted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(principal,operation),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id)
+);
+INSERT INTO hb_schema VALUES (14) ON CONFLICT DO NOTHING;

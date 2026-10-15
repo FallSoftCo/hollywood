@@ -63,6 +63,7 @@ class NativeControlUpdate(Input):
 
 
 class Principal(Input):
+    operationId: str | None = Field(default=None, min_length=1, max_length=128)
     id: UUID
     name: str = Field(min_length=1, max_length=128)
     kind: Literal["human", "agent", "service"]
@@ -70,6 +71,7 @@ class Principal(Input):
 
 
 class Room(Input):
+    operationId: str | None = Field(default=None, min_length=1, max_length=128)
     id: UUID
     name: str = Field(min_length=1, max_length=200)
     purpose: str = Field(min_length=1, max_length=4000)
@@ -77,6 +79,7 @@ class Room(Input):
 
 
 class Membership(Input):
+    operationId: str | None = Field(default=None, min_length=1, max_length=128)
     principalId: UUID
     can_read: bool
     can_post: bool
@@ -85,6 +88,7 @@ class Membership(Input):
 
 
 class Placement(Input):
+    operationId: str | None = Field(default=None, min_length=1, max_length=128)
     hostId: UUID
     name: str = Field(min_length=1, max_length=128)
     identityFingerprint: str = Field(min_length=16, max_length=512)
@@ -139,6 +143,7 @@ class Transition(Input):
 
 
 class Role(Input):
+    operationId: str | None = Field(default=None, min_length=1, max_length=128)
     nativeGoalScope: Literal["role", "work"] | None = None
     primary: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]*$")
     purpose: str = Field(min_length=1, max_length=4000)
@@ -409,10 +414,24 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
+    if method in ("principal", "create_room", "membership", "placement", "role"):
+        raw = await request.json()
+        if raw.get("operationId"):
+            from .store import digest
+            wire = {"method": request.method,
+                    "path": request.path.removeprefix("/hollywood/v3/"), "body": raw}
+            kwargs["command"] = {
+                "operationId": raw["operationId"], "method": wire["method"],
+                "path": wire["path"], "wireDigest": digest(wire),
+            }
     value = await asyncio.to_thread(
         getattr(request.app[STORE], method), request["actor"], *args, **kwargs
     )
     return web.json_response(value)
+
+
+async def administrative_command(request):
+    return await invoke(request, "administrative_command", request.match_info["operation"])
 
 
 async def health(request):
@@ -986,6 +1005,7 @@ def application(store):
             web.get("/hollywood/v3/rooms/{room}/history", history),
             web.get("/hollywood/v3/rooms/{room}/events", stream),
             web.get("/hollywood/v3/commands/{operation}", command),
+            web.get("/hollywood/v3/administration/commands/{operation}", administrative_command),
             web.post("/hollywood/v3/placements", placement),
             web.post("/hollywood/v3/connector/claim", claim),
             web.post("/hollywood/v3/connector/observe", connector_observe),

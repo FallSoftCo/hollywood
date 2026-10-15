@@ -36,6 +36,10 @@ def json_value(value):
 
 
 class Store:
+    def administrative_command(self, actor_id, operation):
+        from .administrative import read
+        return read(self, actor_id, operation)
+
     def native_control_create(self, actor_id, identity, operation, payload):
         from .native_controls import create
         return create(self, actor_id, identity, operation, payload)
@@ -351,46 +355,47 @@ class Store:
         )
         return identity
 
-    def principal(self, actor_id, identity, name, kind, enrollment_credential):
-        with self.pool.connection() as c:
-            a = self.actor(c, actor_id)
-            self.admin(a)
-            row = c.execute("SELECT * FROM hb_principal WHERE id=%s", (identity,)).fetchone()
-            if row:
-                if (str(row["authority"]), row["name"], row["kind"]) != (
-                    str(a["authority"]),
-                    name,
-                    kind,
-                ):
-                    raise Conflict("Principal identity conflict")
-                if not c.execute(
-                    "SELECT principal FROM hb_token WHERE principal=%s AND digest=%s AND NOT revoked",
-                    (identity, digest(enrollment_credential)),
-                ).fetchone():
-                    raise Conflict(
-                        "Principal enrollment credential differs; explicit rotation required"
-                    )
-                return {"principalId": identity, "created": False}
-            c.execute(
-                "INSERT INTO hb_principal(id,authority,name,kind) VALUES(%s,%s,%s,%s)",
-                (identity, a["authority"], name, kind),
-            )
-            # Installer/connector persists this random credential before submission.
-            # A lost reply can reconcile the same identity without losing its key.
-            c.execute(
-                "INSERT INTO hb_token VALUES(%s,%s,false)",
-                (digest(enrollment_credential), identity),
-            )
-            if kind == "agent":
-                c.execute(
-                    "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose) VALUES(%s,%s,'worker',%s)",
-                    (
-                        identity,
-                        a["authority"],
-                        "Own explicitly addressed work; observe other communication without execution",
-                    ),
+    def principal(self, actor_id, identity, name, kind, enrollment_credential, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'principal', [identity, name, kind, enrollment_credential], command)
+
+    def _admin_principal(self, c, a, identity, name, kind, enrollment_credential):
+        row = c.execute("SELECT * FROM hb_principal WHERE id=%s", (identity,)).fetchone()
+        if row:
+            if (str(row["authority"]), row["name"], row["kind"]) != (
+                str(a["authority"]),
+                name,
+                kind,
+            ):
+                raise Conflict("Principal identity conflict")
+            if not c.execute(
+                "SELECT principal FROM hb_token WHERE principal=%s AND digest=%s AND NOT revoked",
+                (identity, digest(enrollment_credential)),
+            ).fetchone():
+                raise Conflict(
+                    "Principal enrollment credential differs; explicit rotation required"
                 )
-            return {"principalId": identity, "created": True}
+            return {"principalId": identity, "created": False}
+        c.execute(
+            "INSERT INTO hb_principal(id,authority,name,kind) VALUES(%s,%s,%s,%s)",
+            (identity, a["authority"], name, kind),
+        )
+        # Installer/connector persists this random credential before submission.
+        # A lost reply can reconcile the same identity without losing its key.
+        c.execute(
+            "INSERT INTO hb_token VALUES(%s,%s,false)",
+            (digest(enrollment_credential), identity),
+        )
+        if kind == "agent":
+            c.execute(
+                "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose) VALUES(%s,%s,'worker',%s)",
+                (
+                    identity,
+                    a["authority"],
+                    "Own explicitly addressed work; observe other communication without execution",
+                ),
+            )
+        return {"principalId": identity, "created": True}
 
     def principal_read(self, actor_id, identity):
         with self.pool.connection() as c:
@@ -418,70 +423,72 @@ class Store:
                 raise Denied("Role unavailable")
             return json_value(row)
 
-    def create_room(self, actor_id, identity, name, purpose, owner):
-        with self.pool.connection() as c:
-            a = self.actor(c, actor_id)
-            self.admin(a)
-            target = c.execute(
-                "SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent' AND active",
-                (owner, a["authority"]),
-            ).fetchone()
-            if not target:
-                raise Denied("Room owner must be an active agent in this authority")
-            row = c.execute("SELECT * FROM hb_room WHERE id=%s", (identity,)).fetchone()
-            if row:
-                if (str(row["authority"]), row["name"], row["purpose"], str(row["owner"])) != (
-                    str(a["authority"]),
-                    name,
-                    purpose,
-                    owner,
-                ):
-                    raise Conflict("Room identity conflict")
-                return json_value(row)
-            c.execute(
-                "INSERT INTO hb_room(id,authority,name,purpose,owner) VALUES(%s,%s,%s,%s,%s)",
-                (identity, a["authority"], name, purpose, owner),
-            )
-            c.execute(
-                "INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
-                (a["authority"], identity, owner),
-            )
-            c.execute(
-                "UPDATE hb_agent_role SET home_room=%s,revision=revision+1 WHERE principal=%s AND home_room IS NULL",
-                (identity, owner),
-            )
-            return json_value(
-                c.execute("SELECT * FROM hb_room WHERE id=%s", (identity,)).fetchone()
-            )
+    def create_room(self, actor_id, identity, name, purpose, owner, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'create_room', [identity, name, purpose, owner], command)
 
-    def membership(self, actor_id, room, principal, grants, revision):
-        with self.pool.connection() as c:
-            a = self.actor(c, actor_id)
-            self.admin(a)
-            self.room(c, a, room)
-            if not c.execute(
-                "SELECT id FROM hb_principal WHERE id=%s AND authority=%s",
-                (principal, a["authority"]),
-            ).fetchone():
-                raise Denied("Foreign principal")
-            row = c.execute(
-                "SELECT * FROM hb_membership WHERE room=%s AND principal=%s FOR UPDATE",
-                (room, principal),
-            ).fetchone()
-            wanted = [grants["can_read"], grants["can_post"], grants["can_request"]]
-            if row and [row[k] for k in ["can_read", "can_post", "can_request"]] == wanted:
-                return json_value(row)
-            if (row["revision"] if row else 0) != revision:
-                raise Conflict("Membership revision changed")
+    def _admin_create_room(self, c, a, identity, name, purpose, owner):
+        target = c.execute(
+            "SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent' AND active",
+            (owner, a["authority"]),
+        ).fetchone()
+        if not target:
+            raise Denied("Room owner must be an active agent in this authority")
+        row = c.execute("SELECT * FROM hb_room WHERE id=%s", (identity,)).fetchone()
+        if row:
+            if (str(row["authority"]), row["name"], row["purpose"], str(row["owner"])) != (
+                str(a["authority"]),
+                name,
+                purpose,
+                owner,
+            ):
+                raise Conflict("Room identity conflict")
+            return json_value(row)
+        c.execute(
+            "INSERT INTO hb_room(id,authority,name,purpose,owner) VALUES(%s,%s,%s,%s,%s)",
+            (identity, a["authority"], name, purpose, owner),
+        )
+        c.execute(
+            "INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
+            (a["authority"], identity, owner),
+        )
+        c.execute(
+            "UPDATE hb_agent_role SET home_room=%s,revision=revision+1 WHERE principal=%s AND home_room IS NULL",
+            (identity, owner),
+        )
+        return json_value(
+            c.execute("SELECT * FROM hb_room WHERE id=%s", (identity,)).fetchone()
+        )
+
+    def membership(self, actor_id, room, principal, grants, revision, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'membership', [room, principal, grants, revision], command)
+
+    def _admin_membership(self, c, a, room, principal, grants, revision):
+        self.room(c, a, room)
+        if not c.execute(
+            "SELECT id FROM hb_principal WHERE id=%s AND authority=%s",
+            (principal, a["authority"]),
+        ).fetchone():
+            raise Denied("Foreign principal")
+        row = c.execute(
+            "SELECT * FROM hb_membership WHERE room=%s AND principal=%s FOR UPDATE",
+            (room, principal),
+        ).fetchone()
+        wanted = [grants["can_read"], grants["can_post"], grants["can_request"]]
+        if row and [row[k] for k in ["can_read", "can_post", "can_request"]] == wanted:
+            return json_value(row)
+        if (row["revision"] if row else 0) != revision:
+            raise Conflict("Membership revision changed")
+        c.execute(
+            "INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(room,principal) DO UPDATE SET can_read=EXCLUDED.can_read,can_post=EXCLUDED.can_post,can_request=EXCLUDED.can_request,revision=hb_membership.revision+1",
+            (a["authority"], room, principal, *wanted),
+        )
+        return json_value(
             c.execute(
-                "INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(room,principal) DO UPDATE SET can_read=EXCLUDED.can_read,can_post=EXCLUDED.can_post,can_request=EXCLUDED.can_request,revision=hb_membership.revision+1",
-                (a["authority"], room, principal, *wanted),
-            )
-            return json_value(
-                c.execute(
-                    "SELECT * FROM hb_membership WHERE room=%s AND principal=%s", (room, principal)
-                ).fetchone()
-            )
+                "SELECT * FROM hb_membership WHERE room=%s AND principal=%s", (room, principal)
+            ).fetchone()
+        )
 
     def catalog(self, actor_id):
         with self.pool.connection() as c:
@@ -706,35 +713,36 @@ class Store:
                 "nextCursor": rows[-1]["seq"] if len(rows) == limit else ceiling,
             }
 
-    def placement(self, actor_id, host, name, fingerprint, capabilities, agent):
-        with self.pool.connection() as c:
-            a = self.actor(c, actor_id)
-            self.admin(a)
-            if not c.execute(
-                "SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
-                (agent, a["authority"]),
-            ).fetchone():
-                raise Denied("Agent unavailable")
-            old = c.execute("SELECT * FROM hb_host WHERE id=%s", (host,)).fetchone()
-            if old and (str(old["authority"]), old["identity_fingerprint"]) != (
-                str(a["authority"]),
-                fingerprint,
-            ):
-                raise Conflict("Host identity changed")
-            c.execute(
-                "INSERT INTO hb_host VALUES(%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
-                (host, a["authority"], name, fingerprint, Jsonb(capabilities)),
-            )
-            old = c.execute(
-                "SELECT * FROM hb_placement WHERE agent=%s FOR UPDATE", (agent,)
-            ).fetchone()
-            if old and str(old["host"]) != host:
-                raise Conflict("Agent already placed; fenced transfer required")
-            c.execute(
-                "INSERT INTO hb_placement(authority,agent,host) VALUES(%s,%s,%s) ON CONFLICT(agent) DO NOTHING",
-                (a["authority"], agent, host),
-            )
-            return {"agentId": agent, "hostId": host, "enrolled": True}
+    def placement(self, actor_id, host, name, fingerprint, capabilities, agent, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'placement', [host, name, fingerprint, capabilities, agent], command)
+
+    def _admin_placement(self, c, a, host, name, fingerprint, capabilities, agent):
+        if not c.execute(
+            "SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
+            (agent, a["authority"]),
+        ).fetchone():
+            raise Denied("Agent unavailable")
+        old = c.execute("SELECT * FROM hb_host WHERE id=%s", (host,)).fetchone()
+        if old and (str(old["authority"]), old["identity_fingerprint"]) != (
+            str(a["authority"]),
+            fingerprint,
+        ):
+            raise Conflict("Host identity changed")
+        c.execute(
+            "INSERT INTO hb_host VALUES(%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
+            (host, a["authority"], name, fingerprint, Jsonb(capabilities)),
+        )
+        old = c.execute(
+            "SELECT * FROM hb_placement WHERE agent=%s FOR UPDATE", (agent,)
+        ).fetchone()
+        if old and str(old["host"]) != host:
+            raise Conflict("Agent already placed; fenced transfer required")
+        c.execute(
+            "INSERT INTO hb_placement(authority,agent,host) VALUES(%s,%s,%s) ON CONFLICT(agent) DO NOTHING",
+            (a["authority"], agent, host),
+        )
+        return {"agentId": agent, "hostId": host, "enrolled": True}
 
     @staticmethod
     def native_role_capability(c, actor, capabilities):
@@ -1105,39 +1113,40 @@ class Store:
                 }
             )
 
-    def role(self, actor_id, agent, primary, purpose, home_room, revision, native_goal_scope=None):
-        with self.pool.connection() as c:
-            a = self.actor(c, actor_id)
-            self.admin(a)
-            target = c.execute(
-                "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
-                (agent, a["authority"]),
-            ).fetchone()
-            if not target or (primary == "global" and not target["administrator"]):
-                raise Denied("Role does not confer administrator authority")
-            if home_room:
-                self.room(c, a, home_room)
-            old = c.execute(
-                "SELECT * FROM hb_agent_role WHERE principal=%s FOR UPDATE", (agent,)
-            ).fetchone()
-            scope = native_goal_scope or (
-                old["native_goal_scope"] if old else "role" if primary == "global" else "work"
-            )
-            if scope not in ("role", "work") or (primary == "global" and scope != "role"):
-                raise ValueError("Global requires an ongoing native responsibility")
-            if old and (
-                old["native_goal_scope"],
-                old["primary_role"],
-                old["purpose"],
-                str(old["home_room"]) if old["home_room"] else None,
-            ) == (scope, primary, purpose, home_room):
-                return json_value(old)
-            if (old["revision"] if old else 0) != revision:
-                raise Conflict("Role revision changed")
-            c.execute(
-                "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose,home_room,native_goal_scope) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(principal) DO UPDATE SET primary_role=EXCLUDED.primary_role,purpose=EXCLUDED.purpose,home_room=EXCLUDED.home_room,native_goal_scope=EXCLUDED.native_goal_scope,revision=hb_agent_role.revision+1",
-                (agent, a["authority"], primary, purpose, home_room, scope),
-            )
-            return json_value(
-                c.execute("SELECT * FROM hb_agent_role WHERE principal=%s", (agent,)).fetchone()
-            )
+    def role(self, actor_id, agent, primary, purpose, home_room, revision, native_goal_scope=None, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'role', [agent, primary, purpose, home_room, revision, native_goal_scope], command)
+
+    def _admin_role(self, c, a, agent, primary, purpose, home_room, revision, native_goal_scope=None):
+        target = c.execute(
+            "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
+            (agent, a["authority"]),
+        ).fetchone()
+        if not target or (primary == "global" and not target["administrator"]):
+            raise Denied("Role does not confer administrator authority")
+        if home_room:
+            self.room(c, a, home_room)
+        old = c.execute(
+            "SELECT * FROM hb_agent_role WHERE principal=%s FOR UPDATE", (agent,)
+        ).fetchone()
+        scope = native_goal_scope or (
+            old["native_goal_scope"] if old else "role" if primary == "global" else "work"
+        )
+        if scope not in ("role", "work") or (primary == "global" and scope != "role"):
+            raise ValueError("Global requires an ongoing native responsibility")
+        if old and (
+            old["native_goal_scope"],
+            old["primary_role"],
+            old["purpose"],
+            str(old["home_room"]) if old["home_room"] else None,
+        ) == (scope, primary, purpose, home_room):
+            return json_value(old)
+        if (old["revision"] if old else 0) != revision:
+            raise Conflict("Role revision changed")
+        c.execute(
+            "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose,home_room,native_goal_scope) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(principal) DO UPDATE SET primary_role=EXCLUDED.primary_role,purpose=EXCLUDED.purpose,home_room=EXCLUDED.home_room,native_goal_scope=EXCLUDED.native_goal_scope,revision=hb_agent_role.revision+1",
+            (agent, a["authority"], primary, purpose, home_room, scope),
+        )
+        return json_value(
+            c.execute("SELECT * FROM hb_agent_role WHERE principal=%s", (agent,)).fetchone()
+        )
