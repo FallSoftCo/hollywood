@@ -4,8 +4,9 @@ No models, filesystem access or autonomous timers live here. Review admission is
 a bounded, explicit goal policy, keyed by external worker evidence/state.
 """
 
-from .store import Conflict, Denied, digest, json_value, uid
 from psycopg.types.json import Jsonb
+
+from .store import Conflict, Denied, digest, json_value, uid
 
 TERMINAL = {"completed", "failed", "cancelled"}
 
@@ -99,6 +100,57 @@ def listing(store, actor_id, room, after, limit):
         )
 
 
+def work_listing(store, actor_id, identity, after, limit, by_goal=False):
+    """Room-owned work is discoverable without granting its parent room.
+
+    Lists are permission filtered before LIMIT and expose only the work record,
+    never a parent goal's private source, objective or acceptance policy.
+    """
+    with store.pool.connection() as c:
+        a = store.actor(c, actor_id)
+        if by_goal:
+            goal_row(store, c, a, identity, lock="share")
+        else:
+            store.room(c, a, identity)
+        column = "goal" if by_goal else "room"
+        rows = c.execute(
+            f"""SELECT w.*,d.state AS execution_state,d.native_thread,d.native_turn,d.host
+                FROM hb_work w LEFT JOIN hb_delivery d ON d.id=w.delivery
+                LEFT JOIN hb_event e ON e.id=w.request_event
+                WHERE w.{column}=%s AND w.authority=%s
+                AND (%s OR EXISTS(SELECT 1 FROM hb_membership m
+                    WHERE m.room=w.room AND m.principal=%s AND m.can_read))
+                AND (e.id IS NULL OR %s OR e.audience='room' OR e.author=%s OR e.recipient=%s)
+                AND (%s::uuid IS NULL OR w.id>%s::uuid) ORDER BY w.id LIMIT %s""",
+            (
+                identity,
+                a["authority"],
+                a["administrator"],
+                a["id"],
+                a["administrator"],
+                a["id"],
+                a["id"],
+                after,
+                after,
+                limit + 1,
+            ),
+        ).fetchall()
+        works = []
+        for row in rows[:limit]:
+            deps = c.execute(
+                "SELECT prerequisite FROM hb_work_dependency WHERE work=%s ORDER BY prerequisite",
+                (row["id"],),
+            ).fetchall()
+            works.append({**row, "dependencies": [d["prerequisite"] for d in deps]})
+        return json_value(
+            {
+                "authorityId": a["authority"],
+                "work": works,
+                "nextCursor": rows[limit - 1]["id"] if len(rows) > limit else None,
+            }
+        )
+
+
 def mutation(store, actor_id, action, identity, operation, payload):
     fingerprint = digest({"workflow": action, "identity": identity, **payload})
     with store.pool.connection() as c:
@@ -170,6 +222,8 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 target_room = str(goal["room"])
                 if goal["revision"] != payload["revision"]:
                     raise Conflict("Goal/plan revision changed")
+            if action == "work.report":
+                store.room(c, a, work["room"], "can_post")
             if action != "work.report":
                 manage(a, goal)
                 goal_row(store, c, a, str(goal["id"]))
@@ -580,3 +634,80 @@ def claim_candidate(store, c, actor):
         "SELECT * FROM hb_delivery WHERE id=%s AND agent=%s AND state='pending' FOR UPDATE SKIP LOCKED",
         (candidate["id"], actor["id"]),
     ).fetchone()
+
+
+def native_binding(store, actor_id, identity, payload):
+    with store.pool.connection() as c:
+        a = store.actor(c, actor_id)
+        if (
+            payload.get("goalId")
+            and not c.execute(
+                "SELECT id FROM hb_goal WHERE id=%s AND authority=%s FOR SHARE",
+                (payload["goalId"], a["authority"]),
+            ).fetchone()
+        ):
+            raise Denied("Goal unavailable")
+        d = c.execute(
+            "SELECT * FROM hb_delivery WHERE id=%s AND agent=%s AND authority=%s FOR UPDATE",
+            (identity, a["id"], a["authority"]),
+        ).fetchone()
+        if not d or a["kind"] != "agent":
+            raise Denied("Native execution owner required")
+        if d["generation"] != payload["generation"] or d["claim_id"] != payload["claimId"]:
+            raise Conflict("Native goal binding ownership changed")
+        e = store.readable_event(c, a, d["event"])
+        store.room(c, a, e["room"], "can_post")
+        if d["native_thread"] and d["native_thread"] != payload["nativeThread"]:
+            raise Conflict("Native context differs from admitted execution")
+        goal = payload.get("goalId")
+        work = payload.get("workId")
+        if work:
+            w = work_row(store, c, a, work)
+            if (
+                str(w["delivery"]) != identity
+                or str(w["owner"]) != str(a["id"])
+                or str(w["goal"]) != goal
+            ):
+                raise Denied("Native binding does not own this work")
+            if e["data"].get("workId") != work or e["data"].get("goalId") != goal:
+                raise Conflict("Native work differs from accepted request")
+        elif goal:
+            g = goal_row(store, c, a, goal)
+            if str(g["owner"]) != str(a["id"]) or str(g["room"]) != str(e["room"]):
+                raise Denied("Coordinator binding does not own this goal")
+            if str(g["source"]) != str(e["id"]) and e["data"].get("goalId") != goal:
+                raise Denied("Goal is outside this admitted coordination request")
+        else:
+            raise ValueError("A canonical goal or work binding is required")
+        key = digest(payload)
+        old = c.execute(
+            "SELECT * FROM hb_native_goal_binding WHERE delivery=%s AND generation=%s",
+            (identity, d["generation"]),
+        ).fetchone()
+        if old:
+            if old["digest"] != key:
+                raise Conflict("Native goal binding changed")
+            return json_value(old)
+        if d["state"] not in ("claimed", "running"):
+            raise Conflict("Native goal binding is not admitted")
+        c.execute(
+            "UPDATE hb_delivery SET native_thread=COALESCE(native_thread,%s) WHERE id=%s",
+            (payload["nativeThread"], identity),
+        )
+        return json_value(
+            c.execute(
+                """INSERT INTO hb_native_goal_binding VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING *""",
+                (
+                    identity,
+                    d["generation"],
+                    goal,
+                    work,
+                    payload["nativeThread"],
+                    payload["nativeGoalId"],
+                    payload["contextId"],
+                    payload["workspaceId"],
+                    payload["objectiveDigest"],
+                    key,
+                ),
+            ).fetchone()
+        )

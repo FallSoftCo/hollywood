@@ -163,8 +163,35 @@ class AttentionAcknowledgement(Input):
     state: Literal["native_submitted", "closed", "expired", "unknown"]
 
 
+class NativePlanStep(Input):
+    step: str = Field(min_length=1, max_length=2000)
+    status: Literal["pending", "inProgress", "completed"]
+
+
+class NativeGoalProgress(Input):
+    goalId: str = Field(min_length=1, max_length=128)
+    status: Literal["active", "paused", "blocked", "usageLimited", "budgetLimited", "complete"]
+    tokensUsed: int = Field(ge=0)
+    timeUsedSeconds: int = Field(ge=0)
+    tokenBudget: int | None = Field(default=None, ge=0)
+
+
+class NativeGoalBinding(Input):
+    claimId: str = Field(min_length=1, max_length=128)
+    generation: int = Field(ge=1)
+    goalId: UUID | None = None
+    workId: UUID | None = None
+    nativeThread: str = Field(min_length=1, max_length=128)
+    nativeGoalId: str = Field(min_length=1, max_length=128)
+    contextId: str = Field(pattern=r"^[0-9a-f]{64}$")
+    workspaceId: UUID
+    objectiveDigest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class ActivityItem(Input):
     nativeType: str = Field(min_length=1, max_length=80)
+    plan: list[NativePlanStep] | None = Field(default=None, max_length=50)
+    nativeGoal: NativeGoalProgress | None = None
     title: str = Field(min_length=1, max_length=1000)
     status: Literal["inProgress", "completed", "failed", "declined", "unknown"]
     command: str | None = Field(default=None, max_length=4000)
@@ -452,9 +479,22 @@ async def context(request):
     return await invoke(request, "execution_context", str(UUID(request.match_info["delivery"])))
 
 
+async def native_goal_binding(request):
+    p = await body(request, NativeGoalBinding)
+    return await invoke(
+        request,
+        "native_goal_binding",
+        str(UUID(request.match_info["delivery"])),
+        p.model_dump(mode="json"),
+    )
+
+
 async def activity(request):
     p = await body(request, Activity)
     payload = p.model_dump(mode="json")
+    for key in ("plan", "nativeGoal"):
+        if payload["item"].get(key) is None:
+            payload["item"].pop(key, None)
     if len(json.dumps(payload).encode()) > 14000:
         raise ValueError("Native activity exceeds limit")
     if (p.phase == "started") != (p.item.status == "inProgress"):
@@ -627,6 +667,18 @@ async def goal_list(request):
     return await invoke(request, "goal_list", str(UUID(request.match_info["room"])), after, limit)
 
 
+async def work_list(request):
+    if set(request.query) - {"after", "limit"}:
+        raise ValueError("Unknown work query")
+    after = str(UUID(request.query["after"])) if "after" in request.query else None
+    limit = int(request.query.get("limit", "100"))
+    if not 1 <= limit <= 100:
+        raise ValueError("Invalid work limit")
+    by_goal = "goal" in request.match_info
+    identity = str(UUID(request.match_info["goal" if by_goal else "room"]))
+    return await invoke(request, "work_list", identity, after, limit, by_goal)
+
+
 async def review_dispatch(request):
     p = await body(request, ReviewDispatch)
     return await invoke(request, "review_dispatch", str(p.hostId))
@@ -657,6 +709,8 @@ def application(store):
             web.post("/hollywood/v3/rooms/{room}/goals", goal_create),
             web.get("/hollywood/v3/goals/{goal}", goal_read),
             web.post("/hollywood/v3/goals/{goal}/work", work_create),
+            web.get("/hollywood/v3/goals/{goal}/work", work_list),
+            web.get("/hollywood/v3/rooms/{room}/work", work_list),
             web.post("/hollywood/v3/goals/{goal}/state", goal_state),
             web.get("/hollywood/v3/work/{work}", work_read),
             web.post("/hollywood/v3/work/{work}/{action:assign|report|review|cancel}", workflow),
@@ -684,6 +738,9 @@ def application(store):
             web.get("/hollywood/v3/deliveries/{delivery}", delivery),
             web.get("/hollywood/v3/connector/deliveries/{delivery}/context", context),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/activity", activity),
+            web.post(
+                "/hollywood/v3/connector/deliveries/{delivery}/goal-binding", native_goal_binding
+            ),
             web.put("/hollywood/v3/agents/{agent}/role", role),
             web.get("/hollywood/v3/agents/{agent}/role", role_read),
             web.post("/hollywood/v3/attention", attention_create),

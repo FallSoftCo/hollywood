@@ -196,9 +196,10 @@ An explicitly configured review budget permits bounded review admission after
 another worker's material report and terminal/unknown execution state. The
 metadata dispatcher coalesces an outstanding review, persists causal deduplication
 and spends the budget atomically. Ordinary chat, observation and a coordinator's
-own reports cannot manufacture review loops. No dispatcher timer or model worker
-is enabled by this implementation. LAX must call the enrolled connector
-reconciliation endpoint and respect its captured execution claim.
+own reports cannot manufacture review loops. The opt-in LAX resident connector calls this metadata reconciliation endpoint;
+only the explicit finite policy can admit a model review. Native idle goal
+continuations are disabled before context load. Every admitted review retains
+its source, claim and causal digest.
 
 The supervision feed provides authorized event hints across rooms and a durable
 CAS cursor. It includes execution activity without injecting all raw commands
@@ -214,7 +215,33 @@ receipts were synthetic. It is not real-agent or production-cutover proof.
 
 This first workflow contract accepts room-visible goal sources. Private-source
 cross-room sharing must be explicit and is currently denied. Goal lists page by
-stable UUID; a goal's plan returns a marked 100-item bound and still needs plan
-pagination for scale. Editing/replacing plans, optional/waived work, additional
-attempts, native goal bindings and native structured-plan projection remain
-unfinished. Original v2 work orders and accepted receipts have not been migrated.
+stable UUID; a goal's plan returns a marked 100-item bound ; `GET /goals/{id}/work` provides permission-filtered UUID pagination.
+`GET /rooms/{id}/work` discovers assigned work without granting access to its
+parent goal room or disclosing its private objective/source. Editing/replacing
+plans, optional/waived work and additional attempts remain unfinished. Original v2 work orders and accepted receipts have not been migrated.
+
+
+## Native goal binding and observed enterprise proof
+
+Schema version 3 adds a delivery/generation-fenced native goal binding with host,
+workspace, context, native thread and goal instance identity. Current owner,
+permissions and captured work/source are checked before binding. Native goal
+observations must match that binding; activity derives canonical goal/work IDs
+from the server record. Optional absent activity fields are omitted from receipt
+fingerprints, preserving existing activity replay digests.
+
+The packaged candidate completed an actual one-host enterprise goal: Global
+provisioned a separate worker UID/room, delegated one assignment, the worker
+received a human answer and wrote a real artifact, and Global independently
+verified its SHA-256 and explicitly accepted work and goal. Three native turns
+used two contexts and one policy-authorized review; no shadow Global context was
+created. A fourth explicit human read-only follow-up published a structured
+native plan. Native local completion and Hollywood business acceptance remain
+separate facts. An ungranted human could neither read nor answer the question.
+
+The API workflow probe additionally qualifies room work and goal plan pagination
+through actual PostgreSQL/HTTP, without models. NextComp's candidate gateway
+reads this actual native history and preserves identity across restart. These
+proofs do not establish physical Android delivery, a second execution host,
+continuous Global supervision, full cancellation/crash recovery, or production
+cutover. Owned qualification agents are stopped after completion.

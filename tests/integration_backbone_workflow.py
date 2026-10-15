@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from aiohttp import ClientSession, web
+
 from hollywood_backbone.server import application
 from hollywood_backbone.store import Store
 
@@ -231,6 +232,26 @@ async def main():
                 )
                 goal = await call("Global", "GET", f"goals/{ids['goal']}")
             await call("Worker", "GET", f"goals/{ids['goal']}", status=403)
+            room_page = await call("Worker", "GET", f"rooms/{target}/work?limit=1")
+            assert len(room_page["work"]) == 1 and room_page["nextCursor"]
+            room_tail = await call(
+                "Worker", "GET", f"rooms/{target}/work?limit=1&after={room_page['nextCursor']}"
+            )
+            assert {w["id"] for w in room_page["work"] + room_tail["work"]} == {
+                ids["w1"],
+                ids["w2"],
+            }
+            assert room_tail["nextCursor"] is None
+            assert all("objective" not in w and "source" not in w for w in room_page["work"])
+            plan_page = await call("Global", "GET", f"goals/{ids['goal']}/work?limit=1")
+            assert plan_page["work"][0]["id"] == room_page["work"][0]["id"]
+            await call("Worker", "GET", f"goals/{ids['goal']}/work", status=403)
+            await call("Viewer", "GET", f"rooms/{target}/work", status=403)
+            await call("Global", "GET", f"rooms/{target}/work?after=0", status=400)
+            checks.append(
+                "Permission-filtered room work and goal plan pagination; worker discovers assigned work without parent-room access"
+            )
+
             await call("Viewer", "GET", f"work/{ids['w1']}", status=403)
             await call(
                 "Global",
@@ -560,6 +581,11 @@ async def main():
                 },
             )
             await call("Viewer", "GET", f"work/{w4}")
+            assert any(
+                w["id"] == w4 for w in (await call("Viewer", "GET", f"rooms/{target}/work"))["work"]
+            )
+            await call("Viewer", "GET", f"goals/{goal3}/work", status=403)
+
             await call(
                 "Viewer",
                 "POST",

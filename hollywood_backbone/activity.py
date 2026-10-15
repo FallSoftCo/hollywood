@@ -59,6 +59,14 @@ def append(store, actor_id, identity, payload):
             (*pointer, identity),
         )
         item = payload["item"]
+        binding = c.execute(
+            "SELECT * FROM hb_native_goal_binding WHERE delivery=%s AND generation=%s",
+            (identity, d["generation"]),
+        ).fetchone()
+        if item.get("nativeGoal") and (
+            not binding or item["nativeGoal"]["goalId"] != binding["native_goal_id"]
+        ):
+            raise Conflict("Native goal progress differs from captured binding")
         audience = request["audience"]
         recipient = request["author"] if audience == "direct" else None
         if item["nativeType"] == "dynamicToolCall" and item["title"] == "hollywood_ask":
@@ -85,6 +93,12 @@ def append(store, actor_id, identity, payload):
                 "itemId": payload["itemId"],
                 "phase": payload["phase"],
                 "nativeItemDigest": payload["nativeItemDigest"],
+                "goalId": str(binding["goal"])
+                if binding and binding["goal"]
+                else request["data"].get("goalId"),
+                "workId": str(binding["work"])
+                if binding and binding["work"]
+                else request["data"].get("workId"),
                 **item,
             },
         )

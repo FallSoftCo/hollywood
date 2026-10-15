@@ -36,6 +36,11 @@ def json_value(value):
 
 
 class Store:
+    def native_goal_binding(self, actor_id, identity, payload):
+        from .work import native_binding
+
+        return native_binding(self, actor_id, identity, payload)
+
     def workflow(self, actor_id, action, identity, operation, payload):
         from .work import mutation
 
@@ -55,6 +60,11 @@ class Store:
         from .work import listing
 
         return listing(self, actor_id, room, after, limit)
+
+    def work_list(self, actor_id, identity, after, limit, by_goal=False):
+        from .work import work_listing
+
+        return work_listing(self, actor_id, identity, after, limit, by_goal)
 
     def review_dispatch(self, actor_id, host):
         from .work import dispatch_reviews

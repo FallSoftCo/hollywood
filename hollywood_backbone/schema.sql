@@ -169,6 +169,7 @@ CREATE TABLE IF NOT EXISTS hb_work (
  FOREIGN KEY(authority,report_event) REFERENCES hb_event(authority,id)
 );
 CREATE INDEX IF NOT EXISTS hb_work_goal ON hb_work(goal,id);
+CREATE INDEX IF NOT EXISTS hb_work_room ON hb_work(room,id);
 CREATE UNIQUE INDEX IF NOT EXISTS hb_work_delivery ON hb_work(delivery) WHERE delivery IS NOT NULL;
 CREATE TABLE IF NOT EXISTS hb_work_dependency (
  authority uuid NOT NULL, goal uuid NOT NULL, work uuid NOT NULL, prerequisite uuid NOT NULL,
@@ -188,3 +189,12 @@ CREATE TABLE IF NOT EXISTS hb_supervision_cursor (
 
 -- Additive workflow schema; prior communication state is retained.
 INSERT INTO hb_schema VALUES (2) ON CONFLICT DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS hb_native_goal_binding (
+ delivery uuid NOT NULL REFERENCES hb_delivery(id), generation bigint NOT NULL,
+ goal uuid REFERENCES hb_goal(id), work uuid REFERENCES hb_work(id),
+ native_thread text NOT NULL, native_goal_id text NOT NULL, context_id text NOT NULL,
+ workspace_id uuid NOT NULL, objective_digest text NOT NULL, digest text NOT NULL,
+ PRIMARY KEY(delivery,generation)
+);
+INSERT INTO hb_schema VALUES (3) ON CONFLICT DO NOTHING;
