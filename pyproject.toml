@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hollywood-cli"
-version = "0.3.0.dev22"
+version = "0.3.0.dev23"
 description = "Durable human and agent room communication backbone"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,6 +36,7 @@ hollywoodctl = "hollywoodctl:main"
 hollywood-room = "hollywood_room.server:main"
 hollywood-backbone = "hollywood_backbone.server:main"
 hollywood-bootstrap = "hollywood_backbone.bootstrap:main"
+hollywood-import-v2 = "hollywood_backbone.import_v2:main"
 
 [project.optional-dependencies]
 enterprise = ["psycopg[binary,pool]>=3.3,<4", "aiohttp>=3.12,<4", "pydantic>=2.12,<3"]

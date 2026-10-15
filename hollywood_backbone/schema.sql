@@ -548,3 +548,13 @@ DO $$ BEGIN
 END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS hb_native_effect_authority_cursor
  ON hb_native_effect(authority,authority_seq);
+
+
+-- Immutable links to retained source evidence; import never creates execution intents.
+CREATE TABLE IF NOT EXISTS hb_imported_event (
+ authority uuid NOT NULL, source_system text NOT NULL, source_id bigint NOT NULL,
+ event uuid NOT NULL, source_digest text NOT NULL,
+ PRIMARY KEY(authority,source_system,source_id),
+ FOREIGN KEY(authority,event) REFERENCES hb_event(authority,id)
+);
+INSERT INTO hb_schema VALUES (19) ON CONFLICT DO NOTHING;
