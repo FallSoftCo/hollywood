@@ -36,20 +36,59 @@ def json_value(value):
 
 
 class Store:
+    def portfolio_read(self, actor_id, agent, after=None, limit=100):
+        from .portfolio import read
+
+        return read(self, actor_id, agent, after, limit)
+
+    def portfolio_policy_set(self, actor_id, agent, operation, payload):
+        from .portfolio import configure
+
+        return configure(self, actor_id, agent, operation, payload)
+
+    def portfolio_dispatch(self, actor_id, host, capabilities):
+        from .portfolio import dispatch
+
+        return dispatch(self, actor_id, host, capabilities)
+
+    def host_policy(self, actor_id, host):
+        from .admission import policy
+
+        return policy(self, actor_id, host)
+
+    def host_policy_set(self, actor_id, host, operation, payload):
+        from .admission import configure
+
+        return configure(self, actor_id, host, operation, payload)
+
+    def host_sample(self, actor_id, host, operation, payload):
+        from .admission import sample
+
+        return sample(self, actor_id, host, operation, payload)
+
+    def connector_observe(self, actor_id, host, capabilities):
+        from .admission import observe
+
+        return observe(self, actor_id, host, capabilities)
+
     def decision_write(self, actor_id, room, operation, payload):
         from .memory import write
+
         return write(self, actor_id, room, operation, payload)
 
     def decision_list(self, actor_id, room, after, limit, goal=None):
         from .memory import listing
+
         return listing(self, actor_id, room, after, limit, goal)
 
     def briefing(self, actor_id, delivery):
         from .memory import briefing
+
         return briefing(self, actor_id, delivery)
 
     def work_attempts(self, actor_id, work, after, limit):
         from .attempts import read
+
         return read(self, actor_id, work, after, limit)
 
     def native_goal_binding(self, actor_id, identity, payload):
@@ -511,6 +550,8 @@ class Store:
             recipient = payload.get("recipientId")
             if kind == "request" and not recipient:
                 recipient = str(room["owner"])
+            if kind == "request" and a["kind"] == "agent" and str(recipient) == str(a["id"]):
+                raise Denied("Self execution requests require an explicit lifecycle policy")
             if recipient:
                 target = c.execute(
                     "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND active",
@@ -678,6 +719,8 @@ class Store:
             raise Conflict("Native role lifecycle connector capability required")
 
     def claim(self, actor_id, operation, host, capabilities=()):
+        from . import admission
+
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             if a["kind"] != "agent":
@@ -690,6 +733,8 @@ class Store:
             if not placement:
                 raise Denied("Connector host not enrolled for this agent")
             self.native_role_capability(c, a, capabilities)
+            if not admission.CAPABILITIES <= set(capabilities):
+                raise Conflict("Connector upgrade required for host admission")
             previous = c.execute(
                 "SELECT * FROM hb_claim WHERE agent=%s AND operation=%s", (a["id"], operation)
             ).fetchone()
@@ -703,28 +748,29 @@ class Store:
                     ).fetchone()
                     self.room(c, a, row["room"])
                 return self.claim_receipt(c, previous["delivery"])
-            busy = c.execute(
-                "SELECT id FROM hb_delivery WHERE agent=%s AND state IN ('claimed','running','unknown','cancel_requested')",
-                (a["id"],),
-            ).fetchone()
+            admission.presence(self, c, a, host, capabilities)
+            admission.lock(c, host)
+            observed = admission.diagnose(self, c, a, host, capabilities, record=False)
             from .work import claim_candidate
 
-            row = None if busy else claim_candidate(self, c, a)
+            row = (
+                claim_candidate(self, c, a, observed["eligibleDeliveryId"])
+                if observed["eligibleDeliveryId"]
+                else None
+            )
             identity = row["id"] if row else None
+            # Lock the selected delivery before its trace, matching cancellation
+            # triggers. Observations never lock a delivery after updating a trace.
+            admission.record_observation(c, host, observed)
             if row:
                 from .cooperation import verify_admission
+                from .memory import verify_admission as verify_briefing
 
                 event = self.readable_event(c, a, row["event"])
-                from .memory import verify_admission as verify_briefing
                 verify_briefing(c, event, capabilities)
                 verify_admission(self, c, a, event, capabilities)
-                self.room(
-                    c,
-                    a,
-                    c.execute("SELECT room FROM hb_event WHERE id=%s", (row["event"],)).fetchone()[
-                        "room"
-                    ],
-                )
+                self.room(c, a, event["room"])
+                admission.reserve(c, host, identity, observed["queueClass"])
                 c.execute(
                     "UPDATE hb_delivery SET state='claimed',host=%s,claim_id=%s,generation=generation+1,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
                     (host, operation, identity),
@@ -732,7 +778,9 @@ class Store:
             c.execute(
                 "INSERT INTO hb_claim VALUES(%s,%s,%s,%s)", (a["id"], operation, host, identity)
             )
-            return self.claim_receipt(c, identity)
+            receipt = self.claim_receipt(c, identity)
+            receipt["admission"] = json_value(observed)
+            return receipt
 
     def connector_pending(self, actor_id, host):
         """Read-only queue projection. Polling it creates no claim or model work."""
@@ -763,7 +811,10 @@ class Store:
         from .native_bindings import read as read_binding
 
         binding = read_binding(c, identity, d["generation"])
+        from .admission import trace
+
         return {
+            "admissionTrace": json_value(trace(c, identity)),
             "delivery": json_value(d),
             "request": json_value(e),
             **({"nativeGoalBinding": json_value(binding)} if binding else {}),
@@ -811,6 +862,20 @@ class Store:
             if state == "running" and not payload.get("nativeTurn"):
                 raise Conflict("Running requires a native turn receipt")
             terminal = state in ("completed", "failed", "cancelled")
+            binding = c.execute(
+                "SELECT goal,work FROM hb_native_goal_binding WHERE delivery=%s AND generation=%s",
+                (identity, d["generation"]),
+            ).fetchone()
+            goal_id = work["goal"] if work else binding["goal"] if binding else None
+            work_id = work["id"] if work else binding["work"] if binding else None
+            execution_data = {
+                "type": "executionState",
+                "deliveryId": identity,
+                "state": state,
+                "generation": d["generation"],
+                "goalId": str(goal_id) if goal_id else None,
+                "workId": str(work_id) if work_id else None,
+            }
             result = None
             if terminal:
                 if not payload.get("body"):
@@ -824,7 +889,7 @@ class Store:
                     audience=e["audience"],
                     recipient=e["author"] if e["audience"] == "direct" else None,
                     source=e["id"],
-                    data={"deliveryId": identity, "state": state, "generation": d["generation"]},
+                    data=execution_data,
                 )
             c.execute(
                 "UPDATE hb_delivery SET state=%s,native_thread=COALESCE(%s,native_thread),native_turn=COALESCE(%s,native_turn),result_event=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
@@ -849,6 +914,17 @@ class Store:
                     (identity, d["generation"]),
                 )
             if state == "unknown":
+                self.event(
+                    c,
+                    a,
+                    e["room"],
+                    "progress",
+                    "Execution state unknown; inspect the original native/effect receipts.",
+                    audience=e["audience"],
+                    recipient=e["author"] if e["audience"] == "direct" else None,
+                    source=e["id"],
+                    data=execution_data,
+                )
                 c.execute(
                     "UPDATE hb_attention SET state='unknown',revision=revision+1,updated_at=clock_timestamp() WHERE delivery=%s AND generation=%s AND state IN ('pending','response_submitted','native_submitted')",
                     (identity, d["generation"]),

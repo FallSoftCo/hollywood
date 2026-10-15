@@ -379,3 +379,70 @@ selection, safe handoff/yield with original-attempt history, collaborative edit
 plans tied to actual source revisions and workspace/host identities, and broader
 role-aware attention/quiescence. Evaluated alternative selectors remain evidence,
 not a reason to discard the established cooperation substrate.
+
+## Host admission and coalesced Global supervision candidate
+
+Schema 10 adds host admission policy, a separate non-model service principal,
+resource samples, connector presence and delivery admission traces. Admission is
+mandatory for current connectors. An administrator enrolls the controller and
+machine identity through PUT /hosts/{host}/admission; only that service
+credential can submit POST /hosts/{host}/capacity. It receives no room,
+placement or model permission. Requests use operation identities; an original
+sample retry returns its original receipt without refreshing its observation.
+
+POST /connector/observe reports the current eligibility, blocker and capacity
+without claiming execution. Claims recheck under the host admission mutex and
+require host-admission/v1 plus the current role/cooperation/attempt/briefing
+capabilities. Capacity is bounded by the administrator ceiling, current CPU
+capacity and sampled available-memory budget. This is admission budgeting,
+not a hard per-process memory guarantee. Missing/stale samples hold admission.
+Unresolved and cancellation-pending executions retain reservations until an
+authoritative terminal observation. HTTP control does not wait for model slots.
+
+Administrator-designated control agents can use reserved capacity for genuine
+human requests; peer requests cannot claim that class. Worker admission rotates
+across eligible room heads, excluding incompatible, disconnected, disabled,
+busy or ungranted connectors. Durable traces separate receipt, eligibility,
+admission, native running and terminal times. The service does not guess the
+reason for a historical delay whose traces were never recorded.
+
+Schema 11 adds one explicitly enabled portfolio supervisor per enterprise.
+Only the installed administrator with Global role and its home room qualifies.
+Activation starts at the current committed event head; historical work does not
+resume. The deterministic reconciler coalesces material goal/work/decision
+changes and execution incidents. Passive chat, native logs and Global's own
+reports do not generate reviews. Current state eligibility precedes pagination.
+One unsettled portfolio review and a finite administrator-owned window budget
+bound admission; unchanged snapshots do not create more work.
+
+Each portfolio request is direct Global-to-Global in its home room, with a causal
+source and material digest. Source data keeps tool authority and private source
+audiences do not expand. This intentional private portfolio context is separate
+from the shared human Global context. Independent peer verification remains with
+its designated verifier. Global reviews accepted results, blockers, execution
+incidents or evidence for which it is the accountable reviewer.
+
+GET /agents/{agent}/supervision exposes policy, current items and original
+review execution receipts. Its continuation uses both afterReference and
+afterScope. Dispatched does not mean reviewed, accepted or successfully acted on.
+Unknown/stopped reviews retain their original receipts; unchanged material is
+not automatic retry permission. Ordinary agent self-execution requests are
+denied; bounded work claims and this explicit lifecycle policy are distinct
+authorized admission mechanisms.
+
+Qualification includes authenticated PostgreSQL/HTTP fault boundaries and real
+native workflows. A six-turn load scenario exercised two held workers, human
+Global control, acknowledged native cancellation, delivered artifact and one
+automatic independent Global review. A newer coupled candidate passed a
+four-turn Planner/Builder/Verifier workflow with actual host samples, a decision
+revision and original native question across API restart. Both ran on one host;
+their exact package pins and scope are retained in deployment evidence.
+Synthetic native receipts in fault tests are explicitly labeled, never counted
+as model execution.
+
+This remains a candidate. Reserved capacity does not yet let a new human steer
+an already executing Global turn. Multi-human privileged-operation provenance,
+general role stop/reassignment, cross-host artifact capabilities, credential
+separation, full restore and the physical NextComp journey remain release gates.
+Rollback requires fencing current writers and preserving new history; schema
+downgrade or restoring an old dump over accepted new work is not safe rollback.

@@ -85,8 +85,15 @@ def read(store, actor_id, identity, work=False):
                 "SELECT prerequisite FROM hb_work_dependency WHERE work=%s ORDER BY prerequisite",
                 (identity,),
             ).fetchall()
+            from .admission import trace
+
             return json_value(
-                {"work": w, "execution": d, "dependencies": [r["prerequisite"] for r in deps]}
+                {
+                    "work": w,
+                    "execution": d,
+                    "dependencies": [r["prerequisite"] for r in deps],
+                    "admission": trace(c, w["delivery"]) if w["delivery"] else None,
+                }
             )
         return snapshot(store, c, a, goal_row(store, c, a, identity, lock="share"))
 
@@ -379,8 +386,11 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 original = c.execute(
                     "SELECT * FROM hb_delivery WHERE id=%s FOR SHARE", (work["delivery"],)
                 ).fetchone()
-                if (original["state"] != "completed" or not original["native_turn"]
-                        or not original["native_thread"]):
+                if (
+                    original["state"] != "completed"
+                    or not original["native_turn"]
+                    or not original["native_thread"]
+                ):
                     raise Conflict("Original execution is not authoritatively complete")
                 if c.execute(
                     """SELECT 1 FROM hb_attention WHERE delivery=%s
@@ -393,8 +403,13 @@ def mutation(store, actor_id, action, identity, operation, payload):
                     """UPDATE hb_work SET state='planned',owner=%s,specification=%s,
                        acceptance=%s,request_event=NULL,delivery=NULL,report_event=NULL,
                        evidence='[]',note=%s,revision=revision+1 WHERE id=%s""",
-                    (payload["ownerId"], payload["specification"], payload["acceptance"],
-                     payload["note"], identity),
+                    (
+                        payload["ownerId"],
+                        payload["specification"],
+                        payload["acceptance"],
+                        payload["note"],
+                        identity,
+                    ),
                 )
             elif action == "work.report":
                 if a["id"] != work["owner"] or not work["delivery"]:
@@ -416,6 +431,7 @@ def mutation(store, actor_id, action, identity, operation, payload):
                     raise Conflict("Submitted work requires evidence")
                 if payload["state"] == "submitted":
                     from .memory import current_sequence
+
                     latest = current_sequence(c, work["room"], work["goal"])
                     seen = payload.get("briefingSequence")
                     head = c.execute(
@@ -438,15 +454,21 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 if a["id"] == work["owner"] and not a["administrator"]:
                     raise Denied("Worker cannot accept its own work")
                 from .memory import current_sequence
+
                 latest = current_sequence(c, work["room"], work["goal"])
                 if payload["decision"] == "accepted":
                     attempt = c.execute(
                         "SELECT briefing_sequence FROM hb_work_attempt WHERE delivery=%s",
                         (work["delivery"],),
                     ).fetchone()
-                    if latest and (not attempt or attempt["briefing_sequence"] is None
-                                   or attempt["briefing_sequence"] < latest):
-                        raise Conflict("Evidence predates current decisions; explicit rework is required")
+                    if latest and (
+                        not attempt
+                        or attempt["briefing_sequence"] is None
+                        or attempt["briefing_sequence"] < latest
+                    ):
+                        raise Conflict(
+                            "Evidence predates current decisions; explicit rework is required"
+                        )
                 c.execute(
                     "UPDATE hb_work SET state=%s,note=%s,revision=revision+1 WHERE id=%s",
                     (payload["decision"], payload["note"], identity),
@@ -563,15 +585,29 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 "goalId": str(goal["id"]),
                 "workId": str(work["id"]) if work else None,
                 "workflowReceipt": receipt,
-                **({"workReport": {
-                    "state": payload["state"], "evidence": payload["evidence"],
-                    "note": payload["note"],
-                    "briefingSequence": payload.get("briefingSequence"),
-                }} if action == "work.report" else {}),
-                **({"workReview": {
-                    "decision": payload["decision"], "note": payload["note"],
-                    "decisionSequence": latest,
-                }} if action == "work.review" else {}),
+                **(
+                    {
+                        "workReport": {
+                            "state": payload["state"],
+                            "evidence": payload["evidence"],
+                            "note": payload["note"],
+                            "briefingSequence": payload.get("briefingSequence"),
+                        }
+                    }
+                    if action == "work.report"
+                    else {}
+                ),
+                **(
+                    {
+                        "workReview": {
+                            "decision": payload["decision"],
+                            "note": payload["note"],
+                            "decisionSequence": latest,
+                        }
+                    }
+                    if action == "work.review"
+                    else {}
+                ),
             },
         )
         receipt["eventId"] = event
@@ -592,8 +628,13 @@ def mutation(store, actor_id, action, identity, operation, payload):
             c.execute("UPDATE hb_work SET report_event=%s WHERE id=%s", (event, work["id"]))
             c.execute(
                 "UPDATE hb_work_attempt SET report_event=%s,evidence=%s,report_note=%s,briefing_sequence=%s WHERE delivery=%s",
-                (event, Jsonb(payload["evidence"]), payload["note"],
-                 payload.get("briefingSequence"), work["delivery"]),
+                (
+                    event,
+                    Jsonb(payload["evidence"]),
+                    payload["note"],
+                    payload.get("briefingSequence"),
+                    work["delivery"],
+                ),
             )
         if action == "work.review":
             c.execute(
@@ -616,6 +657,14 @@ def dispatch_reviews(store, actor_id, host, capabilities=()):
         ):
             raise Denied("Enrolled execution owner required")
         store.native_role_capability(c, a, capabilities)
+        if c.execute(
+            "SELECT 1 FROM hb_portfolio_policy WHERE principal=%s AND enabled", (actor_id,)
+        ).fetchone():
+            return {
+                "admitted": [],
+                "modelsStarted": 0,
+                "reason": "portfolio_policy_owns_global_review",
+            }
         goals = c.execute(
             """SELECT g.* FROM hb_goal g LEFT JOIN hb_goal_cooperation t ON t.goal=g.id
                WHERE COALESCE(t.reviewer,g.owner)=%s AND g.state='active' AND g.review_remaining>0
@@ -772,15 +821,16 @@ def acknowledge(store, actor_id, seq, revision):
         )
 
 
-def claim_candidate(store, c, actor):
+def claim_candidate(store, c, actor, selected=None):
     # Lock a goal before its delivery, matching goal/work lifecycle mutations.
     # Observation is a hint; this is the authoritative admission recheck.
     candidate = c.execute(
         """SELECT d.id,w.goal FROM hb_delivery d JOIN hb_event e ON e.id=d.event
            LEFT JOIN hb_work w ON w.delivery=d.id LEFT JOIN hb_goal g ON g.id=w.goal
            WHERE d.agent=%s AND d.state='pending' AND (g.id IS NULL OR g.state='active')
+              AND (%s::uuid IS NULL OR d.id=%s::uuid)
            ORDER BY e.seq LIMIT 1""",
-        (actor["id"],),
+        (actor["id"], selected, selected),
     ).fetchone()
     if not candidate:
         return None

@@ -30,7 +30,7 @@ class Message(Input):
 class Principal(Input):
     id: UUID
     name: str = Field(min_length=1, max_length=128)
-    kind: Literal["human", "agent"]
+    kind: Literal["human", "agent", "service"]
     enrollmentCredential: str = Field(pattern=r"^[A-Za-z0-9_-]{40,128}$")
 
 
@@ -55,6 +55,36 @@ class Placement(Input):
     identityFingerprint: str = Field(min_length=16, max_length=512)
     capabilities: dict
     agentId: UUID
+
+
+class PortfolioPolicy(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    revision: int = Field(ge=0)
+    roomId: UUID
+    enabled: bool
+    reviewsPerWindow: int = Field(ge=1, le=64)
+    windowSeconds: int = Field(ge=60, le=86400)
+
+
+class HostAdmissionPolicy(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    revision: int = Field(ge=0)
+    controllerId: UUID
+    machineIdentity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    maxConcurrent: int = Field(ge=1, le=4096)
+    reservedInteractive: int = Field(ge=0, le=4096)
+    controlAgentIds: list[UUID] = Field(max_length=32)
+    memoryPerTurnBytes: int = Field(ge=1, le=9007199254740991)
+    reserveMemoryBytes: int = Field(ge=0, le=9007199254740991)
+    sampleMaxAgeSeconds: int = Field(ge=5, le=300)
+    connectorMaxAgeSeconds: int = Field(ge=5, le=300)
+
+
+class HostSample(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    machineIdentity: str = Field(pattern=r"^[0-9a-f]{64}$")
+    cpuSlots: int = Field(ge=1, le=4096)
+    availableMemoryBytes: int = Field(ge=0, le=9007199254740991)
 
 
 class Claim(Input):
@@ -477,6 +507,70 @@ async def placement(request):
     )
 
 
+async def portfolio_policy(request):
+    if request.method == "GET":
+        if set(request.query) - {"afterReference", "afterScope", "limit"}:
+            raise ValueError("Unknown portfolio query")
+        reference = request.query.get("afterReference")
+        scope = request.query.get("afterScope")
+        if bool(reference) != bool(scope) or scope not in (None, "goal", "delivery"):
+            raise ValueError("Invalid portfolio cursor")
+        after = {"reference": str(UUID(reference)), "scope": scope} if reference else None
+        limit = int(request.query.get("limit", "100"))
+        if not 1 <= limit <= 100:
+            raise ValueError("Invalid portfolio limit")
+        return await invoke(
+            request, "portfolio_read", str(UUID(request.match_info["agent"])), after, limit
+        )
+    p = await body(request, PortfolioPolicy)
+    return await invoke(
+        request,
+        "portfolio_policy_set",
+        str(UUID(request.match_info["agent"])),
+        p.operationId,
+        p.model_dump(mode="json", exclude={"operationId"}),
+    )
+
+
+async def portfolio_dispatch(request):
+    p = await body(request, ReviewDispatch)
+    return await invoke(request, "portfolio_dispatch", str(p.hostId), p.capabilities)
+
+
+async def host_policy(request):
+    host = str(UUID(request.match_info["host"]))
+    if request.method == "GET":
+        return await invoke(request, "host_policy", host)
+    p = await body(request, HostAdmissionPolicy)
+    if len(set(p.controlAgentIds)) != len(p.controlAgentIds):
+        raise ValueError("Duplicate control agent")
+    if p.reservedInteractive and not p.controlAgentIds:
+        raise ValueError("Reserved capacity requires a control agent")
+    return await invoke(
+        request,
+        "host_policy_set",
+        host,
+        p.operationId,
+        p.model_dump(mode="json", exclude={"operationId"}),
+    )
+
+
+async def host_sample(request):
+    p = await body(request, HostSample)
+    return await invoke(
+        request,
+        "host_sample",
+        str(UUID(request.match_info["host"])),
+        p.operationId,
+        p.model_dump(mode="json", exclude={"operationId"}),
+    )
+
+
+async def connector_observe(request):
+    p = await body(request, ReviewDispatch)
+    return await invoke(request, "connector_observe", str(p.hostId), p.capabilities)
+
+
 async def claim(request):
     p = await body(request, Claim)
     return await invoke(request, "claim", p.operationId, str(p.hostId), p.capabilities)
@@ -701,8 +795,11 @@ async def decisions(request):
     if request.method == "POST":
         p = await body(request, DecisionWrite)
         return await invoke(
-            request, "decision_write", str(UUID(request.match_info["room"])),
-            p.operationId, p.model_dump(mode="json", exclude={"operationId"}),
+            request,
+            "decision_write",
+            str(UUID(request.match_info["room"])),
+            p.operationId,
+            p.model_dump(mode="json", exclude={"operationId"}),
         )
     if set(request.query) - {"after", "limit", "goalId"}:
         raise ValueError("Unknown decision query")
@@ -711,8 +808,9 @@ async def decisions(request):
     limit = int(request.query.get("limit", "32"))
     if not 1 <= limit <= 100:
         raise ValueError("Invalid decision limit")
-    return await invoke(request, "decision_list",
-                        str(UUID(request.match_info["room"])), after, limit, goal)
+    return await invoke(
+        request, "decision_list", str(UUID(request.match_info["room"])), after, limit, goal
+    )
 
 
 async def briefing(request):
@@ -725,8 +823,9 @@ async def work_attempts(request):
     after, limit = int(request.query.get("after", "0")), int(request.query.get("limit", "100"))
     if not 0 <= after <= 9007199254740991 or not 1 <= limit <= 100:
         raise ValueError("Invalid attempt page")
-    return await invoke(request, "work_attempts",
-                        str(UUID(request.match_info["work"])), after, limit)
+    return await invoke(
+        request, "work_attempts", str(UUID(request.match_info["work"])), after, limit
+    )
 
 
 async def goal_read(request):
@@ -799,7 +898,8 @@ def application(store):
             web.post("/hollywood/v3/rooms/{room}/decisions", decisions),
             web.get("/hollywood/v3/connector/deliveries/{delivery}/briefing", briefing),
             web.post(
-                "/hollywood/v3/work/{work}/{action:assign|claim|report|review|cancel|revise}", workflow
+                "/hollywood/v3/work/{work}/{action:assign|claim|report|review|cancel|revise}",
+                workflow,
             ),
             web.post("/hollywood/v3/connector/reviews", review_dispatch),
             web.get("/hollywood/v3/supervision", supervision),
@@ -819,6 +919,13 @@ def application(store):
             web.get("/hollywood/v3/commands/{operation}", command),
             web.post("/hollywood/v3/placements", placement),
             web.post("/hollywood/v3/connector/claim", claim),
+            web.post("/hollywood/v3/connector/observe", connector_observe),
+            web.post("/hollywood/v3/connector/supervision", portfolio_dispatch),
+            web.put("/hollywood/v3/agents/{agent}/supervision", portfolio_policy),
+            web.get("/hollywood/v3/agents/{agent}/supervision", portfolio_policy),
+            web.get("/hollywood/v3/hosts/{host}/admission", host_policy),
+            web.put("/hollywood/v3/hosts/{host}/admission", host_policy),
+            web.post("/hollywood/v3/hosts/{host}/capacity", host_sample),
             web.get("/hollywood/v3/connector/pending", connector_pending),
             web.post("/hollywood/v3/deliveries/{delivery}/transition", transition),
             web.post("/hollywood/v3/deliveries/{delivery}/cancel", cancel),

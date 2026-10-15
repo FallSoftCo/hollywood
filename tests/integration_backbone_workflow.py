@@ -11,6 +11,7 @@ from aiohttp import ClientSession, web
 
 from hollywood_backbone.server import application
 from hollywood_backbone.store import Store
+from fixture_admission import prepare as capacity_fixture, CAPABILITIES
 
 ROOT = Path(os.environ["WORKFLOW_EVIDENCE"])
 DB = Path(os.environ["WORKFLOW_DATABASE_CONFIG"])
@@ -83,7 +84,7 @@ async def main():
                 and path in ("connector/claim", "connector/reviews")
                 and not (payload or {}).get("withoutRoleCapability")
             ):
-                payload = {**payload, "capabilities": ["native-role-goals/v1", "work-attempts/v1", "room-briefing/v1"]}
+                payload = {**payload, "capabilities": CAPABILITIES}
             if payload and payload.get("withoutRoleCapability"):
                 payload = {k: v for k, v in payload.items() if k != "withoutRoleCapability"}
             async with session.request(
@@ -93,6 +94,10 @@ async def main():
                 headers={"Authorization": "Bearer " + tokens[who]},
             ) as r:
                 value = await r.json()
+                if method == "POST" and path == "placements" and r.status == 200:
+                    capacity_fixture(
+                        store, credentials["Owner"]["principalId"], payload["hostId"], ROOT
+                    )
                 trace.append(
                     {
                         "who": who,

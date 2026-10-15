@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS hb_authority (
 );
 CREATE TABLE IF NOT EXISTS hb_principal (
  id uuid PRIMARY KEY, authority uuid NOT NULL REFERENCES hb_authority(id),
- name text NOT NULL, kind text NOT NULL CHECK(kind IN ('human','agent')),
+ name text NOT NULL, kind text NOT NULL CHECK(kind IN ('human','agent','service')),
  administrator boolean NOT NULL DEFAULT false, active boolean NOT NULL DEFAULT true,
  UNIQUE(authority,id), UNIQUE(authority,name)
 );
@@ -335,3 +335,104 @@ DO $$ BEGIN
   INSERT INTO hb_schema VALUES (9);
  END IF;
 END $$;
+
+
+-- Enrolled machine services do not acquire agent execution or room membership.
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=10) THEN
+  ALTER TABLE hb_principal DROP CONSTRAINT hb_principal_kind_check;
+  ALTER TABLE hb_principal ADD CONSTRAINT hb_principal_kind_check
+   CHECK(kind IN ('human','agent','service'));
+ END IF;
+END $$;
+CREATE TABLE IF NOT EXISTS hb_host_admission (
+ host uuid PRIMARY KEY, authority uuid NOT NULL, controller uuid NOT NULL,
+ machine_identity text NOT NULL, revision bigint NOT NULL DEFAULT 1,
+ max_concurrent integer NOT NULL CHECK(max_concurrent BETWEEN 1 AND 4096),
+ reserved_interactive integer NOT NULL CHECK(reserved_interactive BETWEEN 0 AND 4096),
+ memory_per_turn bigint NOT NULL CHECK(memory_per_turn>0),
+ memory_reserve bigint NOT NULL CHECK(memory_reserve>=0),
+ sample_max_age integer NOT NULL CHECK(sample_max_age BETWEEN 5 AND 300),
+ connector_max_age integer NOT NULL CHECK(connector_max_age BETWEEN 5 AND 300),
+ next_ticket bigint NOT NULL DEFAULT 0,
+ CHECK(reserved_interactive<=max_concurrent),
+ FOREIGN KEY(authority,host) REFERENCES hb_host(authority,id),
+ FOREIGN KEY(authority,controller) REFERENCES hb_principal(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_host_control_agent (
+ host uuid NOT NULL REFERENCES hb_host_admission(host),
+ agent uuid NOT NULL REFERENCES hb_principal(id), PRIMARY KEY(host,agent)
+);
+CREATE TABLE IF NOT EXISTS hb_host_sample (
+ host uuid PRIMARY KEY REFERENCES hb_host_admission(host),
+ cpu_slots integer NOT NULL, available_memory bigint NOT NULL,
+ observed_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS hb_admission_command (
+ principal uuid NOT NULL REFERENCES hb_principal(id), operation text NOT NULL,
+ digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(principal,operation)
+);
+CREATE TABLE IF NOT EXISTS hb_connector_observation (
+ agent uuid PRIMARY KEY REFERENCES hb_principal(id), host uuid NOT NULL REFERENCES hb_host(id),
+ capabilities jsonb NOT NULL, observed_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE TABLE IF NOT EXISTS hb_admission_trace (
+ delivery uuid PRIMARY KEY REFERENCES hb_delivery(id), host uuid REFERENCES hb_host(id),
+ received_at timestamptz NOT NULL, first_eligible_at timestamptz,
+ admitted_at timestamptz, running_at timestamptz, terminal_at timestamptz,
+ queue_class text CHECK(queue_class IN ('interactive','worker')), ticket bigint,
+ blocker text, blocker_since timestamptz, observed_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);
+CREATE INDEX IF NOT EXISTS hb_admission_host_history ON hb_admission_trace(host,ticket);
+CREATE OR REPLACE FUNCTION hb_trace_delivery() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ INSERT INTO hb_admission_trace(delivery,received_at)
+  SELECT NEW.id,e.created_at FROM hb_event e WHERE e.id=NEW.event ON CONFLICT DO NOTHING;
+ IF TG_OP='UPDATE' AND NEW.state IS DISTINCT FROM OLD.state THEN
+  UPDATE hb_admission_trace SET
+   admitted_at=CASE WHEN NEW.state='claimed' THEN COALESCE(admitted_at,clock_timestamp()) ELSE admitted_at END,
+   running_at=CASE WHEN NEW.state='running' THEN COALESCE(running_at,clock_timestamp()) ELSE running_at END,
+   terminal_at=CASE WHEN NEW.state IN ('completed','failed','cancelled')
+     THEN COALESCE(terminal_at,clock_timestamp()) ELSE terminal_at END,
+   blocker=CASE WHEN NEW.state='unknown' THEN 'unresolved_execution'
+     WHEN NEW.state='cancel_requested' THEN 'awaiting_stop_acknowledgement' ELSE NULL END,
+   blocker_since=CASE WHEN NEW.state IN ('unknown','cancel_requested') THEN clock_timestamp() ELSE NULL END,
+   observed_at=clock_timestamp() WHERE delivery=NEW.id;
+ END IF;
+ RETURN NEW;
+END $$;
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=10) THEN
+  INSERT INTO hb_admission_trace(delivery,received_at)
+   SELECT d.id,e.created_at FROM hb_delivery d JOIN hb_event e ON e.id=d.event;
+  CREATE TRIGGER hb_trace_delivery_change AFTER INSERT OR UPDATE OF state ON hb_delivery
+   FOR EACH ROW EXECUTE FUNCTION hb_trace_delivery();
+  INSERT INTO hb_schema VALUES (10);
+ END IF;
+END $$;
+
+
+CREATE TABLE IF NOT EXISTS hb_portfolio_policy (
+ principal uuid PRIMARY KEY REFERENCES hb_principal(id),
+ authority uuid NOT NULL UNIQUE REFERENCES hb_authority(id), room uuid NOT NULL REFERENCES hb_room(id),
+ enabled boolean NOT NULL, revision bigint NOT NULL DEFAULT 1,
+ activation_seq bigint NOT NULL, scanned_seq bigint NOT NULL,
+ reviews_per_window integer NOT NULL CHECK(reviews_per_window BETWEEN 1 AND 64),
+ window_seconds integer NOT NULL CHECK(window_seconds BETWEEN 60 AND 86400),
+ window_started timestamptz NOT NULL DEFAULT clock_timestamp(), reviews_used integer NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS hb_portfolio_item (
+ principal uuid NOT NULL REFERENCES hb_portfolio_policy(principal),
+ scope text NOT NULL CHECK(scope IN ('goal','delivery')), reference uuid NOT NULL,
+ goal uuid REFERENCES hb_goal(id), delivery uuid REFERENCES hb_delivery(id),
+ CHECK((scope='goal' AND goal=reference AND delivery IS NULL)
+    OR (scope='delivery' AND delivery=reference AND goal IS NULL)),
+ source_event uuid NOT NULL REFERENCES hb_event(id), latest_seq bigint NOT NULL,
+ dispatched_seq bigint NOT NULL DEFAULT 0, dispatched_digest text, request_event uuid REFERENCES hb_event(id),
+ PRIMARY KEY(principal,scope,reference)
+);
+CREATE TABLE IF NOT EXISTS hb_portfolio_command (
+ principal uuid NOT NULL REFERENCES hb_principal(id), operation text NOT NULL,
+ digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(principal,operation)
+);
+INSERT INTO hb_schema VALUES (11) ON CONFLICT DO NOTHING;

@@ -12,6 +12,7 @@ from aiohttp import ClientSession, web
 
 from hollywood_backbone.server import application
 from hollywood_backbone.store import Store
+from fixture_admission import prepare as capacity_fixture, CAPABILITIES
 
 
 async def main():
@@ -72,6 +73,10 @@ async def main():
                 headers={"Authorization": "Bearer " + principals[who]["token"]},
             ) as response:
                 value = await response.json()
+                if method == "POST" and path == "placements" and response.status == 200:
+                    capacity_fixture(
+                        store, principals["Owner"]["principalId"], payload["hostId"], root
+                    )
                 trace.append(
                     {
                         "who": who,
@@ -140,7 +145,7 @@ async def main():
                 },
             )
 
-        caps = ["native-role-goals/v1", "cooperation-plan/v1", "work-attempts/v1", "room-briefing/v1"]
+        caps = CAPABILITIES
         try:
             for name in principals:
                 if name in ("Owner", "Global"):
