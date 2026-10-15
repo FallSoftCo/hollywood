@@ -11,7 +11,8 @@ from aiohttp import web
 from psycopg import errors as pg_errors
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from .store import Conflict, Denied, Store
+from .store import Conflict, Denied, Store, digest
+from . import native_effects
 
 
 class Input(BaseModel):
@@ -431,6 +432,7 @@ async def boundary(request, handler):
                 raise Denied("Bearer authentication required")
             actor = await asyncio.to_thread(request.app[STORE].authenticate, authorization[7:])
             request["actor"] = actor["id"]
+            request["tokenDigest"] = digest(authorization[7:])
         return await handler(request)
     except Denied:
         return web.json_response({"error": "Access denied"}, status=403)
@@ -462,10 +464,29 @@ async def invoke(request, method, *args):
                 "operationId": raw["operationId"], "method": wire["method"],
                 "path": wire["path"], "wireDigest": digest(wire),
             }
-    value = await asyncio.to_thread(
-        getattr(request.app[STORE], method), request["actor"], *args, **kwargs
-    )
+    # read() returns the cached bytes even after body() validated the request.
+    # can_read_body is false once the underlying stream has been consumed.
+    raw_body = await request.read()
+    payload = json.loads(raw_body) if raw_body else None
+    provenance = native_effects.source(request.headers.get(native_effects.HEADER))
+    with native_effects.transport(
+        request["actor"], request["tokenDigest"], request.method, method,
+        request.path.removeprefix("/hollywood/v3/"), payload, provenance,
+    ):
+        value = await asyncio.to_thread(
+            getattr(request.app[STORE], method), request["actor"], *args, **kwargs
+        )
     return web.json_response(value)
+
+
+async def native_effect_list(request):
+    if set(request.query) - {"after", "limit"}:
+        raise ValueError("Unknown native effect query")
+    after, limit = int(request.query.get("after", "0")), int(request.query.get("limit", "100"))
+    if not 0 <= after <= 9007199254740991 or not 1 <= limit <= 100:
+        raise ValueError("Invalid native effect page")
+    return await invoke(request, "native_effects", str(UUID(request.match_info["delivery"])),
+                        after, limit)
 
 
 async def administrative_command(request):
@@ -1056,6 +1077,7 @@ def application(store):
     app.add_routes(
         [
             web.get("/health", health),
+            web.get("/hollywood/v3/deliveries/{delivery}/native-effects", native_effect_list),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/executor", executor_begin),
             web.post(
                 "/hollywood/v3/connector/deliveries/{delivery}/executor/reserve", executor_reserve

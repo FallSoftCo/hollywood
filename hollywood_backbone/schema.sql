@@ -512,3 +512,39 @@ DO $$ BEGIN
   INSERT INTO hb_schema VALUES (16);
  END IF;
 END $$;
+
+
+-- Provenance commits atomically with the domain effect. Bodies/credentials are excluded.
+CREATE TABLE IF NOT EXISTS hb_native_effect (
+ sequence bigserial PRIMARY KEY, authority uuid NOT NULL, principal uuid NOT NULL,
+ delivery uuid NOT NULL, generation bigint NOT NULL CHECK(generation>0),
+ fingerprint text NOT NULL, source jsonb NOT NULL,
+ method text NOT NULL, path text NOT NULL, wire_digest text NOT NULL, operation text,
+ accepted_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(principal,fingerprint),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,delivery) REFERENCES hb_delivery(authority,id)
+);
+CREATE INDEX IF NOT EXISTS hb_native_effect_delivery
+ ON hb_native_effect(authority,delivery,sequence);
+INSERT INTO hb_schema VALUES (17) ON CONFLICT DO NOTHING;
+
+
+-- Expand-only commit-ordered provenance cursors; old body evidence stays incomplete.
+CREATE TABLE IF NOT EXISTS hb_native_effect_cursor (
+ authority uuid PRIMARY KEY REFERENCES hb_authority(id),
+ last_seq bigint NOT NULL DEFAULT 0
+);
+ALTER TABLE hb_native_effect ADD COLUMN IF NOT EXISTS authority_seq bigint;
+ALTER TABLE hb_native_effect ADD COLUMN IF NOT EXISTS wire_body_captured boolean NOT NULL DEFAULT false;
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=18) THEN
+  UPDATE hb_native_effect SET authority_seq=sequence WHERE authority_seq IS NULL;
+  INSERT INTO hb_native_effect_cursor(authority,last_seq)
+   SELECT authority,max(authority_seq) FROM hb_native_effect GROUP BY authority
+   ON CONFLICT(authority) DO UPDATE SET last_seq=EXCLUDED.last_seq;
+  INSERT INTO hb_schema VALUES (18);
+ END IF;
+END $$;
+CREATE UNIQUE INDEX IF NOT EXISTS hb_native_effect_authority_cursor
+ ON hb_native_effect(authority,authority_seq);

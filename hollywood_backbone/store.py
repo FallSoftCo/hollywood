@@ -68,6 +68,11 @@ class Store:
         from .executors import observe
         return observe(self, actor_id, host, identity, payload)
 
+    def native_effects(self, actor_id, delivery, after=0, limit=100):
+        from .native_effects import listing
+
+        return listing(self, actor_id, delivery, after, limit)
+
     def administrative_command(self, actor_id, operation):
         from .administrative import read
         return read(self, actor_id, operation)
@@ -314,6 +319,9 @@ class Store:
 
     @staticmethod
     def actor(c, identity):
+        from .native_effects import enter
+
+        enter(c, identity)
         row = c.execute(
             "SELECT * FROM hb_principal WHERE id=%s AND active FOR SHARE", (identity,)
         ).fetchone()

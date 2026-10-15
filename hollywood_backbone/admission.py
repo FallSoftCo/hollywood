@@ -14,6 +14,7 @@ CAPABILITIES = {
     "work-attempts/v1",
     "room-briefing/v1",
     "host-admission/v1",
+    "native-effect-source/v1",
 }
 ACTIVE = ("claimed", "running", "unknown", "cancel_requested")
 
