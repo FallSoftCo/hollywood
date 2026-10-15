@@ -500,3 +500,15 @@ CREATE TABLE IF NOT EXISTS hb_executor_command (
  digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(principal,operation)
 );
 INSERT INTO hb_schema VALUES (15) ON CONFLICT DO NOTHING;
+
+-- Preserve launch provenance before a native process exists.
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=16) THEN
+  ALTER TABLE hb_executor ADD COLUMN launch_phase text NOT NULL DEFAULT 'attached'
+    CHECK(launch_phase IN ('reserved','attached'));
+  ALTER TABLE hb_executor ADD COLUMN reservation_descriptor jsonb;
+  ALTER TABLE hb_executor ADD COLUMN reservation_digest text;
+  UPDATE hb_executor SET reservation_descriptor=descriptor,reservation_digest=descriptor_digest;
+  INSERT INTO hb_schema VALUES (16);
+ END IF;
+END $$;

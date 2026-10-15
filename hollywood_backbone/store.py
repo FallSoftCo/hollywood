@@ -40,6 +40,22 @@ class Store:
         from .executors import begin
         return begin(self, actor_id, delivery, payload)
 
+    def executor_reserve(self, actor_id, delivery, payload):
+        from .executors import begin
+
+        return begin(
+            self,
+            actor_id,
+            delivery,
+            {**payload, "nativePid": None, "nativeStart": None},
+            reserved=True,
+        )
+
+    def executor_attach(self, actor_id, identity, payload):
+        from .executors import attach
+
+        return attach(self, actor_id, identity, payload)
+
     def executor_read(self, actor_id, identity):
         from .executors import read
         return read(self, actor_id, identity)

@@ -39,3 +39,30 @@ does not yet instrument Connector.once(), admit an original-Global inspection
 turn, apply a native tool ceiling or fence late parent-generation effects. Those
 remain explicit parts of the same implementation slice and release gates. No
 production or phone cutover is implied.
+
+## Pre-birth reservation and attachment
+
+Schema16 adds an expanding launch phase and original reservation descriptor/digest.
+The reserve endpoint captures a claimed owner before a native PID exists. A separate
+native attachment binds one real process incarnation to that exact reservation.
+Duplicate receipt identity retains its original result; changed ownership/digest,
+cancelled admission or a stopped resource cannot authorize a new attachment.
+
+Only the enrolled non-model host controller may attest live/unknown/stopped.
+An unattached reservation cannot be live, and a live guardian's empty group cannot
+settle an unconfirmed birth. Native attachment is not provider authorization:
+the connector separately requires current independent live evidence.
+
+Enterprise administrators may inspect all owned executor records and host pages;
+this grants no permission to impersonate the enrolled controller. Physical capacity
+includes non-stopped older generations and terminal deliveries. Semantic unknown
+outcomes remain held after physical release.
+
+The expanding columns remain nullable for older private capture writers. New
+reserve/attach operations always supply and preserve their explicit provenance;
+an older fully captured record is not evidence of a pre-birth reservation.
+
+Controller authorization is rechecked after acquiring the host mutex. A request
+that waited while controller rotation committed cannot attest with its former
+enrollment. The contention qualification uses actual PostgreSQL waiters and keeps
+the original unknown executor record unchanged.

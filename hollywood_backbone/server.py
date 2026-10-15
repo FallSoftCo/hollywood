@@ -126,7 +126,7 @@ class HostSample(Input):
     availableMemoryBytes: int = Field(ge=0, le=9007199254740991)
 
 
-class ExecutorBegin(Input):
+class ExecutorReservation(Input):
     operationId: str = Field(min_length=1, max_length=128)
     id: UUID
     claimId: str = Field(min_length=1, max_length=128)
@@ -139,6 +139,19 @@ class ExecutorBegin(Input):
     controlGroup: str = Field(min_length=1, max_length=512)
     guardianPid: int = Field(ge=2)
     guardianStart: str = Field(pattern=r"^[0-9]+$")
+
+
+class ExecutorBegin(ExecutorReservation):
+    nativePid: int = Field(ge=2)
+    nativeStart: str = Field(pattern=r"^[0-9]+$")
+
+
+class ExecutorAttachment(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    claimId: str = Field(min_length=1, max_length=128)
+    generation: int = Field(ge=1)
+    hostId: UUID
+    reservationDigest: str = Field(pattern=r"^[0-9a-f]{64}$")
     nativePid: int = Field(ge=2)
     nativeStart: str = Field(pattern=r"^[0-9]+$")
 
@@ -463,6 +476,26 @@ async def executor_begin(request):
     p = await body(request, ExecutorBegin)
     return await invoke(request, "executor_begin", str(UUID(request.match_info["delivery"])),
                         p.model_dump(mode="json"))
+
+
+async def executor_reserve(request):
+    p = await body(request, ExecutorReservation)
+    return await invoke(
+        request,
+        "executor_reserve",
+        str(UUID(request.match_info["delivery"])),
+        p.model_dump(mode="json"),
+    )
+
+
+async def executor_attach(request):
+    p = await body(request, ExecutorAttachment)
+    return await invoke(
+        request,
+        "executor_attach",
+        str(UUID(request.match_info["executor"])),
+        p.model_dump(mode="json"),
+    )
 
 
 async def executor_read(request):
@@ -1024,9 +1057,15 @@ def application(store):
         [
             web.get("/health", health),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/executor", executor_begin),
+            web.post(
+                "/hollywood/v3/connector/deliveries/{delivery}/executor/reserve", executor_reserve
+            ),
+            web.post("/hollywood/v3/executors/{executor}/native", executor_attach),
             web.get("/hollywood/v3/executors/{executor}", executor_read),
             web.get("/hollywood/v3/hosts/{host}/executors", executor_list),
-            web.post("/hollywood/v3/hosts/{host}/executors/{executor}/observation", executor_observe),
+            web.post(
+                "/hollywood/v3/hosts/{host}/executors/{executor}/observation", executor_observe
+            ),
             web.get("/hollywood/v3/rooms/{room}/goals", goal_list),
             web.post("/hollywood/v3/rooms/{room}/goals", goal_create),
             web.get("/hollywood/v3/goals/{goal}", goal_read),
@@ -1074,7 +1113,9 @@ def application(store):
             web.post("/hollywood/v3/deliveries/{delivery}/transition", transition),
             web.post("/hollywood/v3/deliveries/{delivery}/guidance", native_control_create),
             web.get("/hollywood/v3/native-controls/{control}", native_control_read),
-            web.post("/hollywood/v3/connector/deliveries/{delivery}/guidance", native_control_pending),
+            web.post(
+                "/hollywood/v3/connector/deliveries/{delivery}/guidance", native_control_pending
+            ),
             web.post("/hollywood/v3/connector/native-controls/{control}", native_control_update),
             web.post("/hollywood/v3/deliveries/{delivery}/cancel", cancel),
             web.get("/hollywood/v3/deliveries/{delivery}", delivery),

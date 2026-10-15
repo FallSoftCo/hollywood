@@ -206,8 +206,9 @@ def diagnose(store, c, actor, host, capabilities, record=False):
     ).fetchone()
     busy = c.execute(
         """SELECT d.id,d.state,d.native_thread,d.native_turn,x.state AS resource_state
-           FROM hb_delivery d LEFT JOIN hb_executor x ON x.delivery=d.id AND x.generation=d.generation
-           WHERE d.agent=%s AND d.state IN ('claimed','running','unknown','cancel_requested')
+           FROM hb_delivery d LEFT JOIN hb_executor x ON x.delivery=d.id AND x.state<>'stopped'
+           WHERE d.agent=%s AND (d.state IN ('claimed','running','unknown','cancel_requested')
+             OR x.id IS NOT NULL)
            ORDER BY d.updated_at LIMIT 1""",
         (actor["id"],),
     ).fetchone()
@@ -227,7 +228,13 @@ def diagnose(store, c, actor, host, capabilities, record=False):
     if not placement or not placement["enabled"]:
         reason = "placement_disabled"
     elif busy:
-        reason = "unresolved_execution" if busy["state"] == "unknown" else "agent_busy"
+        reason = (
+            "unresolved_execution"
+            if busy["state"] == "unknown"
+            else "executor_not_drained"
+            if busy["state"] in ("completed", "failed", "cancelled")
+            else "agent_busy"
+        )
     elif not own:
         reason = "no_pending_work"
     elif not CAPABILITIES <= set(capabilities):
@@ -243,12 +250,15 @@ def diagnose(store, c, actor, host, capabilities, record=False):
         counts = c.execute(
             """SELECT count(*) AS total,
                count(*) FILTER (WHERE COALESCE(t.queue_class,'worker')='worker') AS workers
-               FROM hb_delivery d LEFT JOIN hb_admission_trace t ON t.delivery=d.id
-               LEFT JOIN hb_executor x ON x.delivery=d.id AND x.generation=d.generation
-               WHERE d.host=%s AND (
-                 (x.id IS NULL AND d.state IN ('claimed','running','unknown','cancel_requested'))
-                 OR (x.id IS NOT NULL AND x.state<>'stopped'))""",
-            (host,),
+               FROM (
+                 SELECT x.delivery FROM hb_executor x WHERE x.host=%s AND x.state<>'stopped'
+                 UNION ALL
+                 SELECT d.id FROM hb_delivery d WHERE d.host=%s
+                   AND d.state IN ('claimed','running','unknown','cancel_requested')
+                   AND NOT EXISTS(SELECT 1 FROM hb_executor x WHERE x.delivery=d.id AND x.generation=d.generation)
+               ) resources
+               LEFT JOIN hb_admission_trace t ON t.delivery=resources.delivery""",
+            (host, host),
         ).fetchone()
         free = max(
             0,
@@ -287,6 +297,7 @@ def diagnose(store, c, actor, host, capabilities, record=False):
                     WHERE m.room=e.room AND m.principal=p.id AND m.can_read AND m.can_post))
                   AND NOT EXISTS(SELECT 1 FROM hb_delivery b WHERE b.agent=d.agent
                     AND b.state IN ('claimed','running','unknown','cancel_requested'))
+                  AND NOT EXISTS(SELECT 1 FROM hb_executor x WHERE x.agent=d.agent AND x.state<>'stopped')
             ) SELECT * FROM heads WHERE position=1""",
             (host, policy["connector_max_age"], Jsonb(sorted(CAPABILITIES))),
         ).fetchall()
