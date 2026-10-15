@@ -337,3 +337,45 @@ disabling their placements before switching the authority runtime. Preserve the
 database and new history; do not restore an old dump over accepted new work or
 start an old coordinator against a role context. Use the coupled current package
 to reconcile original receipts. Production migration remains held.
+
+
+## Summer cooperation port: goal-scoped independent peers
+
+The original July implementation and reports remain the behavioral baseline.
+The canonical v3 port now derives a new goal's accountable planner from the
+addressed source request, rather than silently replacing that peer with the room
+owner. Historical goals keep their original accepted ownership. Goal creation
+must belong to that exchange's author/recipient or an enterprise administrator.
+
+Schema 8 adds a revisioned cooperation contract per goal, not one permanent
+organization per room. The first supported canonical modes are `leader_award`
+and `kanban_pull`. An explicit executor set and optional independent verifier
+require existing current room grants; a role name grants no access. Directed
+work retains explicit assignment. Kanban work can be genuinely unowned while
+planned; an eligible peer claims it through one transaction which fences the
+work revision, checks accepted prerequisites and queues one separate native
+assignment. Claiming does not turn an unrelated current turn into implementation.
+One peer cannot accumulate unsettled claimed work. Unknown or active work cannot
+be stolen on lease expiry. Reassignment/handoff remains an explicit future port.
+
+A designated verifier receives the existing finite material-report review budget
+and can review work and accept the goal. It cannot rewrite the plan, assign work
+or cancel the planner's goal. Planner/self acceptance is denied under that split;
+enterprise administrators retain their intended override. The verifier must read
+and independently check actual artifact evidence. Native completion, submission
+and business acceptance remain separate states.
+
+Policy/executor changes after any work admission are held for explicit migration.
+New contracts require `cooperation-plan/v1` on native claim and review admission.
+LAX captures the authenticated goal policy/revision and its own scoped team role
+in native context. Publications and configuration emit facts, not model wakeups.
+Existing goals without a contract retain the previous explicit-assignment path.
+Rollback must stop new-policy writers and preserve accepted history; an old
+runtime must never be used to reinterpret open/claimed cooperation work.
+
+Remaining summer ports include room default cooperation templates with captured
+goal overrides, dual-command ownership leases, adaptive phase
+selection, safe handoff/yield with original-attempt history, collaborative edit
+plans tied to actual source revisions and workspace/host identities, and broader
+role-aware attention/quiescence. Evaluated alternative selectors remain evidence,
+not a reason to discard the established cooperation substrate.

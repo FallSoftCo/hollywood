@@ -720,11 +720,29 @@ async def main():
             w4 = str(uuid4())
             with (ROOT / "revocation-intent.json").open("w") as f:
                 json.dump({"goalId": goal3, "workId": w4}, f)
+            viewer_source = await call(
+                "Viewer",
+                "POST",
+                f"rooms/{ids['room']}/messages",
+                {
+                    "operationId": "viewer-goal-source",
+                    "kind": "request",
+                    "body": "My scoped goal for the permission revocation fixture",
+                    "recipientId": credentials["Global"]["principalId"],
+                    "audience": "room",
+                },
+            )
             g = await call(
                 "Viewer",
                 "POST",
                 f"rooms/{ids['room']}/goals",
-                {**payload, "operationId": "viewer-goal", "id": goal3, "reviewBudget": 0},
+                {
+                    **payload,
+                    "operationId": "viewer-goal",
+                    "id": goal3,
+                    "reviewBudget": 0,
+                    "sourceEventId": viewer_source["event"]["id"],
+                },
             )
             await call(
                 "Viewer",

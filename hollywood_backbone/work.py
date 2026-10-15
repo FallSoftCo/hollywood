@@ -61,7 +61,16 @@ def snapshot(store, c, actor, goal):
             (row["id"],),
         ).fetchall()
         works.append({**row, "dependencies": [r["prerequisite"] for r in deps]})
-    return json_value({"goal": goal, "plan": works, "planTruncated": len(rows) > 100})
+    from .cooperation import view
+
+    return json_value(
+        {
+            "goal": goal,
+            "plan": works,
+            "planTruncated": len(rows) > 100,
+            "cooperation": view(c, goal["id"], actor["id"]),
+        }
+    )
 
 
 def read(store, actor_id, identity, work=False):
@@ -159,6 +168,15 @@ def mutation(store, actor_id, action, identity, operation, payload):
             "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
             (str(a["id"]) + ":" + operation,),
         )
+        # Match connector actor -> goal lock order before locking a goal.
+        if (
+            action == "work.claim"
+            and not c.execute(
+                "SELECT pg_try_advisory_xact_lock(hashtextextended(%s,0)) AS locked",
+                (str(a["id"]),),
+            ).fetchone()["locked"]
+        ):
+            raise Conflict("Agent admission is being reconciled")
         old = c.execute(
             "SELECT * FROM hb_command WHERE principal=%s AND operation=%s", (a["id"], operation)
         ).fetchone()
@@ -168,7 +186,7 @@ def mutation(store, actor_id, action, identity, operation, payload):
             event = store.readable_event(c, a, old["event"])
             return event["data"]["workflowReceipt"]
         if action == "goal.create":
-            room = store.room(c, a, identity, "can_request")
+            store.room(c, a, identity, "can_request")
             source = store.readable_event(c, a, payload["sourceEventId"])
             if source["kind"] != "request" or str(source["room"]) != identity:
                 raise Denied("Goal requires an addressed source request in its room")
@@ -179,9 +197,11 @@ def mutation(store, actor_id, action, identity, operation, payload):
             from .attention import human_owner
 
             human_owner(c, source)
+            if not a["administrator"] and a["id"] not in (source["author"], source["recipient"]):
+                raise Denied("Goal creation must belong to the addressed exchange")
             owner = c.execute(
                 "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent' AND active",
-                (room["owner"], a["authority"]),
+                (source["recipient"], a["authority"]),
             ).fetchone()
             if not owner:
                 raise Denied("Accountable agent owner unavailable")
@@ -222,9 +242,16 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 target_room = str(goal["room"])
                 if goal["revision"] != payload["revision"]:
                     raise Conflict("Goal/plan revision changed")
-            if action == "work.report":
+            if action in ("work.report", "work.review"):
                 store.room(c, a, work["room"], "can_post")
-            if action != "work.report":
+            from . import cooperation
+
+            if action in ("work.review",) or (
+                action == "goal.state" and payload["state"] == "accepted"
+            ):
+                cooperation.review(store, c, a, goal)
+                goal_row(store, c, a, str(goal["id"]))
+            elif action not in ("work.report", "work.claim"):
                 manage(a, goal)
                 goal_row(store, c, a, str(goal["id"]))
             if (
@@ -232,15 +259,19 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 and goal["state"] != "active"
             ):
                 raise Conflict("Goal is not active")
-            if action == "goal.work":
+            if action == "goal.cooperation":
+                cooperation.configure(store, c, a, goal, payload)
+            elif action == "goal.work":
                 store.room(c, a, payload["roomId"], "can_request")
-                owner = c.execute(
-                    "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND active AND kind='agent'",
-                    (payload["ownerId"], a["authority"]),
-                ).fetchone()
-                if not owner:
-                    raise Denied("Work owner unavailable")
-                store.room(c, owner, payload["roomId"])
+                owner = None
+                if payload["ownerId"]:
+                    owner = cooperation.executor(
+                        store, c, goal, payload["ownerId"], payload["roomId"]
+                    )
+                else:
+                    policy = cooperation.row(c, goal["id"])
+                    if not policy or policy["policy"] != "kanban_pull":
+                        raise Conflict("Open work requires explicit Kanban cooperation")
                 for dependency in payload["dependencies"]:
                     if not c.execute(
                         "SELECT 1 FROM hb_work WHERE id=%s AND goal=%s", (dependency, goal["id"])
@@ -248,7 +279,8 @@ def mutation(store, actor_id, action, identity, operation, payload):
                         raise Denied("Prerequisite is outside this goal")
                     # Don't disclose a hidden prerequisite through a delegated plan.
                     prior = work_row(store, c, a, dependency)
-                    store.room(c, owner, prior["room"])
+                    if owner:
+                        store.room(c, owner, prior["room"])
                 wid = payload["id"]
                 c.execute(
                     """INSERT INTO hb_work(id,authority,goal,room,owner,specification,acceptance)
@@ -270,7 +302,26 @@ def mutation(store, actor_id, action, identity, operation, payload):
                     )
                 work = work_row(store, c, a, wid)
                 target_room = payload["roomId"]
-            elif action == "work.assign":
+            elif action in ("work.assign", "work.claim"):
+                if action == "work.claim":
+                    policy = cooperation.row(c, goal["id"])
+                    if (
+                        a["kind"] != "agent"
+                        or not policy
+                        or policy["policy"] != "kanban_pull"
+                        or work["owner"] is not None
+                    ):
+                        raise Denied("Only an eligible peer may claim open Kanban work")
+                    cooperation.executor(store, c, goal, a["id"], work["room"])
+                    if c.execute(
+                        """SELECT 1 FROM hb_work w JOIN hb_delivery d ON d.id=w.delivery
+                                    WHERE w.owner=%s AND d.state IN
+                                    ('pending','claimed','running','unknown','cancel_requested') LIMIT 1""",
+                        (a["id"],),
+                    ).fetchone():
+                        raise Conflict("Peer already has unsettled work")
+                elif work["owner"] is None:
+                    raise Conflict("Open work must be claimed by an eligible executor")
                 if work["state"] != "planned" or work["delivery"]:
                     raise Conflict("Work already admitted or no longer planned")
                 if c.execute(
@@ -280,10 +331,15 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 ).fetchone():
                     raise Conflict("Prerequisites have not been accepted")
                 store.room(c, a, work["room"], "can_request")
-                target = store.actor(c, work["owner"])
-                store.room(c, target, work["room"])
-                if target["kind"] != "agent":
-                    raise Denied("Execution owner is not an agent")
+                if action == "work.claim":
+                    for dep in c.execute(
+                        "SELECT prerequisite FROM hb_work_dependency WHERE work=%s", (identity,)
+                    ).fetchall():
+                        work_row(store, c, a, str(dep["prerequisite"]))
+                    c.execute("UPDATE hb_work SET owner=%s WHERE id=%s", (a["id"], identity))
+                    work["owner"] = a["id"]
+                cooperation.executor(store, c, goal, str(work["owner"]), work["room"])
+                policy = cooperation.row(c, goal["id"])
                 request = store.event(
                     c,
                     a,
@@ -297,6 +353,7 @@ def mutation(store, actor_id, action, identity, operation, payload):
                         "workId": identity,
                         "acceptance": work["acceptance"],
                         "workRevision": work["revision"] + 1,
+                        "cooperationRevision": policy["revision"] if policy else None,
                     },
                 )
                 delivery = uid()
@@ -436,6 +493,8 @@ def mutation(store, actor_id, action, identity, operation, payload):
                 "deliveryId": work["delivery"] if work else None,
             }
         )
+        if action == "goal.cooperation":
+            receipt["cooperation"] = cooperation.view(c, goal["id"], a["id"])
         event = store.event(
             c,
             a,
@@ -489,11 +548,19 @@ def dispatch_reviews(store, actor_id, host, capabilities=()):
             raise Denied("Enrolled execution owner required")
         store.native_role_capability(c, a, capabilities)
         goals = c.execute(
-            "SELECT * FROM hb_goal WHERE owner=%s AND state='active' AND review_remaining>0 ORDER BY id LIMIT 16 FOR UPDATE SKIP LOCKED",
+            """SELECT g.* FROM hb_goal g LEFT JOIN hb_goal_cooperation t ON t.goal=g.id
+               WHERE COALESCE(t.reviewer,g.owner)=%s AND g.state='active' AND g.review_remaining>0
+               ORDER BY g.id LIMIT 16 FOR UPDATE OF g SKIP LOCKED""",
             (actor_id,),
         ).fetchall()
         admitted = []
         for goal in goals:
+            from .cooperation import CAPABILITY
+            from .cooperation import row as cooperation_row
+
+            policy = cooperation_row(c, goal["id"])
+            if policy and CAPABILITY not in capabilities:
+                raise Conflict("Cooperation-aware reviewer required")
             store.room(c, a, goal["room"], "can_request")
             if (
                 goal["review_request"]
@@ -538,6 +605,7 @@ def dispatch_reviews(store, actor_id, host, capabilities=()):
                     "goalId": str(goal["id"]),
                     "goalReview": True,
                     "policy": "bounded-worker-report",
+                    "cooperationRevision": policy["revision"] if policy else None,
                     "triggerDigest": key,
                 },
             )
@@ -766,8 +834,12 @@ def native_binding(store, actor_id, identity, payload):
                 raise Conflict("Native work differs from accepted request")
         elif goal:
             g = goal_row(store, c, a, goal)
-            if str(g["owner"]) != str(a["id"]) or str(g["room"]) != str(e["room"]):
-                raise Denied("Coordinator binding does not own this goal")
+            from .cooperation import reviewer_binding
+
+            if (str(g["owner"]) != str(a["id"]) and not reviewer_binding(c, a, goal, e)) or str(
+                g["room"]
+            ) != str(e["room"]):
+                raise Denied("Coordinator/reviewer binding does not own this goal")
             if (
                 str(g["source"]) != str(e["id"])
                 and e["data"].get("goalId") != goal

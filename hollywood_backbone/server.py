@@ -234,7 +234,7 @@ class WorkCreate(Input):
     revision: int = Field(ge=1)
     id: UUID
     roomId: UUID
-    ownerId: UUID
+    ownerId: UUID | None
     specification: str = Field(min_length=1, max_length=6000)
     acceptance: str = Field(min_length=1, max_length=4000)
     dependencies: list[UUID] = Field(max_length=16)
@@ -243,6 +243,13 @@ class WorkCreate(Input):
 class WorkflowRevision(Input):
     operationId: str = Field(min_length=1, max_length=128)
     revision: int = Field(ge=1)
+
+
+class CooperationChange(WorkflowRevision):
+    cooperationRevision: int = Field(ge=0)
+    policy: Literal["leader_award", "kanban_pull"]
+    reviewerId: UUID | None
+    executorIds: list[UUID] = Field(min_length=1, max_length=32)
 
 
 class ArtifactEvidence(Input):
@@ -594,6 +601,7 @@ async def workflow(request):
     action = request.match_info["action"]
     model = {
         "assign": WorkflowRevision,
+        "claim": WorkflowRevision,
         "report": WorkReport,
         "review": WorkReview,
         "cancel": WorkCancel,
@@ -614,6 +622,20 @@ async def workflow(request):
         str(UUID(request.match_info["work"])),
         p.operationId,
         payload,
+    )
+
+
+async def cooperation_change(request):
+    p = await body(request, CooperationChange)
+    if len(set(p.executorIds)) != len(p.executorIds):
+        raise ValueError("Duplicate cooperation executor")
+    return await invoke(
+        request,
+        "workflow",
+        "goal.cooperation",
+        str(UUID(request.match_info["goal"])),
+        p.operationId,
+        p.model_dump(mode="json", exclude={"operationId"}),
     )
 
 
@@ -714,12 +736,15 @@ def application(store):
             web.get("/hollywood/v3/rooms/{room}/goals", goal_list),
             web.post("/hollywood/v3/rooms/{room}/goals", goal_create),
             web.get("/hollywood/v3/goals/{goal}", goal_read),
+            web.post("/hollywood/v3/goals/{goal}/cooperation", cooperation_change),
             web.post("/hollywood/v3/goals/{goal}/work", work_create),
             web.get("/hollywood/v3/goals/{goal}/work", work_list),
             web.get("/hollywood/v3/rooms/{room}/work", work_list),
             web.post("/hollywood/v3/goals/{goal}/state", goal_state),
             web.get("/hollywood/v3/work/{work}", work_read),
-            web.post("/hollywood/v3/work/{work}/{action:assign|report|review|cancel}", workflow),
+            web.post(
+                "/hollywood/v3/work/{work}/{action:assign|claim|report|review|cancel}", workflow
+            ),
             web.post("/hollywood/v3/connector/reviews", review_dispatch),
             web.get("/hollywood/v3/supervision", supervision),
             web.put("/hollywood/v3/supervision/cursor", supervision_ack),

@@ -696,6 +696,10 @@ class Store:
             row = None if busy else claim_candidate(self, c, a)
             identity = row["id"] if row else None
             if row:
+                from .cooperation import verify_admission
+
+                event = self.readable_event(c, a, row["event"])
+                verify_admission(self, c, a, event, capabilities)
                 self.room(
                     c,
                     a,
@@ -913,8 +917,18 @@ class Store:
             ).fetchone()
             if not policy:
                 raise Conflict("Agent role is not provisioned")
+            from .cooperation import row as cooperation_row
+            from .cooperation import view
+
+            goal_id = e["data"].get("goalId")
+            if goal_id and cooperation_row(c, goal_id):
+                parent = c.execute("SELECT room FROM hb_goal WHERE id=%s", (goal_id,)).fetchone()
+                self.room(c, a, parent["room"])
             return json_value(
                 {
+                    "cooperation": view(c, e["data"].get("goalId"), a["id"])
+                    if e["data"].get("goalId")
+                    else None,
                     "schema": "lax-agent-context/v1",
                     "authorityId": a["authority"],
                     "agentId": a["id"],

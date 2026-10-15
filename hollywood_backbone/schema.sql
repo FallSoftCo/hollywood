@@ -262,3 +262,29 @@ DO $$ BEGIN
   INSERT INTO hb_schema VALUES (7);
  END IF;
 END $$;
+
+
+-- Goal-scoped team organization. Old bounded-work bindings retain their shape.
+CREATE TABLE IF NOT EXISTS hb_goal_cooperation (
+ authority uuid NOT NULL, goal uuid PRIMARY KEY,
+ policy text NOT NULL CHECK(policy IN ('leader_award','kanban_pull')),
+ planner uuid NOT NULL, reviewer uuid, revision bigint NOT NULL DEFAULT 1,
+ UNIQUE(authority,goal), CHECK(planner IS DISTINCT FROM reviewer),
+ FOREIGN KEY(authority,goal) REFERENCES hb_goal(authority,id),
+ FOREIGN KEY(authority,planner) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,reviewer) REFERENCES hb_principal(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_cooperation_executor (
+ authority uuid NOT NULL, goal uuid NOT NULL, principal uuid NOT NULL,
+ PRIMARY KEY(goal,principal),
+ FOREIGN KEY(authority,goal) REFERENCES hb_goal_cooperation(authority,goal),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id)
+);
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=8) THEN
+  ALTER TABLE hb_work ALTER COLUMN owner DROP NOT NULL;
+  ALTER TABLE hb_work ADD CONSTRAINT hb_work_owner_admission
+    CHECK(owner IS NOT NULL OR state IN ('planned','cancelled'));
+  INSERT INTO hb_schema VALUES (8);
+ END IF;
+END $$;
