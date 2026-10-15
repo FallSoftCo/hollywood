@@ -167,7 +167,7 @@ def work_listing(store, actor_id, identity, after, limit, by_goal=False):
         )
 
 
-def mutation(store, actor_id, action, identity, operation, payload):
+def mutation(store, actor_id, action, identity, operation, payload, *, wire=None):
     fingerprint = digest({"workflow": action, "identity": identity, **payload})
     with store.pool.connection() as c:
         a = store.actor(c, actor_id)
@@ -616,8 +616,9 @@ def mutation(store, actor_id, action, identity, operation, payload):
             (Jsonb(receipt), event),
         )
         c.execute(
-            "INSERT INTO hb_command VALUES(%s,%s,%s,%s,%s)",
-            (a["authority"], a["id"], operation, fingerprint, event),
+            """INSERT INTO hb_command(authority,principal,operation,digest,event,wire_request,accepted_result)
+               VALUES(%s,%s,%s,%s,%s,%s,%s)""",
+            (a["authority"], a["id"], operation, fingerprint, event, Jsonb(wire), Jsonb(receipt)),
         )
         if action == "goal.state" and payload["state"] == "cancelled":
             c.execute(

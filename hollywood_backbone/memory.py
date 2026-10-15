@@ -18,7 +18,7 @@ def authorized_goal(store, c, actor, identity, room):
     return goal
 
 
-def write(store, actor_id, room_id, operation, payload):
+def write(store, actor_id, room_id, operation, payload, *, wire=None):
     fingerprint = digest({"decisionRoom": room_id, **payload})
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
@@ -112,8 +112,9 @@ def write(store, actor_id, room_id, operation, payload):
             (Jsonb({"decisionReceipt": receipt}), event),
         )
         c.execute(
-            "INSERT INTO hb_command VALUES(%s,%s,%s,%s,%s)",
-            (actor["authority"], actor["id"], operation, fingerprint, event),
+            """INSERT INTO hb_command(authority,principal,operation,digest,event,wire_request,accepted_result)
+               VALUES(%s,%s,%s,%s,%s,%s,%s)""",
+            (actor["authority"], actor["id"], operation, fingerprint, event, Jsonb(wire), Jsonb(receipt)),
         )
         return receipt
 

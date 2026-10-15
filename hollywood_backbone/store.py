@@ -87,10 +87,10 @@ class Store:
 
         return observe(self, actor_id, host, capabilities)
 
-    def decision_write(self, actor_id, room, operation, payload):
+    def decision_write(self, actor_id, room, operation, payload, *, wire=None):
         from .memory import write
 
-        return write(self, actor_id, room, operation, payload)
+        return write(self, actor_id, room, operation, payload, wire=wire)
 
     def decision_list(self, actor_id, room, after, limit, goal=None):
         from .memory import listing
@@ -112,10 +112,10 @@ class Store:
 
         return native_binding(self, actor_id, identity, payload)
 
-    def workflow(self, actor_id, action, identity, operation, payload):
+    def workflow(self, actor_id, action, identity, operation, payload, *, wire=None):
         from .work import mutation
 
-        return mutation(self, actor_id, action, identity, operation, payload)
+        return mutation(self, actor_id, action, identity, operation, payload, wire=wire)
 
     def goal_read(self, actor_id, identity):
         from .work import read
@@ -554,7 +554,7 @@ class Store:
                 "deliveries": json_value(work),
             }
 
-    def post(self, actor_id, room_id, operation, payload):
+    def post(self, actor_id, room_id, operation, payload, *, wire=None):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             kind, audience = payload["kind"], payload["audience"]
@@ -630,16 +630,18 @@ class Store:
                 source=source,
                 data=data,
             )
-            c.execute(
-                "INSERT INTO hb_command VALUES(%s,%s,%s,%s,%s)",
-                (a["authority"], a["id"], operation, fingerprint, event),
-            )
             if kind == "request":
                 c.execute(
                     "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
                     (uid(), a["authority"], event, recipient),
                 )
-            return self.receipt(c, event)
+            result = self.receipt(c, event)
+            c.execute(
+                """INSERT INTO hb_command(authority,principal,operation,digest,event,wire_request,accepted_result)
+                   VALUES(%s,%s,%s,%s,%s,%s,%s)""",
+                (a["authority"], a["id"], operation, fingerprint, event, Jsonb(wire), Jsonb(result)),
+            )
+            return result
 
     @staticmethod
     def receipt(c, event):
@@ -659,6 +661,17 @@ class Store:
             receipt = self.receipt(c, row["event"])
             if event["data"].get("workflowReceipt"):
                 receipt["workflow"] = event["data"]["workflowReceipt"]
+            if event["data"].get("decisionReceipt"):
+                receipt["decision"] = event["data"]["decisionReceipt"]
+            receipt["canonicalCommand"] = json_value({
+                "schema": "hollywood-command/v1", "authorityId": row["authority"],
+                "actorId": row["principal"], "operationId": row["operation"],
+                "semanticDigest": row["digest"], "eventId": row["event"],
+                "wireRequest": row["wire_request"],
+                "wireDigest": digest(row["wire_request"]) if row["wire_request"] else None,
+                "acceptedResult": row["accepted_result"],
+                "evidenceComplete": bool(row["wire_request"] and row["accepted_result"]),
+            })
             return receipt
 
     def history(self, actor_id, room, after, limit, before=None):

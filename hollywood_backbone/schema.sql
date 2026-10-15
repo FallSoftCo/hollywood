@@ -462,3 +462,8 @@ CREATE TABLE IF NOT EXISTS hb_native_control_command (
  digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(control,operation)
 );
 INSERT INTO hb_schema VALUES (12) ON CONFLICT DO NOTHING;
+
+-- New command evidence is immutable at acceptance. Older rows stay explicitly unhydrated.
+ALTER TABLE hb_command ADD COLUMN IF NOT EXISTS wire_request jsonb;
+ALTER TABLE hb_command ADD COLUMN IF NOT EXISTS accepted_result jsonb;
+INSERT INTO hb_schema VALUES (13) ON CONFLICT DO NOTHING;

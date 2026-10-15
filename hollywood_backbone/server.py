@@ -402,7 +402,16 @@ async def body(request, model):
 
 
 async def invoke(request, method, *args):
-    value = await asyncio.to_thread(getattr(request.app[STORE], method), request["actor"], *args)
+    kwargs = {}
+    if method in ("post", "workflow", "decision_write"):
+        kwargs["wire"] = {
+            "method": request.method,
+            "path": request.path.removeprefix("/hollywood/v3/"),
+            "body": await request.json(),
+        }
+    value = await asyncio.to_thread(
+        getattr(request.app[STORE], method), request["actor"], *args, **kwargs
+    )
     return web.json_response(value)
 
 
