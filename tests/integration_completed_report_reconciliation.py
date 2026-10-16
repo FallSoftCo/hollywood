@@ -134,6 +134,7 @@ async def main():
             immutable = {"delivery": sql("SELECT * FROM hb_delivery WHERE id=%s", (f["prior"],)),
                          "context": sql("SELECT * FROM hb_agent_context WHERE principal=%s", (f["agent"],)),
                          "binding": sql("SELECT * FROM hb_agent_execution WHERE delivery=%s", (f["prior"],))}
+            pre_report_head = sql("SELECT next_seq FROM hb_authority WHERE id=%s", (ids["authority"],))["next_seq"]
             r = await submit(f)
             assert r["state"] == "submitted" and r["deliveryId"] == f["prior"]
             assert (await submit(f)) == r
@@ -145,6 +146,12 @@ async def main():
             assert sql("SELECT count(*) AS n FROM hb_delivery WHERE agent=%s", (f["agent"],))["n"] == 2
             history = await call(credentials["Owner"]["token"], f"work/{f['work']}/attempts")
             assert history["attempts"][0]["report_reconciliation_event"] == r["eventId"]
+            from hollywood_backbone.portfolio import material
+            with store.pool.connection() as c:
+                material(c, store.actor(c, glob), {"scanned_seq": pre_report_head,
+                                                   "activation_seq": pre_report_head})
+            assert str(sql("SELECT source_event FROM hb_portfolio_item WHERE principal=%s AND reference=%s",
+                           (glob, f["goal"]))["source_event"]) == r["eventId"]
             await call(f["token"], f"work/{f['work']}/review", {"operationId": new_id(), "revision": 3, "decision": "accepted", "note": "Cannot self-accept"},
                        {**f["source"], "tool": "hollywood_work_review"}, 403)
             await call(credentials["Owner"]["token"], f"work/{f['work']}/review", {"operationId": new_id(), "revision": 3, "decision": "accepted", "note": "Distinct authorized synthetic reviewer inspected evidence"})
