@@ -168,6 +168,10 @@ def work_listing(store, actor_id, identity, after, limit, by_goal=False):
 
 
 def mutation(store, actor_id, action, identity, operation, payload, *, wire=None):
+    if action == "work.report_reconcile":
+        from .report_reconciliation import reconcile
+
+        return reconcile(store, actor_id, identity, operation, payload, wire=wire)
     fingerprint = digest({"workflow": action, "identity": identity, **payload})
     with store.pool.connection() as c:
         a = store.actor(c, actor_id)

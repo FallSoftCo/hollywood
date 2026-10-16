@@ -223,6 +223,17 @@ def validate(c, actor, value):
         raise Conflict("Original executor is not independently live")
 
 
+def current_participation(c, actor):
+    """Use authenticated live transport scope, never reconciliation caller hints."""
+    request = _request.get()
+    if (not request or not request["entered"] or request["action"] != "workflow"
+            or request["actor"] != str(actor["id"]) or not request["source"]):
+        raise Denied("Authenticated current native participation required")
+    # Validate again at the mutation point under the same authority fence.
+    validate(c, actor, request["source"])
+    return dict(request["source"])
+
+
 def listing(store, actor_id, delivery, after=0, limit=100):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)

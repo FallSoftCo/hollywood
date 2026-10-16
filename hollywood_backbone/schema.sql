@@ -594,3 +594,16 @@ CREATE TABLE IF NOT EXISTS hb_agent_communication (
  allow_requests boolean NOT NULL DEFAULT false
 );
 INSERT INTO hb_schema VALUES (21) ON CONFLICT DO NOTHING;
+
+-- A report ties a completed original obligation to later normal participation.
+-- Original delivery/attempt/context identities and execution/effect history stay intact.
+CREATE TABLE IF NOT EXISTS hb_work_report_reconciliation (
+ delivery uuid PRIMARY KEY REFERENCES hb_delivery(id),
+ authority uuid NOT NULL REFERENCES hb_authority(id),
+ work uuid NOT NULL REFERENCES hb_work(id), event uuid UNIQUE NOT NULL REFERENCES hb_event(id),
+ principal uuid NOT NULL REFERENCES hb_principal(id),
+ current_delivery uuid NOT NULL REFERENCES hb_delivery(id), current_generation bigint NOT NULL,
+ evidence jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ CHECK(delivery<>current_delivery)
+);
+INSERT INTO hb_schema VALUES (22) ON CONFLICT DO NOTHING;

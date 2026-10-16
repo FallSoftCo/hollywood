@@ -394,6 +394,15 @@ class WorkReport(WorkflowRevision):
     evidence: list[ArtifactEvidence] = Field(max_length=16)
 
 
+class WorkReportReconcile(WorkflowRevision):
+    priorDeliveryId: UUID
+    briefingSequence: int | None = Field(default=None, ge=0, le=9007199254740991)
+    state: Literal["submitted", "blocked"]
+    note: str = Field(min_length=1, max_length=4000, pattern=r"\S")
+    effectDisposition: Literal["reviewed", "unknown"]
+    evidence: list[ArtifactEvidence] = Field(max_length=16)
+
+
 class WorkReview(WorkflowRevision):
     decision: Literal["accepted", "rejected"]
     note: str = Field(min_length=1, max_length=4000)
@@ -960,6 +969,7 @@ async def workflow(request):
         "assign": WorkflowRevision,
         "claim": WorkflowRevision,
         "report": WorkReport,
+        "report-reconcile": WorkReportReconcile,
         "review": WorkReview,
         "cancel": WorkCancel,
         "revise": WorkRevise,
@@ -967,6 +977,10 @@ async def workflow(request):
     }[action]
     p = await body(request, model)
     payload = p.model_dump(mode="json", exclude={"operationId"})
+    if action == "report-reconcile":
+        from .report_reconciliation import evidence_paths
+
+        evidence_paths(payload["evidence"])
     if action == "report":
         from pathlib import PurePosixPath
 
@@ -977,7 +991,7 @@ async def workflow(request):
     return await invoke(
         request,
         "workflow",
-        "work." + action,
+        "work." + action.replace("-", "_"),
         str(UUID(request.match_info["work"])),
         p.operationId,
         payload,
@@ -1154,7 +1168,7 @@ def application(store):
             web.post("/hollywood/v3/rooms/{room}/decisions", decisions),
             web.get("/hollywood/v3/connector/deliveries/{delivery}/briefing", briefing),
             web.post(
-                "/hollywood/v3/work/{work}/{action:assign|claim|report|review|cancel|revise|recover}",
+                "/hollywood/v3/work/{work}/{action:assign|claim|report|report-reconcile|review|cancel|revise|recover}",
                 workflow,
             ),
             web.post("/hollywood/v3/connector/reviews", review_dispatch),

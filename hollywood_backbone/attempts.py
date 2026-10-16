@@ -28,11 +28,14 @@ def read(store, actor_id, identity, after=0, limit=100):
                       d.native_thread,d.native_turn,d.result_event,
                       b.native_goal_id,b.context_id,b.workspace_id,
                       r.event AS recovery_event,r.principal AS recovery_principal,
-                      r.evidence AS recovery_evidence
+                      r.evidence AS recovery_evidence,
+                      rr.event AS report_reconciliation_event,
+                      rr.evidence AS report_reconciliation
                FROM hb_work_attempt a JOIN hb_delivery d ON d.id=a.delivery
                LEFT JOIN hb_native_goal_binding b
                  ON b.delivery=d.id AND b.generation=d.generation
                LEFT JOIN hb_work_recovery r ON r.delivery=a.delivery
+               LEFT JOIN hb_work_report_reconciliation rr ON rr.delivery=a.delivery
                WHERE a.work=%s AND a.number>%s ORDER BY a.number LIMIT %s""",
             (identity, after, limit + 1),
         ).fetchall()
