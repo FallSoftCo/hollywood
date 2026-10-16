@@ -20,7 +20,7 @@ _request = contextvars.ContextVar("hollywood_native_request", default=None)
 BUSINESS = {
     "post", "workflow", "decision_write", "principal", "create_room",
     "membership", "placement", "role", "host_policy_set", "portfolio_policy_set",
-    "cancel", "native_control_create",
+    "cancel", "native_control_create", "communication_set",
 }
 METADATA = {
     "executor_begin", "executor_reserve", "executor_attach", "executor_observe",
@@ -28,7 +28,7 @@ METADATA = {
     "native_control_pending", "native_control_update", "native_goal_binding",
     "activity_append", "attention_create", "attention_response",
     "attention_acknowledge", "review_dispatch", "supervision_ack",
-    "portfolio_dispatch",
+    "portfolio_dispatch", "agent_execution_binding",
 }
 EXCLUSIVE = {
     "principal", "membership", "placement", "role", "host_policy_set",
@@ -59,7 +59,7 @@ def source(raw):
     value = json.loads(raw, object_pairs_hook=unique)
     if not isinstance(value, dict) or set(value) != FIELDS:
         raise ValueError("Native source fields differ")
-    if value["schema"] != "hollywood-native-source/v1":
+    if value["schema"] not in ("hollywood-native-source/v1", "hollywood-native-source/v2"):
         raise ValueError("Native source schema differs")
     for key in ("authorityId", "agentId", "hostId", "deliveryId", "requestId"):
         value[key] = str(UUID(value[key]))
@@ -70,7 +70,9 @@ def source(raw):
             raise ValueError("Native source identity invalid")
     if type(value["roleRevision"]) is not int or value["roleRevision"] < 1:
         raise ValueError("Native role revision invalid")
-    for key in ("contextId", "nativeGoalId"):
+    if value["schema"] == "hollywood-native-source/v2" and value["nativeGoalId"] is not None:
+        raise ValueError("Agent execution cannot assert a synthetic native goal")
+    for key in (("contextId",) if value["schema"] == "hollywood-native-source/v2" else ("contextId", "nativeGoalId")):
         if not isinstance(value[key], str) or not 1 <= len(value[key]) <= 256:
             raise ValueError("Native binding identity invalid")
     if not re.fullmatch(r"[a-f0-9]{64}", value["argumentsDigest"]):
@@ -125,9 +127,12 @@ def enter(c, identity):
             raise Denied("Credential changed")
         value = request["source"]
         if write and principal["kind"] == "agent" and request["action"] in BUSINESS:
-            if not value:
-                raise Denied("Native source required for agent effects")
-            validate(c, principal, value)
+            if value:
+                validate(c, principal, value)
+            else:
+                from .agent_context import communication_allowed
+                if not communication_allowed(c, request, principal):
+                    raise Denied("Enrolled communication transport or native execution source required")
         elif write and value and principal["kind"] != "agent":
             raise Denied("Only an agent may assert native provenance")
         # Metadata has its own delivery/generation/turn checks and must remain
@@ -188,14 +193,19 @@ def validate(c, actor, value):
     role = c.execute(
         "SELECT revision FROM hb_agent_role WHERE principal=%s", (actor["id"],)
     ).fetchone()
-    from .native_bindings import read
-    binding = read(c, d["id"], d["generation"])
-    if (
-        not role or role["revision"] != value["roleRevision"] or not binding
-        or binding["native_thread"] != value["nativeThread"]
-        or binding["native_goal_id"] != value["nativeGoalId"]
-        or binding["context_id"] != value["contextId"]
-    ):
+    if value["schema"] == "hollywood-native-source/v2":
+        from .agent_context import execution
+        binding = execution(c, d["id"], d["generation"])
+        matches = bool(binding and binding["native_thread"] == value["nativeThread"]
+                       and binding["context_id"] == value["contextId"]
+                       and binding["role_revision"] == value["roleRevision"])
+    else:
+        from .native_bindings import read
+        binding = read(c, d["id"], d["generation"])
+        matches = bool(binding and binding["native_thread"] == value["nativeThread"]
+                       and binding["native_goal_id"] == value["nativeGoalId"]
+                       and binding["context_id"] == value["contextId"])
+    if not role or role["revision"] != value["roleRevision"] or not matches:
         raise Conflict("Native role or goal binding changed")
     if d["state"] != "running" or d["cancellation_requested"]:
         raise Conflict("Native source no longer admits effects")

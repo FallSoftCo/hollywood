@@ -568,3 +568,29 @@ CREATE TABLE IF NOT EXISTS hb_work_recovery (
  created_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
 INSERT INTO hb_schema VALUES (20) ON CONFLICT DO NOTHING;
+
+-- Agent context is independent of rooms, role revisions, goals and work attempts.
+-- Legacy goal bindings remain intact for readback and rollback.
+CREATE TABLE IF NOT EXISTS hb_agent_context (
+ principal uuid PRIMARY KEY REFERENCES hb_principal(id),
+ authority uuid NOT NULL REFERENCES hb_authority(id),
+ context_id text NOT NULL CHECK(context_id ~ '^[a-f0-9]{64}$'),
+ native_thread text NOT NULL, host uuid NOT NULL REFERENCES hb_host(id),
+ workspace_id uuid NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ UNIQUE(authority,native_thread)
+);
+CREATE TABLE IF NOT EXISTS hb_agent_execution (
+ delivery uuid NOT NULL REFERENCES hb_delivery(id), generation bigint NOT NULL,
+ principal uuid NOT NULL REFERENCES hb_principal(id),
+ context_id text NOT NULL, native_thread text NOT NULL,
+ workspace_id uuid NOT NULL, role_revision bigint NOT NULL CHECK(role_revision>0),
+ digest text NOT NULL,
+ PRIMARY KEY(delivery,generation)
+);
+CREATE TABLE IF NOT EXISTS hb_agent_communication (
+ token_digest text PRIMARY KEY REFERENCES hb_token(digest),
+ principal uuid NOT NULL REFERENCES hb_principal(id),
+ allow_requests boolean NOT NULL DEFAULT false
+);
+INSERT INTO hb_schema VALUES (21) ON CONFLICT DO NOTHING;

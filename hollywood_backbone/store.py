@@ -148,6 +148,22 @@ class Store:
 
         return read(self, actor_id, work, after, limit)
 
+    def agent_context(self, actor_id, agent):
+        from .agent_context import read
+        return read(self, actor_id, agent)
+
+    def agent_execution_binding(self, actor_id, identity, payload):
+        from .agent_context import bind
+        return bind(self, actor_id, identity, payload)
+
+    def communication_set(self, actor_id, agent, credential_digest, allow_requests, *, command=None):
+        from .agent_context import grant
+        return grant(self, actor_id, agent, credential_digest, allow_requests, command=command)
+
+    def _admin_communication(self, c, a, agent, credential_digest, allow_requests):
+        from .agent_context import admin_grant
+        return admin_grant(self, c, a, agent, credential_digest, allow_requests)
+
     def native_goal_binding(self, actor_id, identity, payload):
         from .work import native_binding
 
@@ -684,6 +700,10 @@ class Store:
                 raise Conflict("Private message requires an explicit recipient")
             source = payload.get("sourceEventId")
             data = {}
+            if payload.get("expectsReply"):
+                if kind != "request" or a["kind"] != "agent":
+                    raise ValueError("Only an explicit agent request may establish a peer reply obligation")
+                data["expectsReply"] = True
             if source:
                 parent = self.readable_event(c, a, source)
                 if parent["audience"] == "direct":
@@ -825,6 +845,8 @@ class Store:
 
     @staticmethod
     def native_role_capability(c, actor, capabilities):
+        if "persistent-agent-context/v1" in capabilities:
+            return  # Role revisions do not own or replace the agent context.
         role = c.execute(
             "SELECT native_goal_scope,revision FROM hb_agent_role WHERE principal=%s FOR SHARE",
             (actor["id"],),
@@ -938,6 +960,8 @@ class Store:
         from .native_bindings import read as read_binding
 
         binding = read_binding(c, identity, d["generation"])
+        from .agent_context import execution
+        agent_binding = execution(c, identity, d["generation"])
         from .admission import trace
 
         return {
@@ -945,6 +969,7 @@ class Store:
             "delivery": json_value(d),
             "request": json_value(e),
             **({"nativeGoalBinding": json_value(binding)} if binding else {}),
+            **({"agentContextBinding": json_value(agent_binding)} if agent_binding else {}),
         }
 
     def transition(self, actor_id, identity, operation, payload):
@@ -998,6 +1023,7 @@ class Store:
             execution_data = {
                 "type": "executionState",
                 "deliveryId": identity,
+                "replyRecipientId": str(e["author"]) if e["data"].get("expectsReply") else None,
                 "state": state,
                 "generation": d["generation"],
                 "goalId": str(goal_id) if goal_id else None,
@@ -1058,7 +1084,13 @@ class Store:
                     "UPDATE hb_attention SET state='unknown',revision=revision+1,updated_at=clock_timestamp() WHERE delivery=%s AND generation=%s AND state IN ('pending','response_submitted','native_submitted')",
                     (identity, d["generation"]),
                 )
+            reply = None
+            if terminal:
+                from .communication import completion
+                reply = completion(self,c,a,e,d,result,state)
             out = self.claim_receipt(c, identity)
+            if reply:
+                out["replyDeliveryId"] = reply
             c.execute(
                 "INSERT INTO hb_transition VALUES(%s,%s,%s,%s)",
                 (identity, operation, fingerprint, Jsonb(out)),
@@ -1222,6 +1254,13 @@ class Store:
             return json_value(old)
         if (old["revision"] if old else 0) != revision:
             raise Conflict("Role revision changed")
+        if c.execute(
+            """SELECT 1 FROM hb_delivery WHERE agent=%s
+               AND state IN ('claimed','running','unknown','cancel_requested') LIMIT 1""",
+            (agent,),
+        ).fetchone():
+            raise Conflict("Responsibility change requires the original execution to settle first; pending work retains its owner")
+
         c.execute(
             "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose,home_room,native_goal_scope) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(principal) DO UPDATE SET primary_role=EXCLUDED.primary_role,purpose=EXCLUDED.purpose,home_room=EXCLUDED.home_room,native_goal_scope=EXCLUDED.native_goal_scope,revision=hb_agent_role.revision+1",
             (agent, a["authority"], primary, purpose, home_room, scope),

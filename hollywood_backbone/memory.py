@@ -159,6 +159,66 @@ def listing(store, actor_id, room, after, limit, goal=None):
         return json_value(value)
 
 
+def participation_snapshot(c, actor, room, request, head):
+    # Only authorized room content, bounded before materialization. Observation
+    # never creates a delivery or starts a model. Private exchanges stay explicit.
+    recent = c.execute(
+        """SELECT e.*,p.name AS author_name,p.kind AS author_kind
+           FROM hb_event e JOIN hb_principal p ON p.id=e.author
+           WHERE e.room=%s AND e.seq<=%s
+             AND e.kind IN ('message','request','result','question','approval','control')
+             AND (e.audience='room' OR
+               (%s='direct' AND ((e.author=%s AND e.recipient=%s)
+                                 OR (e.author=%s AND e.recipient=%s))))
+           ORDER BY e.seq DESC LIMIT 17""",
+        (room["id"],head,request["audience"],actor["id"],request["author"],
+         request["author"],actor["id"]),
+    ).fetchall()
+    observed = c.execute(
+        """SELECT e.*,p.name AS author_name,p.kind AS author_kind,r.name AS room_name
+           FROM hb_event e JOIN hb_principal p ON p.id=e.author
+             JOIN hb_room r ON r.id=e.room
+           WHERE e.authority=%s AND e.room<>%s AND e.seq<=%s
+             AND e.audience='room' AND e.author<>%s
+             AND e.kind IN ('message','request','result','question','approval','control')
+             AND (%s OR EXISTS(SELECT 1 FROM hb_membership m
+                              WHERE m.room=e.room AND m.principal=%s AND m.can_read))
+           ORDER BY e.seq DESC LIMIT 25""",
+        (actor["authority"],room["id"],head,actor["id"],actor["administrator"],actor["id"]),
+    ).fetchall()
+    peers=c.execute(
+        """SELECT p.id,p.name,p.kind,p.administrator,m.can_post,m.can_request,
+                  a.primary_role,a.purpose
+           FROM hb_membership m JOIN hb_principal p ON p.id=m.principal
+             LEFT JOIN hb_agent_role a ON a.principal=p.id
+           WHERE m.room=%s AND m.can_read AND p.active ORDER BY p.id LIMIT 33""",
+        (room["id"],),
+    ).fetchall()
+    def events(rows,limit,budget):
+        result=[]
+        for row in reversed(rows[:limit]):
+            body=row["body"][:min(2000,budget)]
+            budget-=len(body)
+            result.append({
+                "id":row["id"],"sequence":row["seq"],"roomId":row["room"],
+                "authorId":row["author"],"authorName":row["author_name"],
+                "authorKind":row["author_kind"],"recipientId":row["recipient"],
+                "audience":row["audience"],"kind":row["kind"],"body":body,
+                "bodyTruncated":len(body)<len(row["body"]),"sourceEventId":row["source"],
+            })
+        return result
+    return {
+        "schema":"hollywood-participation/v1","asOfSequence":head,
+        "activeRoom":{"id":room["id"],"name":room["name"],"purpose":room["purpose"],
+                      "ownerId":room["owner"],"revision":room["revision"]},
+        "participants":peers[:32],"participantsTruncated":len(peers)>32,
+        "recent":events(recent,16,16000),"recentTruncated":len(recent)>16,
+        "observations":events(observed,24,16000),"observationsTruncated":len(observed)>24,
+        "observationPolicy":"optional context; only captured delivery admits execution",
+        "historyTool":"hollywood_read_room",
+    }
+
+
 def briefing(store, actor_id, delivery_id):
     with store.pool.connection() as c:
         c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
@@ -207,6 +267,7 @@ def briefing(store, actor_id, delivery_id):
             "roomId": room["id"], "roomPurpose": room["purpose"],
             "asOfSequence": head, "deliveryState": delivery["state"],
             "attempt": attempt, **decisions,
+            "participation": participation_snapshot(c,actor,room,event,head),
             "contentAuthority": "tool-data-with-attributable-issuers",
             "requiresDeeperRead": decisions["nextCursor"] is not None,
         })

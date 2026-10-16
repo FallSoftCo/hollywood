@@ -97,6 +97,7 @@ def material(c, actor, policy):
     ).fetchone()["next_seq"]
     rows = c.execute(
         """SELECT * FROM hb_event WHERE authority=%s AND seq>%s AND seq<=%s AND author<>%s
+           AND COALESCE(data->>'replyRecipientId','')<>%s
            AND (data->>'workflowAction' IN ('work.report','work.review','work.cancel','goal.state')
              OR data->>'type' IN ('decisionState','executionState')
              OR (kind='result' AND data->>'deliveryId' IS NOT NULL))
@@ -106,6 +107,7 @@ def material(c, actor, policy):
             max(policy["scanned_seq"], policy["activation_seq"]),
             head,
             actor["id"],
+            str(actor["id"]),
         ),
     ).fetchall()
     for event in rows:

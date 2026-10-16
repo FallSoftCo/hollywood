@@ -26,6 +26,7 @@ class Message(Input):
     audience: Literal["room", "direct"] = "room"
     recipientId: UUID | None = None
     sourceEventId: UUID | None = None
+    expectsReply: bool = False
 
 
 class NativeControlScope(Input):
@@ -301,6 +302,21 @@ class NativeGoalBinding(Input):
     objectiveDigest: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class AgentExecutionBinding(Input):
+    claimId: str = Field(min_length=1, max_length=128)
+    generation: int = Field(ge=1)
+    nativeThread: str = Field(min_length=1, max_length=128)
+    contextId: str = Field(pattern=r"^[0-9a-f]{64}$")
+    workspaceId: UUID
+    roleRevision: int = Field(ge=1)
+
+
+class CommunicationGrant(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    credentialDigest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    allowRequests: bool = False
+
+
 class ActivityItem(Input):
     nativeType: str = Field(min_length=1, max_length=80)
     plan: list[NativePlanStep] | None = Field(default=None, max_length=50)
@@ -463,7 +479,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("principal", "create_room", "membership", "placement", "role"):
+    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -601,7 +617,7 @@ async def post(request):
         "post",
         str(UUID(request.match_info["room"])),
         p.operationId,
-        p.model_dump(mode="json", exclude={"operationId"}),
+        p.model_dump(mode="json", exclude={"operationId"} | ({"expectsReply"} if not p.expectsReply else set())),
     )
 
 
@@ -804,6 +820,22 @@ async def delivery(request):
 
 async def context(request):
     return await invoke(request, "execution_context", str(UUID(request.match_info["delivery"])))
+
+
+async def agent_context(request):
+    return await invoke(request, "agent_context", str(UUID(request.match_info["agent"])))
+
+
+async def agent_execution_binding(request):
+    p = await body(request, AgentExecutionBinding)
+    return await invoke(request, "agent_execution_binding",
+                        str(UUID(request.match_info["delivery"])), p.model_dump(mode="json"))
+
+
+async def communication_set(request):
+    p = await body(request, CommunicationGrant)
+    return await invoke(request, "communication_set", str(UUID(request.match_info["agent"])),
+                        p.credentialDigest, p.allowRequests)
 
 
 async def native_goal_binding(request):
@@ -1151,6 +1183,9 @@ def application(store):
             web.post("/hollywood/v3/connector/native-controls/{control}", native_control_update),
             web.post("/hollywood/v3/deliveries/{delivery}/cancel", cancel),
             web.get("/hollywood/v3/deliveries/{delivery}", delivery),
+            web.get("/hollywood/v3/agents/{agent}/context", agent_context),
+            web.put("/hollywood/v3/agents/{agent}/communication", communication_set),
+            web.post("/hollywood/v3/connector/deliveries/{delivery}/agent-binding", agent_execution_binding),
             web.get("/hollywood/v3/connector/deliveries/{delivery}/context", context),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/activity", activity),
             web.post(
