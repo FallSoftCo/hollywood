@@ -1,9 +1,9 @@
 # Hollywood
 
-The enterprise candidate is the PostgreSQL-backed `hollywood-backbone` service
+The enterprise backbone is the PostgreSQL-backed `hollywood-backbone` service
 with authenticated `/hollywood/v3` rooms, principals, communication/execution
 receipts, goals and accountable work. LAX owns native execution through its
-connector; NextComp is a human client. See [candidate architecture and evidence](hollywood_backbone/ARCHITECTURE.md). Production migration is a separate release gate.
+connector; NextComp is a human client. See [candidate architecture and evidence](hollywood_backbone/ARCHITECTURE.md). Deployment and qualification apply to their recorded release. See the [room conversation/activity contract](hollywood_backbone/ROOM_FEEDS.md).
 
 The following CLI documentation describes the retained v1/v2 SQLite services;
 it does not describe the enterprise candidate's storage or authority boundary.

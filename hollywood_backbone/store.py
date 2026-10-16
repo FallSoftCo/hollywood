@@ -780,7 +780,20 @@ class Store:
             })
             return receipt
 
-    def history(self, actor_id, room, after, limit, before=None):
+    def history(self, actor_id, room, after, limit, before=None, view="all"):
+        from .activity import project
+
+        # Both projections read the same canonical records with their original IDs,
+        # audience and commit-ordered sequence. Never filter a limited page in Python:
+        # a burst of actions must not hide a conversation behind an empty page.
+        filters = {
+            "all": "",
+            "conversation": " AND data->>'type' IS DISTINCT FROM 'executionActivity'",
+            "activity": " AND data->>'type' = 'executionActivity'",
+        }
+        if view not in filters:
+            raise ValueError("Choose all, conversation or activity")
+        selected = filters[view]
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             self.room(c, a, room)
@@ -789,7 +802,9 @@ class Store:
             ).fetchone()["next_seq"]
             if before is not None:
                 rows = c.execute(
-                    "SELECT * FROM hb_event WHERE room=%s AND seq<%s AND seq<=%s AND (%s OR audience='room' OR author=%s OR recipient=%s) ORDER BY seq DESC LIMIT %s",
+                    "SELECT * FROM hb_event WHERE room=%s AND seq<%s AND seq<=%s "
+                    "AND (%s OR audience='room' OR author=%s OR recipient=%s)"
+                    + selected + " ORDER BY seq DESC LIMIT %s",
                     (room, before, ceiling, a["administrator"], a["id"], a["id"], limit + 1),
                 ).fetchall()
                 more = len(rows) > limit
@@ -797,18 +812,22 @@ class Store:
                 return {
                     "authorityId": str(a["authority"]),
                     "roomId": room,
-                    "events": json_value(rows),
+                    "view": view,
+                    "events": json_value([project(row) for row in rows]),
                     "nextCursor": ceiling,
                     "olderCursor": rows[0]["seq"] if more else None,
                 }
             rows = c.execute(
-                "SELECT * FROM hb_event WHERE room=%s AND seq>%s AND seq<=%s AND (%s OR audience='room' OR author=%s OR recipient=%s) ORDER BY seq LIMIT %s",
+                "SELECT * FROM hb_event WHERE room=%s AND seq>%s AND seq<=%s "
+                "AND (%s OR audience='room' OR author=%s OR recipient=%s)"
+                + selected + " ORDER BY seq LIMIT %s",
                 (room, after, ceiling, a["administrator"], a["id"], a["id"], limit),
             ).fetchall()
             return {
                 "authorityId": str(a["authority"]),
                 "roomId": room,
-                "events": json_value(rows),
+                "view": view,
+                "events": json_value([project(row) for row in rows]),
                 "nextCursor": rows[-1]["seq"] if len(rows) == limit else ceiling,
             }
 

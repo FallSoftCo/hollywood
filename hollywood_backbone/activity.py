@@ -3,6 +3,28 @@
 from .store import Conflict, Denied, digest, json_value
 
 
+def action_identity(delivery, generation, turn, item):
+    """One action across lifecycle phases; delivery/turn scope prevents collisions."""
+    return "action-" + digest([str(delivery), generation, str(turn), item])
+
+
+def project(event):
+    """Add read metadata to old records without rewriting their original receipts."""
+    if event["data"].get("type") != "executionActivity":
+        return event
+    data = event["data"]
+    return {
+        **event,
+        "data": {
+            **data,
+            "activityVersion": 1,
+            "actionId": action_identity(
+                data["deliveryId"], data["generation"], data["turn"], data["itemId"]
+            ),
+        },
+    }
+
+
 def append(store, actor_id, identity, payload):
     with store.pool.connection() as c:
         a = store.actor(c, actor_id)
@@ -84,6 +106,8 @@ def append(store, actor_id, identity, payload):
             recipient=recipient,
             data={
                 "type": "executionActivity",
+                "activityVersion": 1,
+                "actionId": action_identity(identity, d["generation"], pointer[1], payload["itemId"]),
                 "deliveryId": identity,
                 "agentId": str(a["id"]),
                 "hostId": str(d["host"]),

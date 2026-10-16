@@ -218,6 +218,9 @@ def dispatch(store, actor_id, host, capabilities):
                    OR EXISTS(SELECT 1 FROM hb_work w LEFT JOIN hb_delivery d ON d.id=w.delivery
                      WHERE w.goal=g.id AND (w.state IN ('blocked','rejected')
                        OR d.state IN ('failed','unknown','cancelled')
+                       OR (w.state='assigned' AND d.state='completed'
+                         AND EXISTS(SELECT 1 FROM hb_event original WHERE original.id=w.request_event
+                           AND original.data->>'workCompletionPolicy'='report-required/v1'))
                        OR (COALESCE(team.reviewer,g.owner)=%s AND w.state='submitted' AND d.state='completed')))
                    OR (g.state='active' AND EXISTS(SELECT 1 FROM hb_work w WHERE w.goal=g.id)
                      AND NOT EXISTS(SELECT 1 FROM hb_work w WHERE w.goal=g.id AND w.state<>'accepted')
@@ -235,7 +238,9 @@ def dispatch(store, actor_id, host, capabilities):
                 works = c.execute(
                     """SELECT w.id,w.state,w.specification,w.acceptance,w.evidence,
                       CASE WHEN w.state IN ('blocked','rejected') THEN w.note ELSE '' END AS blocker,
-                      d.state AS execution_state,w.room
+                      d.state AS execution_state,w.room,
+                      EXISTS(SELECT 1 FROM hb_event original WHERE original.id=w.request_event
+                        AND original.data->>'workCompletionPolicy'='report-required/v1') AS report_required
                       FROM hb_work w LEFT JOIN hb_delivery d ON d.id=w.delivery
                       WHERE w.goal=%s ORDER BY w.id""",
                     (item["reference"],),
@@ -247,6 +252,8 @@ def dispatch(store, actor_id, host, capabilities):
                 ready = goal["state"] in ("accepted", "cancelled", "cancel_requested") or any(
                     w["state"] in ("blocked", "rejected")
                     or w["execution_state"] in ("failed", "unknown", "cancelled")
+                    or (w["state"] == "assigned" and w["execution_state"] == "completed"
+                        and w["report_required"])
                     or reviewer == actor["id"]
                     and w["state"] == "submitted"
                     and w["execution_state"] == "completed"
@@ -292,6 +299,9 @@ def dispatch(store, actor_id, host, capabilities):
                 + str(item["reference"])
                 + ". Read the current goal/plan and sourced decisions, or hollywood_execution_read for an incident. Inspect original receipts and actual evidence where needed, "
                 "and take only its authorized next action or report its material result/blocker. "
+                "Completed execution with assigned but unreported work is an unfinished obligation, "
+                "not accepted work. Preserve and inspect its original execution/effects and report the "
+                "specific missing evidence or authorized reconciliation. "
                 "Unknown execution is not permission to retry. Publish an attributable concise result. "
                 "This is one bounded review; do not poll, self-request or start unrelated work.",
                 audience="direct",

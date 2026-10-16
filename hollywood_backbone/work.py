@@ -361,6 +361,7 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                         "workId": identity,
                         "acceptance": work["acceptance"],
                         "workRevision": work["revision"] + 1,
+                        "workCompletionPolicy": "report-required/v1",
                         "cooperationRevision": policy["revision"] if policy else None,
                     },
                 )
@@ -713,7 +714,10 @@ def dispatch_reviews(store, actor_id, host, capabilities=()):
                    JOIN hb_event e ON e.id=COALESCE(w.report_event,d.result_event,w.request_event)
                    WHERE w.goal=%s AND w.owner<>%s
                    AND w.state NOT IN ('accepted','cancelled','cancel_requested')
-                   AND (w.state IN ('submitted','blocked') OR d.state IN ('failed','unknown'))
+                   AND (w.state IN ('submitted','blocked') OR d.state IN ('failed','unknown')
+                     OR (w.state='assigned' AND d.state='completed'
+                       AND EXISTS(SELECT 1 FROM hb_event original WHERE original.id=w.request_event
+                         AND original.data->>'workCompletionPolicy'='report-required/v1')))
                    AND d.state IN ('completed','failed','cancelled','unknown') ORDER BY w.id""",
                 (goal["id"], actor_id),
             ).fetchall()
@@ -732,9 +736,9 @@ def dispatch_reviews(store, actor_id, host, capabilities=()):
                 a,
                 goal["room"],
                 "request",
-                "Review material worker reports or execution failure/uncertainty for goal "
+                "Review material worker reports, missing reports or execution failure/uncertainty for goal "
                 + str(goal["id"])
-                + ". Read its current plan, inspect original execution receipts and artifact evidence, then explicitly accept, reject or report a blocker. Unknown effects must be reconciled before any retry; this review does not authorize replay or unrelated work.",
+                + ". Read its current plan, inspect original execution receipts and artifact evidence, then explicitly accept, reject or report a blocker. Completed execution with assigned but unreported work is unfinished: inspect its original effects and identify the missing report. Unknown effects must be reconciled before any retry; this review does not authorize replay or unrelated work.",
                 recipient=actor_id,
                 source=source,
                 data={

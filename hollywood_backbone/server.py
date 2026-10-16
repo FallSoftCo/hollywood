@@ -631,37 +631,47 @@ async def history(request):
         max(0, int(request.query.get("after", "0"))),
         min(100, max(1, int(request.query.get("limit", "100")))),
         max(1, int(request.query["before"])) if "before" in request.query else None,
+        request.query.get("view", "all"),
     )
 
 
 async def stream(request):
     room = str(UUID(request.match_info["room"]))
     cursor = max(0, int(request.headers.get("Last-Event-ID", request.query.get("after", "0"))))
+    view = request.query.get("view", "all")
+    batch = request.query.get("batch", "0")
+    if batch not in ("0", "1"):
+        raise ValueError("Choose batch 0 or 1")
     store = request.app[STORE]
-    # Authorize before opening a stream, and again for each subsequent page.
-    page = await asyncio.to_thread(store.history, request["actor"], room, cursor, 100)
+    # Authorize and validate before opening a stream, and again for each page.
+    page = await asyncio.to_thread(store.history, request["actor"], room, cursor, 100, None, view)
     response = web.StreamResponse(
         headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"}
     )
     await response.prepare(request)
     try:
         while True:
-            for event in page["events"]:
-                await response.write(
-                    (
-                        "id: "
-                        + str(event["seq"])
-                        + "\nevent: room\ndata: "
-                        + json.dumps(event)
-                        + "\n\n"
-                    ).encode()
-                )
+            if batch == "1":
+                if page["events"] or page["nextCursor"] != cursor:
+                    await response.write(
+                        ("id: " + str(page["nextCursor"]) + "\nevent: roomBatch\ndata: "
+                         + json.dumps(page) + "\n\n").encode()
+                    )
+            else:
+                for event in page["events"]:
+                    await response.write(
+                        ("id: " + str(event["seq"]) + "\nevent: room\ndata: "
+                         + json.dumps(event) + "\n\n").encode()
+                    )
             cursor = page["nextCursor"]
             await response.write(b": heartbeat\n\n")
-            await asyncio.sleep(1)
-            # Re-check token revocation as well as room permissions during streaming.
+            # Drain a bounded backlog without an artificial one-second pause per
+            # page. Every write/page yields; idle connections retain their cadence.
+            await asyncio.sleep(0 if len(page["events"]) == 100 else 1)
             await asyncio.to_thread(store.authenticate, request.headers["Authorization"][7:])
-            page = await asyncio.to_thread(store.history, request["actor"], room, cursor, 100)
+            page = await asyncio.to_thread(
+                store.history, request["actor"], room, cursor, 100, None, view
+            )
     except (ConnectionResetError, asyncio.CancelledError, Denied):
         return response
 

@@ -1,0 +1,42 @@
+{
+  "schema": "harness-room-feed-qualification/v1",
+  "date": "2026-10-16",
+  "components": {
+    "Hollywood": "0.3.0.dev29",
+    "LAX connector": "0.1.0.dev38",
+    "nativeBinaryChanged": false
+  },
+  "realPostgreSQLHTTP": {
+    "passed": true,
+    "concurrentFixtureAgents": 2,
+    "lifecycleRecords": 384,
+    "distinctActions": 192,
+    "burstSeconds": 2.7453055568039417,
+    "checks": [
+      "Conversation/activity filters applied before page limit",
+      "Stable action identity across two independently authored phases and interleaved agents",
+      "Older pages, SSE batching and reconnect retain original IDs/cursor",
+      "Private audience and cross-room visibility retained",
+      "Actual retained native execution records read through new projection",
+      "New unreported assignment admits review for Global and designated reviewer",
+      "Unchanged obligation after completed review does not admit another turn",
+      "Previous-runtime assignment does not gain a review obligation on upgrade"
+    ],
+    "nativeModelCalls": 0,
+    "productionWrites": 0,
+    "note": "Protocol fixture admission is not a model-run claim. Native capture and peer execution have prior real-provider qualification; this release reuses that path."
+  },
+  "sourceReview": [
+    "Stable action ID adds no new execution or chat record",
+    "Existing canonical receipts, author kinds and public/private source scope retained",
+    "New completion policy is captured on new assignment, not inferred from deployment timestamp or applied to old assignments",
+    "No schema migration, synthetic role-goal coupling, model timer or retry of original effects"
+  ],
+  "clientBoundary": "Gateway/client view validation and condensed rendering are owned by the existing NextComp owner. Backend qualification does not establish phone presentation, physical push/voice or client delivery.",
+  "remaining": [
+    "General report reconciliation after settled work and acknowledged ownership transfer",
+    "Ordinary user follow-up in deployed Global across the full installed client",
+    "Fresh-enterprise/second execution host qualification",
+    "Legacy source human-ingress guard remains separately owned and open"
+  ]
+}
