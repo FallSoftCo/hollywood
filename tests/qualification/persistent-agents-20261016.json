@@ -1,0 +1,50 @@
+{
+  "schema": "persistent-agent-qualification/v1",
+  "date": "2026-10-16",
+  "model": "gpt-6.1-sol",
+  "effort": "xhigh",
+  "actualNativeAgents": 2,
+  "actualProviderTurns": 9,
+  "persistentContexts": 2,
+  "journey": {
+    "globalCreatesAndProvisionsPeer": true,
+    "explicitPeerCompletionContinuesRequester": true,
+    "sameContextAcrossRoomsAndHumans": true,
+    "harnessRestartRetainsContext": true,
+    "idleRoleChangeRetainsPendingWork": true,
+    "activeRoleChangeHeld": true,
+    "passiveTrafficNewTurns": 0,
+    "originalCancellationObserved": true,
+    "optionalBusinessGoalAndWorkIndependentlyAccepted": true,
+    "syntheticNativeGoalBindings": 0
+  },
+  "metadataQualification": {
+    "retainedHistoryAdoption": true,
+    "legacyRoleGoalRetirement": true,
+    "newProviderTurns": 0,
+    "roomAuthorityAndPrivateAudienceHTTPIsolation": true,
+    "staleNativeEffectRejected": true,
+    "nativeCredentialExternalEnrollmentRejected": true
+  },
+  "release": {
+    "productCommits": {
+      "lax-connector-source": "4812c0bb1d70ca6deb0ebe1452d071550e3eb2db",
+      "hollywood-backbone-source": "32a93f826677c4e7635ff1f0fbe342b975c83627"
+    },
+    "dependencyWheels": 19,
+    "dependenciesHashLocked": true,
+    "nativeBinarySha256": "aeed2b8e3893fc1c689461fbded3cd546e320ec2233cb500a13cd9248e414f35",
+    "changeAfterNineTurnPackage": "Only installation environment route-data validation; core agent/execution/server module hashes unchanged."
+  },
+  "limits": [
+    "Bounded one-host work, not autonomous customer/revenue qualification.",
+    "HTTP audience checks do not prove semantic non-disclosure across shared agent memory.",
+    "Physical Android voice/push and actual second execution host are separate qualifications.",
+    "General in-progress work ownership transfer is not implied by role changes or prose handoff."
+  ],
+  "retainedQualificationSetupFailures": [
+    "Migration helper import failed before native startup; corrected to owned fixture.",
+    "Inactive systemd exit code handling initially failed before a new request or service start."
+  ],
+  "replayedOriginalRequests": false
+}
