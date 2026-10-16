@@ -1,0 +1,51 @@
+{
+  "schema": "native-room-feed-qualification/v1",
+  "date": "2026-10-16",
+  "state": "passed-bounded-production-native-exercise",
+  "packages": {
+    "laxConnector": "0.1.0.dev38",
+    "hollywood": "0.3.0.dev29"
+  },
+  "actualNative": {
+    "agents": 3,
+    "completedProviderTurns": 5,
+    "peakConcurrentExecutions": 3,
+    "globalDelegatedToExistingPeers": true,
+    "peerArtifactsIndependentlyVerified": true,
+    "sameGlobalNativeContextAcrossThreeRooms": true,
+    "rolesAndHomeRoomsUnchanged": true,
+    "agentRequestAuthorsPreserved": true,
+    "finalAcceptancePostedInGlobalRoom": true,
+    "structuredExecutionObservations": 116,
+    "unsettledDeliveriesAfterQualification": 0
+  },
+  "readOnlyGateway": {
+    "conversationActivityAndCombinedViews": true,
+    "actualProductionHistories": 3,
+    "reconnectCursors": true,
+    "invalidViewCursorAndBindingRejected": true,
+    "newModelTurns": 0,
+    "newMessages": 0,
+    "pairingsChanged": 0,
+    "minimalOneFileGatewayPatchDeployed": true
+  },
+  "deployment": {
+    "existingAgentDaemons": 12,
+    "schemaMigration": false,
+    "contextMigration": false,
+    "nativeBinaryChanged": false,
+    "oldClosureRetained": true
+  },
+  "evidenceLevels": {
+    "protocolIntegration": "actual isolated PostgreSQL/HTTP, two fixture agents, 384 observations/192 actions; no provider calls",
+    "nativeExercise": "actual installed Global plus two existing peer agents, original deliveries and artifact bytes verified",
+    "gateway": "authenticated read-only actual production authority/history; no new model calls",
+    "client": "compatible source exists in separate maintained NextComp candidate; root made no APK install and claims no physical-phone rendering"
+  },
+  "limits": [
+    "No ordinary physical-phone follow-up, provider voice or FCM delivery claim",
+    "Legacy stock gateway human-ingress provenance guard remains open and separate from Hollywood author checks",
+    "No general post-terminal work-report reconciliation or acknowledged ownership transfer",
+    "Not a second-host/multi-human/enterprise-business acceptance certificate"
+  ]
+}
