@@ -21,6 +21,7 @@ BUSINESS = {
     "post", "workflow", "decision_write", "principal", "create_room",
     "membership", "placement", "role", "host_policy_set", "portfolio_policy_set",
     "cancel", "native_control_create", "communication_set",
+    "collaboration_bridge",
 }
 METADATA = {
     "executor_begin", "executor_reserve", "executor_attach", "executor_observe",
@@ -29,11 +30,13 @@ METADATA = {
     "activity_append", "attention_create", "attention_response",
     "attention_acknowledge", "review_dispatch", "supervision_ack",
     "portfolio_dispatch", "agent_execution_binding",
+    "collaboration_call",
 }
 EXCLUSIVE = {
     "principal", "membership", "placement", "role", "host_policy_set",
     "portfolio_policy_set", "cancel", "workflow", "executor_observe",
     "transition", "native_goal_binding",
+    "collaboration_call", "collaboration_bridge",
 }
 FIELDS = {
     "schema", "authorityId", "agentId", "hostId", "deliveryId", "claimId",

@@ -607,3 +607,34 @@ CREATE TABLE IF NOT EXISTS hb_work_report_reconciliation (
  CHECK(delivery<>current_delivery)
 );
 INSERT INTO hb_schema VALUES (22) ON CONFLICT DO NOTHING;
+
+-- One authority for physical edit ownership; local SQLite is never shared truth.
+-- Enrollment is an explicit administrator attestation of a protected callback
+-- bridge. The server validates lifecycle facts, not remote RPC pipes or files.
+CREATE TABLE IF NOT EXISTS hb_collaboration_bridge (
+ host uuid PRIMARY KEY, authority uuid NOT NULL, controller uuid NOT NULL,
+ state text NOT NULL CHECK(state IN ('active','revoked')), revision bigint NOT NULL DEFAULT 1,
+ adapter_sha256 text NOT NULL CHECK(adapter_sha256 ~ '^[a-f0-9]{64}$'),
+ enrollment_sha256 text NOT NULL CHECK(enrollment_sha256 ~ '^[a-f0-9]{64}$'),
+ FOREIGN KEY(authority,host) REFERENCES hb_host(authority,id),
+ FOREIGN KEY(authority,controller) REFERENCES hb_principal(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_path_claim (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, work uuid NOT NULL, owner uuid NOT NULL,
+ host uuid NOT NULL, workspace_id uuid NOT NULL, relative_path text NOT NULL,
+ kind text NOT NULL CHECK(kind IN ('file','directory')),
+ source_revision text NOT NULL CHECK(source_revision ~ '^([a-f0-9]{40}|[a-f0-9]{64})$'),
+ content_sha256 text NOT NULL CHECK(content_sha256='absent' OR content_sha256 ~ '^[a-f0-9]{64}$'),
+ state text NOT NULL DEFAULT 'active' CHECK(state IN ('active','handoff','released')),
+ revision bigint NOT NULL DEFAULT 1, expires_at timestamptz NOT NULL,
+ target_work uuid, origin_delivery uuid NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ FOREIGN KEY(authority,work) REFERENCES hb_work(authority,id),
+ FOREIGN KEY(authority,owner) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,host) REFERENCES hb_host(authority,id),
+ FOREIGN KEY(authority,target_work) REFERENCES hb_work(authority,id),
+ FOREIGN KEY(authority,origin_delivery) REFERENCES hb_delivery(authority,id),
+ CHECK((state='handoff')=(target_work IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS hb_path_claim_namespace ON hb_path_claim(authority,host,workspace_id,state);
+INSERT INTO hb_schema VALUES (23) ON CONFLICT DO NOTHING;

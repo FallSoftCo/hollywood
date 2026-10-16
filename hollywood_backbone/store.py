@@ -36,6 +36,26 @@ def json_value(value):
 
 
 class Store:
+    def collaboration_bridge(self, actor_id, host, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "collaboration_bridge", [host, payload], command)
+
+    def _admin_collaboration_bridge(self, c, actor, host, payload):
+        from .collaboration import configure
+        return configure(c, actor, host, payload)
+
+    def collaboration_call(self, actor_id, payload):
+        from .collaboration import call
+        return call(self, actor_id, payload)
+
+    def collaboration_bridge_read(self, actor_id, host):
+        from .collaboration import read_bridge
+        return read_bridge(self, actor_id, host)
+
+    def collaboration_command(self, actor_id, agent, operation):
+        from .collaboration import read_command
+        return read_command(self, actor_id, agent, operation)
+
     def executor_begin(self, actor_id, delivery, payload):
         from .executors import begin
         return begin(self, actor_id, delivery, payload)

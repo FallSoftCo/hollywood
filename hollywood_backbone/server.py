@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .store import Conflict, Denied, Store, digest
 from . import native_effects
+from .collaboration_models import BridgeConfiguration, CollaborationCall
 
 
 class Input(BaseModel):
@@ -488,7 +489,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set"):
+    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -521,6 +522,28 @@ async def native_effect_list(request):
         raise ValueError("Invalid native effect page")
     return await invoke(request, "native_effects", str(UUID(request.match_info["delivery"])),
                         after, limit)
+
+
+async def collaboration_bridge(request):
+    p = await body(request, BridgeConfiguration)
+    return await invoke(request, "collaboration_bridge", str(UUID(request.match_info["host"])),
+                        p.model_dump(mode="json"))
+
+
+async def collaboration_call(request):
+    p = await body(request, CollaborationCall)
+    return await invoke(request, "collaboration_call", p.model_dump(mode="json"))
+
+
+async def collaboration_bridge_read(request):
+    return await invoke(request, "collaboration_bridge_read", str(UUID(request.match_info["host"])))
+
+
+async def collaboration_command(request):
+    if request.query:
+        raise ValueError("Unknown collaboration receipt query")
+    return await invoke(request, "collaboration_command", str(UUID(request.match_info["agent"])),
+                        request.match_info["operation"])
 
 
 async def administrative_command(request):
@@ -1143,6 +1166,10 @@ def application(store):
     app.add_routes(
         [
             web.get("/health", health),
+            web.put("/hollywood/v3/hosts/{host}/collaboration-bridge", collaboration_bridge),
+            web.get("/hollywood/v3/hosts/{host}/collaboration-bridge", collaboration_bridge_read),
+            web.post("/hollywood/v3/collaboration/path-claims", collaboration_call),
+            web.get("/hollywood/v3/collaboration/commands/{agent}/{operation}", collaboration_command),
             web.get("/hollywood/v3/deliveries/{delivery}/native-effects", native_effect_list),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/executor", executor_begin),
             web.post(
