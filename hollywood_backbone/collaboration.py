@@ -151,6 +151,10 @@ def decisions(c, work, command):
 def reviewed(c, claim, command):
     if command["effectDisposition"] != "reviewed":
         raise Conflict("Unknown effects retain path ownership")
+    settled_controls(c, claim)
+
+
+def settled_controls(c, claim):
     for table, terminal in (("hb_attention", "('closed','expired')"),
                             ("hb_native_control", "('native_recorded','rejected')")):
         if c.execute(f"SELECT 1 FROM {table} WHERE delivery=%s AND state NOT IN {terminal} LIMIT 1",
@@ -200,11 +204,18 @@ def apply(store, c, actor, source, binding, work, goal, command):
             ON x.delivery=d.id AND x.generation=d.generation JOIN hb_agent_role r
             ON r.principal=d.agent AND r.revision=x.role_revision
             JOIN hb_placement p ON p.agent=d.agent AND p.host=d.host AND p.enabled
-            WHERE d.id=%s AND d.agent=%s AND d.host=%s AND x.workspace_id=%s""",
+            JOIN hb_executor e ON e.delivery=d.id AND e.generation=d.generation AND e.claim_id=d.claim_id
+            JOIN hb_host_admission h ON h.host=d.host
+            WHERE d.id=%s AND d.agent=%s AND d.host=%s AND x.workspace_id=%s
+            AND e.controller IS NOT NULL AND e.observed_at IS NOT NULL AND
+            ((d.state='running' AND e.state='live' AND e.controller=h.controller AND
+              e.observed_at>clock_timestamp()-make_interval(secs=>h.sample_max_age))
+             OR (d.state='completed' AND e.state='stopped'))""",
             (claim["origin_delivery"], claim["owner"], claim["host"], claim["workspace_id"])).fetchone()
         if (origin_goal["id"] != goal["id"] or not origin or origin["cancellation_requested"]
                 or origin["state"] not in ("running", "completed")):
             raise Conflict("Original handoff consent or effects remain unsettled")
+        settled_controls(c, claim)
         claim = c.execute("""UPDATE hb_path_claim SET owner=%s,work=%s,target_work=NULL,state='active',
             revision=revision+1,expires_at=%s+make_interval(secs=>%s),origin_delivery=%s WHERE id=%s RETURNING *""",
             (actor["id"], work["id"], now, command["leaseSeconds"], source["deliveryId"], identity)).fetchone()
@@ -217,6 +228,11 @@ def apply(store, c, actor, source, binding, work, goal, command):
             raise Conflict("Released claim cannot resume")
         if action == "release":
             reviewed(c, claim, command)
+            if str(claim["origin_delivery"]) != source["deliveryId"] and not c.execute(
+                """SELECT 1 FROM hb_executor WHERE delivery=%s AND state='stopped'
+                   AND controller IS NOT NULL AND observed_at IS NOT NULL""", (claim["origin_delivery"],)
+            ).fetchone():
+                raise Conflict("Original lease executor remains unsettled")
             claim = c.execute("UPDATE hb_path_claim SET state='released',target_work=NULL,revision=revision+1 WHERE id=%s RETURNING *",
                               (identity,)).fetchone()
         elif action == "renew":

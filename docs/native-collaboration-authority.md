@@ -131,6 +131,10 @@ payload conflicts. Receipts are historical, not renewable permits. Claim history
 is retained in immutable accepted receipts; no expiry deletion occurs. An unknown
 POST result is resolved by original command GET only. No task, attempt, delivery,
 context, execution binding or model is created by claim operations.
+Handoff acceptance also needs a fresh independently live original executor or a
+completed original with independently stopped resource, and no unresolved original
+controls. Later-participation release requires that original resource stopped;
+semantic completion alone cannot establish physical settlement or undo effects.
 
 ## Task / team adapter mapping
 

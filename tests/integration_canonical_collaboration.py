@@ -217,6 +217,12 @@ async def main():
             sql("UPDATE hb_delivery SET state='unknown' WHERE id=%s", (a['source']['deliveryId'],))
             await call(b, command(b, 'accept', shared_id, 2), status=409)
             sql("UPDATE hb_delivery SET state='running' WHERE id=%s", (a['source']['deliveryId'],))
+            sql("UPDATE hb_executor SET state='unknown' WHERE delivery=%s", (a['source']['deliveryId'],))
+            await call(b, command(b, 'accept', shared_id, 2), status=409)
+            sql("UPDATE hb_executor SET state='live' WHERE delivery=%s", (a['source']['deliveryId'],))
+            sql("UPDATE hb_delivery SET state='completed' WHERE id=%s", (a['source']['deliveryId'],))
+            await call(b, command(b, 'accept', shared_id, 2), status=409)
+            sql("UPDATE hb_delivery SET state='running' WHERE id=%s", (a['source']['deliveryId'],))
             accepted = await call(b, command(b, 'accept', shared_id, 2))
             assert accepted['claim']['work'] == b['work'] and accepted['claim']['owner'] == b['id']
             assert accepted['claim']['origin_delivery'] == b['source']['deliveryId']
@@ -303,6 +309,8 @@ async def main():
                                       claimId=later_claim, nativeTurn=later_turn)
             await call(recovery, command(recovery, relativePath='cleanup/replay', briefingSequence=head), status=409)
             sql("UPDATE hb_goal SET state='paused' WHERE id=%s", (ids['goal'],))
+            await call(recovery, command(recovery, 'release', cleanup_claim['claim']['id'], 1, briefingSequence=head), status=409)
+            sql("UPDATE hb_executor SET state='stopped' WHERE delivery=%s", (prior_delivery,))
             cleanup = await call(recovery, command(recovery, 'release', cleanup_claim['claim']['id'], 1, briefingSequence=head))
             assert cleanup['claim']['state'] == 'released'
             sql("UPDATE hb_goal SET state='active' WHERE id=%s", (ids['goal'],))
