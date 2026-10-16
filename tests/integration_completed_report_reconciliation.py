@@ -24,6 +24,10 @@ def new_id():
 
 
 async def main():
+    import hollywood_backbone
+    source_root = Path(__file__).resolve().parents[1]
+    if not Path(hollywood_backbone.__file__).resolve().is_relative_to(source_root):
+        raise RuntimeError("Qualification must import the exact owned staged source")
     root = Path(os.environ["RECOVERY_EVIDENCE"]).resolve()
     config = json.loads(Path(os.environ["RECOVERY_DATABASE_CONFIG"]).read_text())
     if (not str(root).startswith("/dev/shm/") or not config["host"].startswith("/dev/shm/")
@@ -61,8 +65,14 @@ async def main():
                 headers[HEADER] = json.dumps(source)
             async with client.request("POST" if payload is not None else "GET",
                                       base + path, json=payload, headers=headers) as response:
-                value = await response.json()
+                text = await response.text()
+                try:
+                    value = json.loads(text)
+                except ValueError:
+                    value = {"nonJsonResponse": text[:4000]}
                 trace.append({"path": path, "status": response.status, "result": value})
+                with (root / "http-trace.jsonl").open("a") as output:
+                    output.write(json.dumps(trace[-1]) + "\n")
                 assert response.status == status, (path, response.status, value, status)
                 return value
 
@@ -90,6 +100,7 @@ async def main():
             assigned = store.workflow(owner, "work.assign", f["work"], new_id(), {"revision": 1})
             f["prior"] = assigned["deliveryId"]
             f["priorRequest"] = assigned["requestEventId"]
+            sql("UPDATE hb_work_attempt SET briefing_sequence=0 WHERE delivery=%s", (f["prior"],))
             current = store.post(owner, f["room"], new_id(), {"kind": "request", "body": "SYNTHETIC later normal participation",
                 "audience": "room", "recipientId": f["agent"]})
             f["current"] = current["deliveries"][0]["id"]
@@ -131,6 +142,13 @@ async def main():
 
         try:
             f = fixture()
+            sql("""INSERT INTO hb_native_effect(authority,principal,delivery,generation,fingerprint,
+                source,method,path,wire_digest,operation) VALUES(%s,%s,%s,1,%s,%s,'POST',
+                'synthetic-original-effect',%s,%s)""",
+                (ids["authority"], f["agent"], f["prior"], digest(new_id()),
+                 Jsonb({"syntheticFixtureOnly": True}), "d" * 64, new_id()))
+            original_effects = sql("SELECT * FROM hb_native_effect WHERE delivery=%s ORDER BY sequence",
+                                   (f["prior"],), all_rows=True)
             immutable = {"delivery": sql("SELECT * FROM hb_delivery WHERE id=%s", (f["prior"],)),
                          "context": sql("SELECT * FROM hb_agent_context WHERE principal=%s", (f["agent"],)),
                          "binding": sql("SELECT * FROM hb_agent_execution WHERE delivery=%s", (f["prior"],))}
@@ -142,12 +160,20 @@ async def main():
             assert sql("SELECT * FROM hb_delivery WHERE id=%s", (f["prior"],)) == immutable["delivery"]
             assert sql("SELECT * FROM hb_agent_context WHERE principal=%s", (f["agent"],)) == immutable["context"]
             assert sql("SELECT * FROM hb_agent_execution WHERE delivery=%s", (f["prior"],)) == immutable["binding"]
+            assert sql("SELECT * FROM hb_native_effect WHERE delivery=%s ORDER BY sequence",
+                       (f["prior"],), all_rows=True) == original_effects
             assert sql("SELECT count(*) AS n FROM hb_work_attempt WHERE work=%s", (f["work"],))["n"] == 1
             assert sql("SELECT count(*) AS n FROM hb_delivery WHERE agent=%s", (f["agent"],))["n"] == 2
             history = await call(credentials["Owner"]["token"], f"work/{f['work']}/attempts")
             assert history["attempts"][0]["report_reconciliation_event"] == r["eventId"]
+            assert history["attempts"][0]["briefing_sequence"] == 0
+            assert history["attempts"][0]["report_reconciliation"]["originalBriefingSequence"] == 0
             from hollywood_backbone.portfolio import material
             with store.pool.connection() as c:
+                c.execute("""INSERT INTO hb_portfolio_policy
+                    (principal,authority,room,enabled,activation_seq,scanned_seq,reviews_per_window,window_seconds)
+                    VALUES(%s,%s,%s,false,%s,%s,1,60)""",
+                    (glob, ids["authority"], ids["room"], pre_report_head, pre_report_head))
                 material(c, store.actor(c, glob), {"scanned_seq": pre_report_head,
                                                    "activation_seq": pre_report_head})
             assert str(sql("SELECT source_event FROM hb_portfolio_item WHERE principal=%s AND reference=%s",
@@ -162,6 +188,51 @@ async def main():
             ordinary.update(claimId="claim-" + f["prior"], generation=1)
             await call(f["token"], f"work/{f['work']}/report", ordinary, {**f["source"], "tool": "hollywood_work_report"}, 409)
             checks.append("Ordinary reporting remains strict for completed originals")
+
+            f = fixture()
+            sql("UPDATE hb_delivery SET state='running' WHERE id=%s", (f["prior"],))
+            sql("UPDATE hb_executor SET state='live' WHERE delivery=%s", (f["prior"],))
+            original_source = {**f["source"], "deliveryId": f["prior"],
+                "requestId": f["priorRequest"], "claimId": "claim-" + f["prior"],
+                "nativeTurn": "turn-" + f["prior"], "tool": "hollywood_work_report"}
+            ordinary = {k: v for k, v in f["payload"].items() if k not in ("priorDeliveryId", "effectDisposition")}
+            ordinary.update(claimId="claim-" + f["prior"], generation=1, briefingSequence=0)
+            await call(f["token"], f"work/{f['work']}/report", ordinary, original_source)
+            review = {"operationId": new_id(), "revision": 3, "decision": "accepted", "note": "Synthetic independent ordinary review"}
+            await call(credentials["Owner"]["token"], f"work/{f['work']}/review", review, status=409)
+            sql("UPDATE hb_delivery SET state='completed' WHERE id=%s", (f["prior"],))
+            await call(credentials["Owner"]["token"], f"work/{f['work']}/review", review)
+            checks.append("Ordinary live-original report unchanged; independent review waits for original completion and uses ordinary briefing history")
+
+            # A later decision read is additive provenance, never original history.
+            f = fixture()
+            store.decision_write(owner, f["room"], new_id(), {
+                "id": new_id(), "key": "later-acceptance", "revision": 0, "goalId": None,
+                "state": "active", "body": "Synthetic later evidence requirement",
+                "sourceEventId": f["priorRequest"]})
+            await submit(f, {**f["payload"], "briefingSequence": 0}, status=409)
+            head = sql("SELECT next_seq FROM hb_authority WHERE id=%s", (ids["authority"],))["next_seq"]
+            reconciled = await submit(f, {**f["payload"], "briefingSequence": head})
+            original_attempt = sql("SELECT * FROM hb_work_attempt WHERE delivery=%s", (f["prior"],))
+            assert original_attempt["briefing_sequence"] == 0
+            assert reconciled["reconciliation"]["originalBriefingSequence"] == 0
+            assert reconciled["reconciliation"]["briefingSequence"] == head and head > 0
+            await call(credentials["Owner"]["token"], f"work/{f['work']}/review", {
+                "operationId": new_id(), "revision": 3, "decision": "accepted",
+                "note": "Distinct synthetic reviewer uses later audit, preserving historical briefing"})
+            checks.append("HISTORY-1: original briefing0 preserved; later decision sequence in additive audit enables independent current review")
+
+            f = fixture()
+            decision = {"id": new_id(), "key": "audit-read", "revision": 0, "goalId": None,
+                        "state": "active", "body": "Synthetic current requirement", "sourceEventId": f["priorRequest"]}
+            store.decision_write(owner, f["room"], new_id(), decision)
+            head = sql("SELECT next_seq FROM hb_authority WHERE id=%s", (ids["authority"],))["next_seq"]
+            await submit(f, {**f["payload"], "briefingSequence": head})
+            store.decision_write(owner, f["room"], new_id(), {**decision, "revision": 1, "body": "Synthetic newer requirement"})
+            await call(credentials["Owner"]["token"], f"work/{f['work']}/review", {
+                "operationId": new_id(), "revision": 3, "decision": "accepted", "note": "Stale later audit must not accept"}, status=409)
+            assert sql("SELECT briefing_sequence FROM hb_work_attempt WHERE delivery=%s", (f["prior"],))["briefing_sequence"] == 0
+            checks.append("New decisions after reconciled submission fence acceptance without rewriting original history")
 
             for change in ({"claimId": "stale"}, {"generation": 2}, {"agentId": glob},
                            {"hostId": new_id()}, {"contextId": "f" * 64}, {"roleRevision": 999},
@@ -240,6 +311,14 @@ async def main():
             statuses = await asyncio.gather(racing_report(), racing_cancel())
             assert sorted(statuses) == [200, 409], statuses
             assert sql("SELECT count(*) AS n FROM hb_work_attempt WHERE work=%s", (f["work"],))["n"] == 1
+            race = json_value({"workId": f["work"], "originalDeliveryId": f["prior"],
+                "currentDeliveryId": f["current"], "reportStatus": statuses[0],
+                "cancelStatus": statuses[1],
+                "finalWork": sql("SELECT * FROM hb_work WHERE id=%s", (f["work"],)),
+                "reconciliation": sql("SELECT * FROM hb_work_report_reconciliation WHERE work=%s", (f["work"],)),
+                "attemptCount": sql("SELECT count(*) AS n FROM hb_work_attempt WHERE work=%s", (f["work"],))["n"],
+                "executionReceipts": "SYNTHETIC FIXTURE ONLY"})
+            (root / "race-result.json").write_text(json.dumps(race, indent=2))
             checks.append("Report-vs-cancel serialized by authority/goal/CAS; cancellation-first fences stale submission; no second attempt/admission")
             result = {"state": "passed", "actualPostgreSQL": True, "authenticatedHTTP": True,
                       "nativeReceipts": "SYNTHETIC FIXTURE ONLY", "modelsStarted": 0,

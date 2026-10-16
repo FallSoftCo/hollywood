@@ -182,7 +182,9 @@ def reconcile(store, actor_id, identity, operation, payload, *, wire=None):
                 "SELECT id FROM hb_native_control WHERE delivery=%s AND state NOT IN ('native_recorded','rejected')",
                 (prior["id"],)).fetchall()],
             "decisions": [str(x["id"]) for x in c.execute(
-                "SELECT id FROM hb_decision WHERE room=%s AND (goal IS NULL OR goal=%s) AND state='conflicted'",
+                """SELECT d.id FROM hb_decision d JOIN hb_decision_revision v
+                     ON v.decision=d.id AND v.revision=d.revision
+                   WHERE d.room=%s AND (d.goal IS NULL OR d.goal=%s) AND v.state='conflicted'""",
                 (work["room"], work["goal"])).fetchall()],
         }
         if payload["state"] == "submitted" and (
@@ -200,6 +202,7 @@ def reconcile(store, actor_id, identity, operation, payload, *, wire=None):
             "currentParticipation": source, "effectDisposition": payload["effectDisposition"],
             "unresolvedEffects": unresolved, "note": payload["note"],
             "evidence": payload["evidence"], "briefingSequence": seen,
+            "originalBriefingSequence": attempt["briefing_sequence"],
             "attestation": "Current owner attests effect review; stopped/completed alone proves no effect outcome. Connector hashes bytes on original pinned host/workspace; server verifies scope, not remote filesystem bytes.",
             "newExecutionAdmitted": False, "originalAttemptPreserved": True,
         })
@@ -229,9 +232,9 @@ def reconcile(store, actor_id, identity, operation, payload, *, wire=None):
                   (Jsonb(receipt), event))
         c.execute("UPDATE hb_work SET report_event=%s WHERE id=%s", (event, work["id"]))
         c.execute(
-            """UPDATE hb_work_attempt SET report_event=%s,evidence=%s,report_note=%s,
-               briefing_sequence=%s WHERE delivery=%s""",
-            (event, Jsonb(payload["evidence"]), payload["note"], seen, prior["id"]),
+            """UPDATE hb_work_attempt SET report_event=%s,evidence=%s,report_note=%s
+               WHERE delivery=%s""",
+            (event, Jsonb(payload["evidence"]), payload["note"], prior["id"]),
         )
         c.execute(
             """INSERT INTO hb_work_report_reconciliation

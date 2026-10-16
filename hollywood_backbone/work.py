@@ -470,13 +470,24 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                 latest = current_sequence(c, work["room"], work["goal"])
                 if payload["decision"] == "accepted":
                     attempt = c.execute(
-                        "SELECT briefing_sequence FROM hb_work_attempt WHERE delivery=%s",
+                        """SELECT a.briefing_sequence,r.event AS reconciliation_event,
+                                  r.evidence AS reconciliation
+                           FROM hb_work_attempt a LEFT JOIN hb_work_report_reconciliation r
+                             ON r.delivery=a.delivery AND r.event=a.report_event
+                           WHERE a.delivery=%s""",
                         (work["delivery"],),
                     ).fetchone()
+                    # A later report's decision read belongs to its additive audit,
+                    # never to the original attempt's historical briefing field.
+                    report_sequence = (
+                        attempt["reconciliation"].get("briefingSequence")
+                        if attempt and attempt["reconciliation_event"] == work["report_event"]
+                        else attempt["briefing_sequence"] if attempt else None
+                    )
                     if latest and (
                         not attempt
-                        or attempt["briefing_sequence"] is None
-                        or attempt["briefing_sequence"] < latest
+                        or report_sequence is None
+                        or report_sequence < latest
                     ):
                         raise Conflict(
                             "Evidence predates current decisions; explicit rework is required"

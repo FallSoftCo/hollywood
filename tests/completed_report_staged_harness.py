@@ -5,7 +5,6 @@ No retained fixture service or production database is contacted by this driver.
 """
 import argparse
 import getpass
-import hashlib
 import json
 import os
 import socket
@@ -13,7 +12,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-BASE = Path('/dev/shm/harness-completed-report-recovery-20261016-r01/artifacts-hollywood/implementation-r02')
+BASE = Path(os.environ.get('RECOVERY_ARTIFACT_ROOT', '/dev/shm/harness-completed-report-recovery-20261016-r01/artifacts-hollywood/implementation-r02'))
 RESERVE = 80 * 1024**3
 HEADROOM = 48 * 1024**2
 PYTHON = '/opt/harness/production-core-20261016-r03/venv/bin/python'
@@ -32,12 +31,15 @@ def prepare():
         raise RuntimeError(f'/aosp phase reserve unmet: {free} bytes available')
     BASE.mkdir(parents=True, exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix='fresh-harness-', dir=BASE))
-    for name in ('socket', 'tmp', 'workspace-worker', 'workspace-reviewer', 'states'):
+    for name in ('tmp', 'workspace-worker', 'workspace-reviewer', 'states'):
         (root / name).mkdir(mode=0o700)
+    # PostgreSQL's Unix socket path is limited to108 bytes. Keep socket files
+    # inside this owned RAM worktree, away from long evidence-directory names.
+    socket_dir = Path(tempfile.mkdtemp(prefix='.s-', dir=Path(__file__).resolve().parents[1]))
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
         port = listener.getsockname()[1]
-    config = {'host': str(root / 'socket'), 'port': port,
+    config = {'host': str(socket_dir), 'port': port,
               'dbname': 'report_recovery_fixture', 'user': getpass.getuser()}
     write(root / 'database.json', config)
     plan = {
@@ -70,12 +72,17 @@ def prepare():
     return root, config
 
 
-def focused(root, config, bindir):
+def focused(root, config, bindir, library_dir, share_dir):
     commands = []
     started = False
     env = {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1', 'TMPDIR': str(root / 'tmp'),
+           'PYTHONPATH': str(Path(__file__).resolve().parents[1]),
            'RECOVERY_EVIDENCE': str(root / 'http-result'),
            'RECOVERY_DATABASE_CONFIG': str(root / 'database.json')}
+    if library_dir:
+        env['LD_LIBRARY_PATH'] = str(library_dir)
+    lifecycle = {'root': str(root), 'dataDir': str(root / 'pgdata'), 'nativeStarted': False,
+                 'libraryDir': str(library_dir), 'shareDir': str(share_dir), 'commands': commands}
     try:
         for name in ('initdb', 'pg_ctl', 'createdb'):
             path = bindir / name
@@ -91,11 +98,14 @@ def focused(root, config, bindir):
                 raise RuntimeError(f'Owned fixture command exited{result.returncode}: {argv[0]}')
 
         run([str(bindir / 'initdb'), '-D', str(root / 'pgdata'), '--no-locale', '-E', 'UTF8',
-             '-U', config['user'], '--auth=trust'])
-        options = f"-h '' -k {root / 'socket'} -p {config['port']} -F -c shared_buffers=16MB -c max_connections=20 -c unix_socket_permissions=0700"
+             '-U', config['user'], '--auth=trust'] + (['-L', str(share_dir)] if share_dir else []))
+        options = f"-h '' -k {config['host']} -p {config['port']} -F -c shared_buffers=16MB -c max_connections=20 -c unix_socket_permissions=0700"
         run([str(bindir / 'pg_ctl'), '-D', str(root / 'pgdata'), '-l', str(root / 'postgres.log'),
              '-o', options, '-w', 'start'])
         started = True
+        pid = int((root / 'pgdata' / 'postmaster.pid').read_text().splitlines()[0])
+        lifecycle['postmasterPid'] = pid
+        lifecycle['originalStartTicks'] = Path(f'/proc/{pid}/stat').read_text().split(') ', 1)[1].split()[19]
         run([str(bindir / 'createdb'), '-h', config['host'], '-p', str(config['port']),
              '-U', config['user'], config['dbname']])
         run([PYTHON, str(Path(__file__).with_name('integration_completed_report_reconciliation.py'))])
@@ -106,20 +116,45 @@ def focused(root, config, bindir):
               'commands': commands, 'actualNativeProof': False})
         raise
     finally:
+        pid_file = root / 'pgdata' / 'postmaster.pid'
+        if not started and pid_file.exists():
+            # A failed start acknowledgement is not proof that nothing started.
+            candidate = int(pid_file.read_text().splitlines()[0])
+            process = Path(f'/proc/{candidate}')
+            if (process.exists() and process.stat().st_uid == os.getuid()
+                    and str(root / 'pgdata').encode() in (process / 'cmdline').read_bytes()):
+                started = True
+                lifecycle['postmasterPid'] = candidate
+                lifecycle['originalStartTicks'] = (process / 'stat').read_text().split(') ', 1)[1].split()[19]
+                lifecycle['startupAcknowledgementFailed'] = True
         if started:
             with (root / 'shutdown.log').open('a') as output:
-                subprocess.run([str(bindir / 'pg_ctl'), '-D', str(root / 'pgdata'), '-m', 'fast', '-w', 'stop'],
-                               env=env, stdout=output, stderr=subprocess.STDOUT, timeout=60, check=True)
+                stopped = subprocess.run([str(bindir / 'pg_ctl'), '-D', str(root / 'pgdata'), '-m', 'fast', '-w', 'stop'],
+                                         env=env, stdout=output, stderr=subprocess.STDOUT, timeout=60, check=False)
+                lifecycle['stopReturnCode'] = stopped.returncode
+            stat = Path(f"/proc/{lifecycle['postmasterPid']}/stat")
+            lifecycle['originalProcessStillPresent'] = stat.exists() and stat.read_text().split(') ', 1)[1].split()[19] == lifecycle['originalStartTicks']
+            write(root / 'cleanup-receipt.json', lifecycle)
+            if stopped.returncode or lifecycle['originalProcessStillPresent']:
+                raise RuntimeError('Owned PostgreSQL cleanup not confirmed; inspect exact cleanup receipt')
+        else:
+            lifecycle['databaseStarted'] = False
+            write(root / 'cleanup-receipt.json', lifecycle)
+        socket_dir = Path(config['host'])
+        if socket_dir.exists() and not any(socket_dir.iterdir()):
+            socket_dir.rmdir()
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--focused', action='store_true')
     parser.add_argument('--pg-bindir', type=Path)
+    parser.add_argument('--pg-library-dir', type=Path)
+    parser.add_argument('--pg-share-dir', type=Path)
     args = parser.parse_args()
     root, config = prepare()
     print(json.dumps({'preparedRoot': str(root), 'nativeStarted': False}), flush=True)
     if args.focused:
         if not args.pg_bindir:
             raise SystemExit('--focused requires an explicitly approved existing --pg-bindir')
-        focused(root, config, args.pg_bindir)
+        focused(root, config, args.pg_bindir, args.pg_library_dir, args.pg_share_dir)

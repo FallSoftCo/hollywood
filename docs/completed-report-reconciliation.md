@@ -68,6 +68,10 @@ rights/ownership/cancellation; changed payload conflicts. Receipt replay does no
 revalidate the obsolete supplied revision after the original report committed.
 The report event and schema22 `hb_work_report_reconciliation` row are atomic with
 work/attempt evidence. Attempt readback includes the reconciliation event/audit.
+The original attempt's `briefing_sequence` is retained byte-for-byte, including
+NULL. The additive audit records both `originalBriefingSequence` and the later
+`briefingSequence`. Review uses the later sequence only when that audit is tied
+to the exact current report event; ordinary report freshness remains unchanged.
 Accepted native effects of the *original* stay immutable. The current native
 participation's normal effect audit records the new report transaction.
 
@@ -94,7 +98,9 @@ PYTHONDONTWRITEBYTECODE=1 /opt/harness/production-core-20261016-r03/venv/bin/pyt
 ```
 
 With an approved executable **existing** PostgreSQL dependency route, add
-`--focused --pg-bindir <existing PostgreSQL bin directory>`. Each invocation
+`--focused --pg-bindir <existing PostgreSQL bin directory>` and explicit
+`--pg-library-dir` / `--pg-share-dir` when needed. Set `RECOVERY_ARTIFACT_ROOT`
+to the admitted RAM evidence directory. Each invocation
 creates a fresh RAM namespace, guards the80GiB reserve plus48MiB phase headroom,
 starts only that new database, and stops only its owned process. No fixture
 service or production database configuration is reused. Read `focused-status`
