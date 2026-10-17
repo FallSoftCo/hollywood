@@ -76,6 +76,7 @@ def read_bridge(store, actor_id, host):
             "physicalTargets": enabled, "targetSchema": "hollywood-physical-target/v1",
             "deliveryEdits": enabled, "deliveryEditSchema": "canonical-delivery-edits/v1",
             "agentResourceGrants": True,
+            "resourceRouting": "canonical-agent-resources/v1", "resourceDefaults": True, "resourceMetadata": True,
             "legacyImplicitContextMutations": False, "activationRequiresProtectedBridgeProof": True})
 
 

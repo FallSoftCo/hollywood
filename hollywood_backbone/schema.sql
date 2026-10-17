@@ -762,3 +762,63 @@ CREATE INDEX IF NOT EXISTS hb_command_delivery_edit_action ON hb_command
   (wire_request->'body'->'source'->>'callId'))
  WHERE wire_request->>'path'='collaboration/delivery-edits';
 INSERT INTO hb_schema VALUES (27) ON CONFLICT DO NOTHING;
+
+-- Routing is separate from access and editing admission. Explicit reselection
+-- pins current registration/access revisions; changing it never releases locks.
+CREATE TABLE IF NOT EXISTS hb_resource_default (
+ authority uuid NOT NULL, principal uuid NOT NULL, execution_host uuid NOT NULL,
+ revision bigint NOT NULL DEFAULT 1 CHECK(revision>=1),
+ state text NOT NULL CHECK(state IN ('selected','cleared')),
+ workspace uuid REFERENCES hb_physical_workspace(id), workspace_revision bigint, grant_revision bigint,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(principal,execution_host),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,execution_host) REFERENCES hb_host(authority,id),
+ CHECK((state='selected' AND workspace IS NOT NULL AND workspace_revision IS NOT NULL AND workspace_revision>=1
+        AND grant_revision IS NOT NULL AND grant_revision>=1)
+    OR (state='cleared' AND workspace IS NULL AND workspace_revision IS NULL AND grant_revision IS NULL))
+);
+CREATE TABLE IF NOT EXISTS hb_resource_default_revision (
+ authority uuid NOT NULL, principal uuid NOT NULL, execution_host uuid NOT NULL,
+ revision bigint NOT NULL, actor uuid NOT NULL, operation text NOT NULL, snapshot jsonb NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(principal,execution_host,revision),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,actor) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,execution_host) REFERENCES hb_host(authority,id)
+);
+-- Preserve the fact of participation loss even if later re-enabled. This table
+-- only gains records; a new explicit pointer revision is needed to route again.
+CREATE TABLE IF NOT EXISTS hb_resource_default_hold (
+ principal uuid NOT NULL, execution_host uuid NOT NULL, revision bigint NOT NULL,
+ reason text NOT NULL CHECK(reason='participation-invalidated'),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(principal,execution_host,revision),
+ FOREIGN KEY(principal,execution_host,revision)
+   REFERENCES hb_resource_default_revision(principal,execution_host,revision)
+);
+CREATE OR REPLACE FUNCTION hb_resource_default_invalidate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_TABLE_NAME='hb_principal' THEN
+  IF OLD.active AND NOT NEW.active THEN
+   INSERT INTO hb_resource_default_hold(principal,execution_host,revision,reason)
+    SELECT principal,execution_host,revision,'participation-invalidated' FROM hb_resource_default
+     WHERE principal=OLD.id AND state='selected' ON CONFLICT DO NOTHING;
+  END IF;
+ ELSE
+  IF TG_OP='DELETE' OR (OLD.enabled AND (NOT NEW.enabled OR NEW.host<>OLD.host)) THEN
+   INSERT INTO hb_resource_default_hold(principal,execution_host,revision,reason)
+    SELECT principal,execution_host,revision,'participation-invalidated' FROM hb_resource_default
+     WHERE principal=OLD.agent AND execution_host=OLD.host AND state='selected' ON CONFLICT DO NOTHING;
+  END IF;
+ END IF;
+ RETURN NULL;
+END $$;
+DROP TRIGGER IF EXISTS hb_resource_default_principal_hold ON hb_principal;
+CREATE TRIGGER hb_resource_default_principal_hold AFTER UPDATE OF active ON hb_principal
+ FOR EACH ROW EXECUTE FUNCTION hb_resource_default_invalidate();
+DROP TRIGGER IF EXISTS hb_resource_default_placement_hold ON hb_placement;
+CREATE TRIGGER hb_resource_default_placement_hold AFTER UPDATE OF enabled,host OR DELETE ON hb_placement
+ FOR EACH ROW EXECUTE FUNCTION hb_resource_default_invalidate();
+INSERT INTO hb_schema VALUES (28) ON CONFLICT DO NOTHING;

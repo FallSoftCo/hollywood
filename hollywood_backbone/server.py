@@ -18,6 +18,7 @@ from .edit_plan_models import EditPlanCall, MutationObservation
 from .edit_plan_scope import EditError
 from .physical_models import WorkspaceConfiguration, WorkspaceGrant
 from .delivery_edit_models import AgentWorkspaceGrant, DeliveryEditCall
+from .resource_models import ResourceDefault
 from .report_scope_models import ReportScopeRead, ReportScopeProof
 from .report_scope import ScopeError
 
@@ -496,7 +497,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant"):
+    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -529,6 +530,47 @@ async def native_effect_list(request):
         raise ValueError("Invalid native effect page")
     return await invoke(request, "native_effects", str(UUID(request.match_info["delivery"])),
                         after, limit)
+
+
+def resource_page(request, extra):
+    allowed = {"after", "limit"} | extra
+    if set(request.query) - allowed or any(len(request.query.getall(key)) != 1 for key in request.query):
+        raise ValueError("Unknown or duplicate resource query")
+    limit = int(request.query.get("limit", "4"))
+    if not 1 <= limit <= 8:
+        raise ValueError("Resource page must contain 1..8 rows")
+    after = str(UUID(request.query["after"])) if "after" in request.query else None
+    return after, limit
+
+
+async def resource_roots_read(request):
+    after, limit = resource_page(request, {"hostId"})
+    host = str(UUID(request.query["hostId"])) if "hostId" in request.query else None
+    return await invoke(request, "resource_roots_read", host, after, limit)
+
+
+async def agent_resources_read(request):
+    after, limit = resource_page(request, {"executionHost"})
+    if "executionHost" not in request.query:
+        raise ValueError("Explicit executionHost required")
+    return await invoke(request, "agent_resources_read", str(UUID(request.match_info["agent"])),
+                        str(UUID(request.query["executionHost"])), after, limit)
+
+
+async def resource_default(request):
+    if request.query:
+        raise ValueError("Unknown resource-default query")
+    principal, host = str(UUID(request.match_info["agent"])), str(UUID(request.match_info["host"]))
+    if request.method == "GET":
+        return await invoke(request, "resource_default_read", principal, host)
+    p = await body(request, ResourceDefault)
+    return await invoke(request, "resource_default", principal, host, p.model_dump(mode="json"))
+
+
+async def delivery_resource_default_read(request):
+    if request.query:
+        raise ValueError("Unknown delivery-resource-default query")
+    return await invoke(request, "delivery_resource_default_read", str(UUID(request.match_info["delivery"])))
 
 
 async def physical_workspace(request):
@@ -1282,6 +1324,11 @@ def application(store):
             web.get("/hollywood/v3/hosts/{host}/collaboration-bridge", collaboration_bridge_read),
             web.post("/hollywood/v3/collaboration/path-claims", collaboration_call),
             web.get("/hollywood/v3/collaboration/commands/{agent}/{operation}", collaboration_command),
+            web.get("/hollywood/v3/physical-workspaces", resource_roots_read),
+            web.get("/hollywood/v3/agents/{agent}/resources", agent_resources_read),
+            web.get("/hollywood/v3/agents/{agent}/resource-defaults/{host}", resource_default),
+            web.put("/hollywood/v3/agents/{agent}/resource-defaults/{host}", resource_default),
+            web.get("/hollywood/v3/collaboration/delivery-resource-default/{delivery}", delivery_resource_default_read),
             web.put("/hollywood/v3/hosts/{host}/physical-workspaces/{workspace}", physical_workspace),
             web.put("/hollywood/v3/physical-workspaces/{workspace}/grants/{work}", physical_grant),
             web.put("/hollywood/v3/physical-workspaces/{workspace}/agent-grants/{agent}", physical_agent_grant),

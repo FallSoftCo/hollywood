@@ -19,7 +19,7 @@ _request = contextvars.ContextVar("hollywood_native_request", default=None)
 
 BUSINESS = {
     "report_scope_read",
-    "physical_workspace", "physical_grant", "physical_agent_grant",
+    "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default",
     "post", "workflow", "decision_write", "principal", "create_room",
     "membership", "placement", "role", "host_policy_set", "portfolio_policy_set",
     "cancel", "native_control_create", "communication_set",
@@ -37,14 +37,16 @@ METADATA = {
 }
 EXCLUSIVE = {
     "report_scope_read",
-    "physical_workspace", "physical_grant", "physical_agent_grant",
+    "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default",
     "principal", "membership", "placement", "role", "host_policy_set",
     "portfolio_policy_set", "cancel", "workflow", "executor_observe",
     "transition", "native_goal_binding",
     "collaboration_call", "collaboration_bridge",
     "edit_plan_call", "mutation_observe", "delivery_edit_call",
 }
-FENCED_READS = {"edit_plan_read", "delivery_edit_read", "delivery_targets_read"}
+FENCED_READS = {"edit_plan_read", "delivery_edit_read", "delivery_targets_read",
+                "resource_roots_read", "agent_resources_read", "resource_default_read",
+                "delivery_resource_default_read"}
 FIELDS = {
     "schema", "authorityId", "agentId", "hostId", "deliveryId", "claimId",
     "generation", "requestId", "nativeThread", "nativeTurn", "callId", "tool",

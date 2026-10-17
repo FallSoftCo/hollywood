@@ -1,0 +1,105 @@
+{
+  "schema": "hollywood-resource-routing-wire/v1",
+  "revision": 1,
+  "status": "Exact additive source contract; implementation/qualification pending.",
+  "capability": "canonical-agent-resources/v1",
+  "databaseVersion": 28,
+  "base": "/hollywood/v3/",
+  "unchanged": "canonical-delivery-edits/v1, its request schema and one-shot permit semantics remain byte-for-byte unchanged. These new endpoints do not gate existing explicit direct edits on schema27.",
+  "routes": {
+    "GET physical-workspaces": {
+      "actor": "Canonical administrator only; same authority.",
+      "query": {
+        "hostId": "optional UUID physical host filter",
+        "after": "optional UUID exclusive workspace keyset cursor",
+        "limit": "integer1..8, default4"
+      },
+      "reply": {
+        "schema": "hollywood-resource-roots/v1",
+        "authorityId": "UUID",
+        "workspaces": "raw registered workspace rows, including revoked rows for administrator CAS discovery",
+        "nextCursor": "UUID|null",
+        "limit": "requested bound",
+        "mayApply": false
+      }
+    },
+    "GET agents/{agent}/resources": {
+      "actor": "Canonical administrator for a same-authority agent, or that owner agent only. Other agents and nonadministrator services denied before data lookup.",
+      "query": {
+        "executionHost": "REQUIRED UUID registered execution host",
+        "after": "optional UUID exclusive workspace keyset cursor",
+        "limit": "integer1..8, default4"
+      },
+      "reply": {
+        "schema": "hollywood-agent-resources/v1",
+        "authorityId": "UUID",
+        "agentId": "UUID",
+        "executionHost": "UUID",
+        "resources": "bounded [{workspace:<raw root>,grant:<raw agent grant>}]",
+        "default": "single default view described below",
+        "nextCursor": "UUID|null",
+        "limit": "requested bound",
+        "mayApply": false
+      },
+      "visibility": "Administrators can discover revoked/current rows for CAS. Owner agents see only active read-permitted roots/grants and enabled placement, filtered before pagination; write=false resources remain readable."
+    },
+    "GET agents/{agent}/resource-defaults/{host}": {
+      "actor": "Same administrator/owner rules as resources.",
+      "reply": "hollywood-agent-resource-default/v1 view below; one selection and at most one eligible resource."
+    },
+    "PUT agents/{agent}/resource-defaults/{host}": {
+      "actor": "Canonical administrator only; existing native source-v2/current participation business-effect checks and original administrative operation recovery.",
+      "body": {
+        "operationId": "stable1..128 chars",
+        "revision": "integer>=0 CAS; 0 only when no pointer",
+        "state": "selected|cleared",
+        "workspaceId": "REQUIRED nullable UUID",
+        "workspaceRevision": "REQUIRED nullable integer>=1",
+        "grantRevision": "REQUIRED nullable integer>=1"
+      },
+      "selected": "All three nullable fields must be nonnull and match the current active read/write agent grant and registered root. Agent must be active with enabled placement on the path host. V1 default routing is local: root.host must equal this execution host; remote/adapter compatibility is not inferred.",
+      "cleared": "All three fields must be null. Explicitly clears routing only; never selects a replacement or alters access/locks.",
+      "reply": "Fresh default view; always mayApply=false. Cached administrative receipt is original evidence, not current routing authority.",
+      "concurrency": "Separate per-agent/per-execution-host pointer revision; no unrelated access-grant revision change. Append-only selection revision snapshots plus existing administrative receipts."
+    },
+    "GET collaboration/delivery-resource-default/{delivery}": {
+      "actor": "Existing registered service controller for the delivery execution host.",
+      "reply": "{schema:hollywood-delivery-resource-default/v1,deliveryId,agentId,executionHost,default:<single view>,mayApply:false}. Works for ordinary and structured deliveries; never changes their scope or bypasses planned work/consent/resource grants.",
+      "limits": "Uses canonical delivery.agent/host, never caller-supplied subject, private cwd or room/work context binding."
+    }
+  },
+  "defaultView": {
+    "schema": "hollywood-agent-resource-default/v1",
+    "authorityId": "UUID",
+    "agentId": "UUID",
+    "executionHost": "UUID",
+    "selection": "null or current raw pointer {authority,principal,execution_host,revision,state,workspace,workspace_revision,grant_revision,created_at,updated_at}",
+    "selectionRevision": "0 if missing; otherwise pointer revision",
+    "effectiveState": "missing|cleared|selected|held",
+    "holdReason": "null or stable diagnostic code",
+    "resource": "null or {workspace:<raw root>,grant:<raw grant>} only when canonical selection is currently eligible",
+    "mayApply": false
+  },
+  "bounds": {
+    "maxPageRows": 8,
+    "defaultPageRows": 4,
+    "maxResponseAsciiBytes": 32768,
+    "cursor": "UUID workspace keyset, query scope reauthorized each request; not a frozen multi-page snapshot",
+    "oversize": "Refuse without truncation; request a smaller page. No credentials, private native history or source instruction bodies in metadata.",
+    "consistency": "Shared authority fence with resource/default writes; each page reflects current canonical state. CAS revisions must still be checked at mutation."
+  },
+  "rules": [
+    "Selection is routing metadata, never access authority or an apply grant. Current root/grant revisions, state, write rights and actual protected root/callback checks remain mandatory.",
+    "Pins root and agent-grant revisions at selection. Revocation, regrant, changed registration, disabled placement/principal or incompatible local host makes the pointer held; no silent revival/fallback.",
+    "Missing/cleared/held or unsupported adapter must hold relative intents; never pick first/sole grant, guess cwd, alter private context, bind context to room/work, or assume a shared filesystem.",
+    "For planned mutations, a selected workspace supplies routing only. Existing per-work grants, claims, exact participant consent and planned permit semantics remain stronger and unchanged. Their grantRevision still comes from the planned work grant, not this pointer/agent grant.",
+    "Default select/clear never releases existing locks, changes access grants, creates workers, changes bridge enrollment or admits business work.",
+    "GET metadata follows active credential plus administrator/owner authorization; it does not mint mutation authority. Existing native provenance and administrator checks remain mandatory on writes."
+  ],
+  "capabilityDiscovery": "Existing bridge capability read adds resourceRouting=canonical-agent-resources/v1, resourceDefaults=true and resourceMetadata=true. Existing delivery-edit flags/protocol remain unchanged. Require the new capability before using new routes; no legacy fallback.",
+  "owners": {
+    "Hollywood": "Backend source/SQL/API and exact additive handoff",
+    "LAX": "Existing connector/installer integration delivery; passive handoff only",
+    "Root": "Existing installed ordinary edit and later actual provisioning/cooperation/cutover"
+  }
+}

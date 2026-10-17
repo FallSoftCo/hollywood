@@ -36,6 +36,30 @@ def json_value(value):
 
 
 class Store:
+    def resource_default(self, actor_id, principal, host, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "resource_default", [principal, host, payload], command)
+
+    def _admin_resource_default(self, c, actor, principal, host, payload):
+        from .resource_directory import select
+        return select(c, actor, principal, host, payload)
+
+    def resource_roots_read(self, actor_id, host=None, after=None, limit=4):
+        from .resource_directory import roots
+        return roots(self, actor_id, host, after, limit)
+
+    def agent_resources_read(self, actor_id, principal, host, after=None, limit=4):
+        from .resource_directory import resources
+        return resources(self, actor_id, principal, host, after, limit)
+
+    def resource_default_read(self, actor_id, principal, host):
+        from .resource_directory import read_default
+        return read_default(self, actor_id, principal, host)
+
+    def delivery_resource_default_read(self, actor_id, delivery):
+        from .resource_directory import delivery_default
+        return delivery_default(self, actor_id, delivery)
+
     def physical_agent_grant(self, actor_id, workspace, principal, payload, *, command=None):
         from .administrative import mutate
         return mutate(self, actor_id, "physical_agent_grant", [workspace, principal, payload], command)

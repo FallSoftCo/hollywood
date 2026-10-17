@@ -1,0 +1,70 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "operationId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Operationid",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "state": {
+      "enum": [
+        "selected",
+        "cleared"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "workspaceId": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Workspaceid"
+    },
+    "workspaceRevision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Workspacerevision"
+    },
+    "grantRevision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Grantrevision"
+    }
+  },
+  "required": [
+    "operationId",
+    "revision",
+    "state",
+    "workspaceId",
+    "workspaceRevision",
+    "grantRevision"
+  ],
+  "title": "ResourceDefault",
+  "type": "object"
+}
