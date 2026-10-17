@@ -88,6 +88,14 @@ class Store:
         from .delivery_edits import call
         return call(self, actor_id, payload)
 
+    def delivery_edit_reconcile(self, actor_id, identity, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "delivery_edit_reconcile", [identity, payload], command)
+
+    def _admin_delivery_edit_reconcile(self, c, actor, identity, payload):
+        from .delivery_edit_recovery import reconcile
+        return reconcile(self, c, actor, identity, payload)
+
     def delivery_edit_read(self, actor_id, identity):
         from .delivery_edits import read
         return read(self, actor_id, identity)

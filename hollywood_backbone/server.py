@@ -17,7 +17,7 @@ from .collaboration_models import BridgeConfiguration, CollaborationCall
 from .edit_plan_models import EditPlanCall, MutationObservation
 from .edit_plan_scope import EditError
 from .physical_models import WorkspaceConfiguration, WorkspaceGrant
-from .delivery_edit_models import AgentWorkspaceGrant, DeliveryEditCall
+from .delivery_edit_models import AgentWorkspaceGrant, DeliveryEditCall, DeliveryReconcile
 from .placement_models import PlacementState
 from .resource_models import ResourceDefault
 from .report_scope_models import ReportScopeRead, ReportScopeProof
@@ -499,7 +499,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state"):
+    if method in ("delivery_edit_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -601,6 +601,13 @@ async def delivery_targets_read(request):
 
 async def delivery_edit_call(request):
     return await edit_call_body(request, "delivery_edit_call", DeliveryEditCall)
+
+
+async def delivery_edit_reconcile(request):
+    p = await body(request, DeliveryReconcile)
+    return await edit_invoke(request, "delivery_edit_reconcile",
+                             str(UUID(request.match_info["permit"])),
+                             p.model_dump(mode="json"))
 
 
 async def delivery_edit_read(request):
@@ -1352,6 +1359,7 @@ def application(store):
             web.get("/hollywood/v3/collaboration/delivery-targets/{delivery}", delivery_targets_read),
             web.post("/hollywood/v3/collaboration/delivery-edits", delivery_edit_call),
             web.get("/hollywood/v3/collaboration/delivery-edits/{permit}", delivery_edit_read),
+            web.post("/hollywood/v3/collaboration/delivery-edits/{permit}/reconcile", delivery_edit_reconcile),
             web.get("/hollywood/v3/collaboration/physical-targets/{work}", physical_targets_read),
             web.post("/hollywood/v3/collaboration/edit-plans", edit_plan_call),
             web.get("/hollywood/v3/collaboration/edit-plans/{plan}", edit_plan_read),

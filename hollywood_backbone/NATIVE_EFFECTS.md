@@ -25,3 +25,15 @@ capability. Only the message transport is admitted through that enrollment.
 Native placement disallows enrolling its execution credential through this
 path. Human/service impersonation and bypass of a stale native source are
 rejected. Transport enrollment has a durable administrative operation receipt.
+
+
+Ordinary edit recovery uses the original delivery permit, without inventing a
+collaborative file plan. A protected host-controller observation must establish
+the original executor has stopped and read every original file through the
+registered physical root. This remains held evidence. An authenticated
+administrator separately reviews the exact fresh observation digest and permit
+revision at POST collaboration/delivery-edits/{permit}/reconcile. Only an
+all-before or all-after snapshot can settle; mixed/unknown remains held.
+The receipt retains the original unknown settlement, reviewer and observation.
+It releases only that permit's locks, admits no new execution, does not rewrite
+work/goal/history, and does not assert that external effects were undone.

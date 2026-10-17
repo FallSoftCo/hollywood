@@ -34,7 +34,7 @@ def main():
     root = Path(tempfile.mkdtemp(prefix='fresh-report-scope-' if args.scenario == 'report-scope' else 'fresh-plans-' if args.scenario == 'edit-plans' else 'fresh-claims-', dir=area))
     tmp = root / 'tmp'
     tmp.mkdir()
-    sock = Path(tempfile.mkdtemp(prefix='.c-', dir=SOURCE))
+    sock = Path(tempfile.mkdtemp(prefix='.hc-', dir='/dev/shm'))
     dependency = json.loads(DEPENDENCY.read_text())
     binary = Path(dependency['bindir'])
     config = {'host': str(sock), 'port': 19372, 'dbname': 'canonical_collaboration_fixture', 'user': getpass.getuser()}

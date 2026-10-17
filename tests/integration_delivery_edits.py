@@ -169,7 +169,7 @@ async def main():
         await call(a, frame(a, guarded), 409)
         f.sql('UPDATE hb_agent_role SET revision=revision-1 WHERE principal=%s', (a['id'],))
         structured = frame(f.agents['i'], guarded);structured['source']['tool'] = 'apply_patch'
-        await call(f.agents['i'], structured, 409)
+        await call(f.agents['i'], structured, 403)  # No ordinary physical-agent grant.
         checks.append('Agent bearer cannot relay protected mutation; wrong environment/executor descriptor, cancellation, changed role and structured-work escape refuse without mutation.')
 
         # Both ordinary actors have different private contexts but the SAME root.
@@ -247,6 +247,33 @@ async def main():
         evidence=await call(a,observation,path='collaboration/mutation-observations')
         assert evidence['receipt']['permit']['state']=='held' and evidence['admission'] is None
         assert f.sql('SELECT 1 FROM hb_edit_file_lock WHERE permit=%s',(held_case['permitId'],))
+        # Review is a distinct authenticated action. Observation never unlocks.
+        held = evidence['receipt']['permit']
+        review = {'operationId':uid(), 'permitRevision':held['revision'],
+                  'observationDigest':evidence['receipt']['observationDigest'],
+                  'outcome':'notApplied', 'effectDisposition':'reviewed',
+                  'note':'SYNTHETIC explicit admin review of stopped original before-content'}
+        route = 'collaboration/delivery-edits/'+held_case['permitId']+'/reconcile'
+        await f.http(b['token'],'POST',route,review,status=403)
+        wrong = {**review,'observationDigest':'0'*64}
+        await f.http(f.credentials['Owner']['token'],'POST',route,wrong,status=409)
+        f.sql("UPDATE hb_executor SET state='live' WHERE id=%s",(a['executor'],))
+        await f.http(f.credentials['Owner']['token'],'POST',route,review,status=409)
+        f.sql("UPDATE hb_executor SET state='stopped' WHERE id=%s",(a['executor'],))
+        assert f.sql('SELECT 1 FROM hb_edit_file_lock WHERE permit=%s',(held_case['permitId'],))
+        accepted = await f.http(f.credentials['Owner']['token'],'POST',route,review)
+        assert accepted['receipt']['permit']['state']=='settled'
+        assert accepted['admission'] is None and accepted['receipt']['mayApply'] is False
+        assert accepted['receipt']['permit']['settlement']['originalSettlement']['outcome']=='unknown'
+        assert not f.sql('SELECT 1 FROM hb_edit_file_lock WHERE permit=%s',(held_case['permitId'],))
+        replay = await f.http(f.credentials['Owner']['token'],'POST',route,review)
+        assert replay == accepted
+        await f.http(f.credentials['Owner']['token'],'POST',route,{**review,'note':'changed'},status=409)
+        readback = await f.http(f.credentials['Owner']['token'],'GET',
+                               'collaboration/delivery-edits/'+held_case['permitId'])
+        assert readback['permit']['settlement']['effectDisposition']=='reviewed'
+        assert readback['mayApply'] is False and not readback['newExecutionAdmitted']
+        checks.append('Explicit administrator review releases only exact stopped original observed scope; unauthorized, changed observation/live executor and altered replay refuse; original unknown settlement and audit remain; no new execution admission.')
         chat=await f.http(f.credentials['Owner']['token'],'GET',f"rooms/{f.ids['room']}/history?view=conversation&limit=100")
         assert not any(e['data'].get('type')=='collaborationProtocol' for e in chat['events'])
         assert original_work==f.sql('SELECT * FROM hb_work ORDER BY id',many=True)

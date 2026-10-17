@@ -156,7 +156,7 @@ def read(store, actor_id, identity):
         source = permit['source']
         if reader['kind'] == 'service':
             claims.bridge(c, reader, source['hostId'])
-        elif str(reader['id']) != source['agentId']:
+        elif str(reader['id']) != source['agentId'] and not reader['administrator']:
             raise Denied('Original ordinary owner required')
         else:
             store.readable_event(c, reader, source['requestId'])

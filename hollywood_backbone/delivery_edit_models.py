@@ -73,3 +73,12 @@ class DeliveryEditCall(Input):
     serviceBindingDigest: str = Field(pattern=SHA)
     channel: Literal['captured-app-server-rpc/v1']
     command: Annotated[DeliveryPreflight | DeliveryBegin | DeliverySettle, Field(discriminator='action')]
+
+
+class DeliveryReconcile(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    permitRevision: int = Field(ge=1, strict=True)
+    observationDigest: str = Field(pattern=SHA)
+    outcome: Literal['applied', 'notApplied']
+    effectDisposition: Literal['reviewed']
+    note: str = Field(min_length=1, max_length=1000)
