@@ -248,6 +248,14 @@ def current_participation(c, actor, *, actions=frozenset({"workflow"})):
     return dict(request["source"])
 
 
+def delegation_source(c, actor):
+    """Return the original authenticated native caller, never a model selector."""
+    request = _request.get()
+    if not request or request["source"] is None:
+        return None
+    return current_participation(c, actor, actions=frozenset({"post"}))
+
+
 def listing(store, actor_id, delivery, after=0, limit=100):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)

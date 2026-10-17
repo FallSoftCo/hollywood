@@ -837,3 +837,48 @@ CREATE TABLE IF NOT EXISTS hb_placement_state_revision (
  FOREIGN KEY(authority,actor) REFERENCES hb_principal(authority,id)
 );
 INSERT INTO hb_schema VALUES (29) ON CONFLICT DO NOTHING;
+
+-- Execution parent is distinct from a request's conversational source event.
+CREATE TABLE IF NOT EXISTS hb_native_delegation (
+ authority uuid NOT NULL,
+ child_delivery uuid PRIMARY KEY,
+ parent_delivery uuid NOT NULL,
+ parent_generation bigint NOT NULL CHECK(parent_generation>0),
+ native_effect bigint NOT NULL REFERENCES hb_native_effect(sequence),
+ operation text NOT NULL,
+ recorded_by text NOT NULL CHECK(recorded_by IN
+   ('native_acceptance','verified_original_transaction')),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ FOREIGN KEY(authority,child_delivery) REFERENCES hb_delivery(authority,id),
+ FOREIGN KEY(authority,parent_delivery) REFERENCES hb_delivery(authority,id)
+);
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM hb_schema WHERE version=30) THEN
+  -- This is a conservative, one-time recovery of actual atomic acceptance, not
+  -- an inference from reply sources, clock timestamps or later retry provenance.
+  -- Frozen/updated/ambiguous old rows remain unavailable. No xmin is retained as
+  -- a durable identity: recovered relations retain the original audit row ID.
+  INSERT INTO hb_native_delegation
+   (authority,child_delivery,parent_delivery,parent_generation,native_effect,operation,recorded_by)
+  SELECT authority,child_delivery,parent_delivery,parent_generation,native_effect,
+         operation,'verified_original_transaction'
+  FROM (
+   SELECT d.authority,d.id AS child_delivery,n.delivery AS parent_delivery,
+          n.generation AS parent_generation,n.sequence AS native_effect,cmd.operation,
+          count(*) OVER(PARTITION BY d.id) AS matches
+   FROM hb_delivery d
+   JOIN hb_event e ON e.id=d.event AND e.authority=d.authority
+   JOIN hb_command cmd ON cmd.event=e.id AND cmd.authority=e.authority AND cmd.principal=e.author
+   JOIN hb_native_effect n ON n.authority=cmd.authority AND n.principal=cmd.principal
+        AND n.operation=cmd.operation
+   WHERE e.kind='request' AND e.data->>'authorKind'='agent'
+    AND n.method='POST' AND n.path='rooms/'||e.room::text||'/messages'
+    AND n.wire_body_captured AND cmd.wire_request IS NOT NULL
+    AND cmd.wire_request->>'method'='POST' AND cmd.wire_request->>'path'=n.path
+    AND n.xmin=cmd.xmin AND cmd.xmin=e.xmin
+    AND n.xmin::text NOT IN ('0','1','2')
+  ) original WHERE matches=1
+  ON CONFLICT(child_delivery) DO NOTHING;
+  INSERT INTO hb_schema VALUES (30);
+ END IF;
+END $$;

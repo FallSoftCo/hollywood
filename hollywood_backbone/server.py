@@ -536,6 +536,12 @@ async def native_effect_list(request):
                         after, limit)
 
 
+async def delegation_read(request):
+    if request.query:
+        raise ValueError("Native delegation accepts no query selectors")
+    return await invoke(request, "delegation", str(UUID(request.match_info["delivery"])))
+
+
 def resource_page(request, extra):
     allowed = {"after", "limit"} | extra
     if set(request.query) - allowed or any(len(request.query.getall(key)) != 1 for key in request.query):
@@ -1371,6 +1377,7 @@ def application(store):
             web.get("/hollywood/v3/collaboration/edit-plans/{plan}", edit_plan_read),
             web.post("/hollywood/v3/collaboration/mutation-observations", mutation_observe),
             web.get("/hollywood/v3/deliveries/{delivery}/native-effects", native_effect_list),
+            web.get("/hollywood/v3/deliveries/{delivery}/delegation", delegation_read),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/executor", executor_begin),
             web.post(
                 "/hollywood/v3/connector/deliveries/{delivery}/executor/reserve", executor_reserve

@@ -1,0 +1,25 @@
+{
+  "sourceVersion": "0.3.0.dev36",
+  "schemaVersion": 30,
+  "proofPath": "/dev/shm/hollywood-native-delegation-20261017-r02/proof/native-delegation-passed.json",
+  "proofSha256": "3e9d139d86829fd529f22309972b45dc0c88c63d3bb9e94cfdfdf0aea18c2f80",
+  "proof": {
+    "state": "passed",
+    "actualPostgreSQL": true,
+    "actualAuthenticatedHTTP": true,
+    "nativeLifecycle": "synthetic",
+    "modelsStarted": 0,
+    "productionChanged": false,
+    "checks": [
+      "Real HTTP native acceptance commits parent independent of result-source conversation",
+      "Later accepted-command retry leaves original parent and child unchanged",
+      "Read authorization covers both parent and child; recipient cannot learn parent's private execution; historical terminal parent remains inspectable",
+      "One-time legacy recovery requires original command/event/effect transaction; later retry cannot retarget; schema rerun is stable",
+      "Changed canonical wire or native binding holds; read never admits or repeats execution",
+      "Legacy rows whose original transaction proof was rewritten remain unavailable; no timestamp or latest-retry inference"
+    ],
+    "httpCalls": 15
+  },
+  "actualModelContinuation": "pending; no native proof inferred from synthetic fixture",
+  "productionDeployment": "unchanged"
+}

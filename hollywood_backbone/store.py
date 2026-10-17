@@ -193,6 +193,10 @@ class Store:
 
         return listing(self, actor_id, delivery, after, limit)
 
+    def delegation(self, actor_id, delivery):
+        from .delegation import read
+        return read(self, actor_id, delivery)
+
     def administrative_command(self, actor_id, operation):
         from .administrative import read
         return read(self, actor_id, operation)
@@ -867,6 +871,9 @@ class Store:
                    VALUES(%s,%s,%s,%s,%s,%s,%s)""",
                 (a["authority"], a["id"], operation, fingerprint, event, Jsonb(wire), Jsonb(result)),
             )
+            if kind == "request" and a["kind"] == "agent":
+                from .delegation import record
+                record(c, a, result["event"], result["deliveries"][0]["id"], operation, wire)
             return result
 
     @staticmethod
