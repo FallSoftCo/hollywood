@@ -18,6 +18,7 @@ HEADER = "X-Hollywood-Native-Source"
 _request = contextvars.ContextVar("hollywood_native_request", default=None)
 
 BUSINESS = {
+    "delivery_recover",
     "delivery_edit_reconcile",
     "report_scope_read",
     "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state",
@@ -37,6 +38,7 @@ METADATA = {
     "edit_plan_call", "mutation_observe", "delivery_edit_call",
 }
 EXCLUSIVE = {
+    "delivery_recover",
     "delivery_edit_reconcile",
     "report_scope_read",
     "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state",

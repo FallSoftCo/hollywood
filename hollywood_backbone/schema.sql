@@ -882,3 +882,14 @@ DO $$ BEGIN
   INSERT INTO hb_schema VALUES (30);
  END IF;
 END $$;
+
+-- Explicit attempt recovery retains the prior projection/result without replay.
+CREATE TABLE IF NOT EXISTS hb_delivery_recovery (
+ authority uuid NOT NULL, delivery uuid NOT NULL, generation bigint NOT NULL CHECK(generation>0),
+ actor uuid NOT NULL, operation text NOT NULL, before_snapshot jsonb NOT NULL, note text NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(delivery,generation),
+ FOREIGN KEY(authority,delivery) REFERENCES hb_delivery(authority,id),
+ FOREIGN KEY(authority,actor) REFERENCES hb_principal(authority,id)
+);
+INSERT INTO hb_schema VALUES (31) ON CONFLICT DO NOTHING;

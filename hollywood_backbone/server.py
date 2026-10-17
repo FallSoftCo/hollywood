@@ -82,6 +82,15 @@ class Principal(Input):
     enrollmentCredential: str = Field(pattern=r"^[A-Za-z0-9_-]{40,128}$")
 
 
+class DeliveryRecovery(Input):
+    schema_: Literal["hollywood-pre-native-recovery/v1"] = Field(alias="schema")
+    operationId: str = Field(min_length=1, max_length=128)
+    revision: int = Field(ge=1)
+    generation: int = Field(ge=1)
+    resultEventId: UUID
+    note: str = Field(min_length=1, max_length=1000)
+
+
 class Room(Input):
     operationId: str | None = Field(default=None, min_length=1, max_length=128)
     id: UUID
@@ -501,7 +510,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("delivery_edit_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state"):
+    if method in ("delivery_recover", "delivery_edit_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -534,6 +543,12 @@ async def native_effect_list(request):
         raise ValueError("Invalid native effect page")
     return await invoke(request, "native_effects", str(UUID(request.match_info["delivery"])),
                         after, limit)
+
+
+async def delivery_recover(request):
+    payload = await body(request, DeliveryRecovery)
+    return await invoke(request, "delivery_recover", str(UUID(request.match_info["delivery"])),
+                        payload.model_dump(mode="json", by_alias=True))
 
 
 async def delegation_read(request):
@@ -1378,6 +1393,7 @@ def application(store):
             web.post("/hollywood/v3/collaboration/mutation-observations", mutation_observe),
             web.get("/hollywood/v3/deliveries/{delivery}/native-effects", native_effect_list),
             web.get("/hollywood/v3/deliveries/{delivery}/delegation", delegation_read),
+            web.post("/hollywood/v3/deliveries/{delivery}/recover-before-native", delivery_recover),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/executor", executor_begin),
             web.post(
                 "/hollywood/v3/connector/deliveries/{delivery}/executor/reserve", executor_reserve

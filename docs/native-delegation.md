@@ -32,3 +32,23 @@ private PostgreSQL and authenticated HTTP, including result-based conversation
 sources, private parent isolation, original receipt recovery, historical
 bindings and conservative migration. Its native lifecycle rows are synthetic.
 Actual managed-model continuation remains a separate acceptance gate.
+
+## Explicit recovery before native admission
+
+POST deliveries/{deliveryId}/recover-before-native accepts a strict
+hollywood-pre-native-recovery/v1 request with an operation ID, exact delivery
+revision/generation/failed-result ID, and a review note. It is an administrative
+operation, not an agent message or an automatic retry policy.
+
+Only a failed, uncancelled attempt with no native pointers, executor records,
+execution/goal bindings, effects, activity, attention or work attempts can
+recover. A stopped executor still prohibits this route. Unknown outcomes require
+their original reconciliation protocol. Every supported native launch reserves
+its executor before launch; this route relies on that invariant.
+
+Schema 31 retains the entire failed projection and original result/transition in
+an append-only recovery record. It returns the same original administrative
+receipt on a retry and requests normal pending admission of the original event.
+The next claim gets a new generation and journal. The server does not start a
+model or bypass current role, host, cancellation or context checks. It does not
+reset Goal review budgets or rerun completed child work.

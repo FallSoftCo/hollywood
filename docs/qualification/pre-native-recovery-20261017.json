@@ -1,0 +1,22 @@
+{
+  "sourceVersion": "0.3.0.dev36",
+  "schemaVersion": 31,
+  "proofPath": "/dev/shm/hollywood-pre-native-recovery-20261017-r01/proof/pre-native-recovery-passed.json",
+  "proofSha256": "247e57b099e3c33259067e2524c5bcbe298c9ae5133babc520c29c2789e55779",
+  "proof": {
+    "state": "passed",
+    "checks": [
+      "Explicit administrator CAS recovery preserves original failed event/transition/snapshot; duplicate returns one original acceptance",
+      "Unknown/cancelled/native-pointer attempts cannot use pre-native recovery",
+      "Stopped prior execution metadata still prohibits replay, even if mutable native pointers are empty"
+    ],
+    "httpCalls": 9,
+    "actualPostgreSQL": true,
+    "actualAuthenticatedHTTP": true,
+    "nativeLifecycle": "synthetic",
+    "modelsStarted": 0,
+    "productionChanged": false
+  },
+  "actualHeldCallbackRecovery": "pending after paired runtime and read-only canonical-context qualification",
+  "productionChanged": false
+}

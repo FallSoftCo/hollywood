@@ -197,6 +197,14 @@ class Store:
         from .delegation import read
         return read(self, actor_id, delivery)
 
+    def delivery_recover(self, actor_id, identity, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "delivery_recover", [identity, payload], command)
+
+    def _admin_delivery_recover(self, c, actor, identity, payload):
+        from .delivery_recovery import change
+        return change(self, c, actor, identity, payload)
+
     def administrative_command(self, actor_id, operation):
         from .administrative import read
         return read(self, actor_id, operation)
