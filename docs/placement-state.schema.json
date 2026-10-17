@@ -1,0 +1,33 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "operationId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Operationid",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "hostId": {
+      "format": "uuid",
+      "title": "Hostid",
+      "type": "string"
+    },
+    "enabled": {
+      "title": "Enabled",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "operationId",
+    "revision",
+    "hostId",
+    "enabled"
+  ],
+  "title": "PlacementState",
+  "type": "object"
+}

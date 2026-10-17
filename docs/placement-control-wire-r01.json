@@ -1,0 +1,61 @@
+{
+  "schema": "hollywood-placement-control-wire/v1",
+  "revision": 1,
+  "status": "Exact additive interface; implementation and focused PG/HTTP qualification pending.",
+  "capability": "canonical-placement-control/v1",
+  "databaseVersion": 29,
+  "base": "/hollywood/v3/",
+  "routes": {
+    "GET placements/{agent}": {
+      "actor": "Canonical administrator for same-authority agent, or that owner agent only. Nonadministrator services and other agents denied before subject lookup.",
+      "query": "No query keys.",
+      "reply": "hollywood-placement/v1 view below; current canonical state."
+    },
+    "PUT placements/{agent}": {
+      "actor": "Canonical administrator only. Existing native source-v2/current participation for agent administrator; original administrative receipts. A paused agent cannot bypass its own enabled-placement native fence to resume itself.",
+      "query": "No query keys.",
+      "body": {
+        "operationId": "required stable1..128 chars",
+        "revision": "required strict integer>=1; current placement.revision",
+        "hostId": "required UUID matching SAME currently enrolled host; never transfer",
+        "enabled": "required strict boolean: false pauses, true resumes"
+      },
+      "reply": "hollywood-placement/v1 view below. Each accepted new operation increments revision once, including same-state CAS; retry returns original receipt without another change. Changed wire under the same operation conflicts.",
+      "missing": "Denied; never creates an enrollment."
+    },
+    "POST placements": {
+      "compatibility": "Unchanged original registration body and response. Existing enrolled rows keep enabled/generation/revision; legacy registration never resumes a paused placement. Existing rows migrate to revision1."
+    }
+  },
+  "view": {
+    "schema": "hollywood-placement/v1",
+    "authorityId": "UUID",
+    "agentId": "UUID",
+    "hostId": "UUID",
+    "placement": "raw {authority,agent,host,enabled,generation,revision}",
+    "state": "enabled|paused",
+    "newExecutionAdmitted": false,
+    "drainVerified": false,
+    "mayApply": false
+  },
+  "concurrency": "GET uses existing shared authority fence; PUT uses exclusive authority fence, current administrator provenance and administrative actor/operation receipts. Append-only before/after state revisions supplement original receipts. Historical accepted results are not current inspection.",
+  "pauseEffect": [
+    "Blocks new connector claim/admission and future native business mutations/preflight/begin that require currently enabled placement. Existing mechanisms recheck under the shared authority fence; no weakening of live source, active grant, cancellation or unknown fences.",
+    "Does not stop an executor/OS process, undo already-issued one-shot apply authority, cancel or replay requests, clear claims/permits/locks, transfer ownership, change generation/roles/private contexts, or drain work. Controller/bridge/executor drain remains independently required.",
+    "Resume only enables future explicitly checked operations. It admits/replays no request by itself; queued work and original receipts stay unchanged."
+  ],
+  "pausedResourceSetup": {
+    "capabilityFlag": "pausedResourceSetup=true on existing collaboration-bridge capability read.",
+    "agentGrant": "Existing physical-workspaces/{workspace}/agent-grants/{agent} DTO unchanged. Active grants require active agent and registered matching placement, which may be paused. Actual registered() mutation check still requires enabled placement, active grant and exact source/root.",
+    "defaultSelection": "Existing resource-default DTO unchanged. New selected pointer may be configured for active read/write local resource and registered paused placement. It is held while paused (participation-unavailable) with resource=null and mayApply=false.",
+    "resume": "A NEW pointer revision selected during pause may become eligible on explicit resume if every root/grant/lifecycle pin still matches. A pointer that existed when pause occurred retains participation-invalidated and cannot silently revive; explicit reselection, including during pause, is needed.",
+    "metadata": "Owner discovery remains filtered by enabled placement; administrators can inspect paused setup. Metadata creates no apply/admission authority.",
+    "resourceWireRevision": "agent-resource-wire-r02.json supersedes r01 only for paused setup validation; original r01 remains immutable. canonical-delivery-edits/v1 request/schema/one-use semantics unchanged."
+  },
+  "capabilityDiscovery": {
+    "placementControl": "canonical-placement-control/v1",
+    "pausedResourceSetup": true,
+    "existing": "All existing bridge flags/protocol retained."
+  },
+  "scope": "Backend/SQL/API only. No LAX files, model/native/controller starts, runtime restart, production changes or duplicate integration request."
+}

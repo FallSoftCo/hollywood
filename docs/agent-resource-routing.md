@@ -4,21 +4,24 @@ Schema 28 adds `canonical-agent-resources/v1` without changing
 `canonical-delivery-edits/v1`. Existing explicit delivery editing remains usable
 on schema 27. A connector must discover the new capability before using these
 additional endpoints. The exact additive contract is in
-`agent-resource-wire-r01.json`, with the selection DTO in
+`agent-resource-wire-r02.json` (schema29 paused-setup extension), with the selection DTO in
 `resource-default.schema.json`.
 
 An administrator registers a physical root and separately grants an agent access
 using the existing APIs. The new default pointer selects one already authorized
 root for an agent and execution host. It has its own CAS revision, so choosing or
 clearing a default does not revise access grants. Selection requires current
-root and agent-grant revisions, active read/write rights, an active agent and an
-enabled placement. Version 1 defaults require the physical root to be local to
+root and agent-grant revisions, active read/write rights, an active agent and a
+registered matching placement. Schema29 permits setup while paused; eligibility
+still requires an enabled placement. Version 1 defaults require the physical root to be local to
 the execution host. Remote filesystem compatibility cannot be inferred.
 
 The pointer stores the selected root and grant revisions. A changed registration,
 revocation or regrant holds routing until explicit reselection. Participation loss
 also appends an invalidation record for that pointer revision; re-enabling a
-principal or placement does not revive it. Clearing creates another pointer
+principal or placement does not revive it. Explicit reselection while paused
+prepares a new pointer, held until explicit resume and all current pins match.
+Clearing creates another pointer
 revision with no replacement. Revision snapshots and invalidation records have no
 update/delete API. Administrative commands retain their original receipts;
 replaying an old accepted result does not prove that selection is currently

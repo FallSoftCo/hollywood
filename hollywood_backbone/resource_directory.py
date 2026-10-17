@@ -89,10 +89,12 @@ def select(c, actor, principal, host, payload):
                          (payload['workspaceId'], actor['authority'])).fetchone()
         grant = c.execute('SELECT * FROM hb_physical_agent_grant WHERE workspace=%s AND principal=%s',
                           (payload['workspaceId'], principal)).fetchone()
-        placed = c.execute('SELECT 1 FROM hb_placement WHERE agent=%s AND host=%s AND enabled',
+        # Configure routing while paused, but default_view remains held until
+        # explicit resume. Existing invalidated revisions never revive.
+        placed = c.execute('SELECT 1 FROM hb_placement WHERE agent=%s AND host=%s',
                            (principal, host)).fetchone()
         if not root or not grant or not agent['active'] or not placed:
-            raise Denied('Active registered resource access and placement required')
+            raise Denied('Active resource access and registered placement required for routing setup')
         if (root['state'] != 'active' or grant['state'] != 'active' or not grant['can_read'] or not grant['can_write']
                 or str(root['host']) != host or str(grant['execution_host']) != host):
             raise Denied('Active local read/write resource access required')

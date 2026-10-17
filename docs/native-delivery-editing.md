@@ -14,8 +14,9 @@ Endpoints are relative to /hollywood/v3:
 - GET collaboration/delivery-targets/{delivery}: controller-scoped resource data.
 - PUT physical-workspaces/{workspace}/agent-grants/{agent}: administrator CAS grant.
 
-No grant means no access. Active read/write access requires an enrolled enabled
-placement; no context or work is needed to grant a newly provisioned principal.
+No grant means no access. Schema29 permits grant metadata setup for an enrolled paused
+placement; applying still requires enabled placement and live original source.
+No context or work is needed to grant a newly provisioned principal.
 Revocation remains possible after a placement or principal is disabled. Existing
 root registration and actual OS permissions stay separate. Changing this canonical
 data never rewrites bridge enrollment or requires unrelated channel restarts.

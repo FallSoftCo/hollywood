@@ -18,6 +18,7 @@ from .edit_plan_models import EditPlanCall, MutationObservation
 from .edit_plan_scope import EditError
 from .physical_models import WorkspaceConfiguration, WorkspaceGrant
 from .delivery_edit_models import AgentWorkspaceGrant, DeliveryEditCall
+from .placement_models import PlacementState
 from .resource_models import ResourceDefault
 from .report_scope_models import ReportScopeRead, ReportScopeProof
 from .report_scope import ScopeError
@@ -497,7 +498,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default"):
+    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -852,6 +853,16 @@ async def inbox_event(request):
 
 async def command(request):
     return await invoke(request, "command", request.match_info["operation"])
+
+
+async def placement_control(request):
+    if request.query:
+        raise ValueError("Unknown placement-control query")
+    principal = str(UUID(request.match_info["agent"]))
+    if request.method == "GET":
+        return await invoke(request, "placement_read", principal)
+    p = await body(request, PlacementState)
+    return await invoke(request, "placement_state", principal, p.model_dump(mode="json"))
 
 
 async def placement(request):
@@ -1385,6 +1396,8 @@ def application(store):
             web.get("/hollywood/v3/rooms/{room}/events", stream),
             web.get("/hollywood/v3/commands/{operation}", command),
             web.get("/hollywood/v3/administration/commands/{operation}", administrative_command),
+            web.get("/hollywood/v3/placements/{agent}", placement_control),
+            web.put("/hollywood/v3/placements/{agent}", placement_control),
             web.post("/hollywood/v3/placements", placement),
             web.post("/hollywood/v3/connector/claim", claim),
             web.post("/hollywood/v3/connector/observe", connector_observe),

@@ -36,6 +36,18 @@ def json_value(value):
 
 
 class Store:
+    def placement_read(self, actor_id, principal):
+        from .placement_control import read
+        return read(self, actor_id, principal)
+
+    def placement_state(self, actor_id, principal, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "placement_state", [principal, payload], command)
+
+    def _admin_placement_state(self, c, actor, principal, payload):
+        from .placement_control import change
+        return change(c, actor, principal, payload)
+
     def resource_default(self, actor_id, principal, host, payload, *, command=None):
         from .administrative import mutate
         return mutate(self, actor_id, "resource_default", [principal, host, payload], command)

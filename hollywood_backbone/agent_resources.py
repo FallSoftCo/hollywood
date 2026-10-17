@@ -11,14 +11,16 @@ def grant(c, actor, workspace, principal, payload):
                      (workspace, actor['authority'])).fetchone()
     agent = c.execute("SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
                       (principal, actor['authority'])).fetchone()
-    placed = c.execute('SELECT 1 FROM hb_placement WHERE agent=%s AND host=%s AND enabled',
+    # Setup metadata is allowed while paused; registered() still requires an
+    # enabled placement for mutation. Enrollment alone never admits execution.
+    placed = c.execute('SELECT 1 FROM hb_placement WHERE agent=%s AND host=%s',
                        (principal, payload['executionHost'])).fetchone()
     host = c.execute('SELECT 1 FROM hb_host WHERE id=%s AND authority=%s',
                      (payload['executionHost'], actor['authority'])).fetchone()
     if not root or not agent or not host:
         raise Denied('Registered root, host and agent required')
     if payload['state'] == 'active' and (not agent['active'] or not placed):
-        raise Denied('Active enrolled placement required for new access')
+        raise Denied('Active agent and registered placement required for access setup')
     if root['revision'] != payload['workspaceRevision']:
         raise Conflict('Physical root revision changed')
     old = c.execute('SELECT * FROM hb_physical_agent_grant WHERE workspace=%s AND principal=%s FOR UPDATE',

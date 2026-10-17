@@ -822,3 +822,18 @@ DROP TRIGGER IF EXISTS hb_resource_default_placement_hold ON hb_placement;
 CREATE TRIGGER hb_resource_default_placement_hold AFTER UPDATE OF enabled,host OR DELETE ON hb_placement
  FOR EACH ROW EXECUTE FUNCTION hb_resource_default_invalidate();
 INSERT INTO hb_schema VALUES (28) ON CONFLICT DO NOTHING;
+
+-- Existing enrollment remains intact. Pause/resume changes only admission state
+-- under the authority fence; it is never proof that an executor has drained.
+ALTER TABLE hb_placement ADD COLUMN IF NOT EXISTS revision bigint NOT NULL DEFAULT 1 CHECK(revision>=1);
+CREATE TABLE IF NOT EXISTS hb_placement_state_revision (
+ authority uuid NOT NULL, agent uuid NOT NULL, host uuid NOT NULL,
+ revision bigint NOT NULL CHECK(revision>=2), actor uuid NOT NULL, operation text NOT NULL,
+ before_state jsonb NOT NULL, after_state jsonb NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(agent,revision),
+ FOREIGN KEY(authority,agent) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,host) REFERENCES hb_host(authority,id),
+ FOREIGN KEY(authority,actor) REFERENCES hb_principal(authority,id)
+);
+INSERT INTO hb_schema VALUES (29) ON CONFLICT DO NOTHING;
