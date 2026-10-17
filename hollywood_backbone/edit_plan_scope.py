@@ -187,13 +187,13 @@ def observed(files, expected, phase):
     need(actual == wanted, "content_drift", "Observed file bytes differ from the consented manifest")
 
 
-def record(store, c, actor, source, payload, result, path, room, native=True, receipt_key="editPlanReceipt"):
+def record(store, c, actor, source, payload, result, path, room, native=True, receipt_key="editPlanReceipt", evidence_only=None):
     operation = payload["operationId"]
     result = json_value({**result, "mayApply": False, "newExecutionAdmitted": False})
     event = store.event(c, actor, room, "progress", "Canonical edit metadata recorded",
                         source=source["requestId"], **claims.protocol_audience(c, source),
                         data={"type": "collaborationProtocol", "nativeAction": claims.action_reference(source, operation) if native else None,
-                            "evidenceOnly": not native, receipt_key: result})
+                            "evidenceOnly": not native if evidence_only is None else evidence_only, receipt_key: result})
     result["eventId"] = str(event)
     c.execute("UPDATE hb_event SET data=jsonb_set(data,%s,%s) WHERE id=%s", ([receipt_key], Jsonb(result), event))
     wire = {"method": "POST", "path": path, "body": payload}

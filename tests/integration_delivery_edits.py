@@ -263,6 +263,12 @@ async def main():
         assert f.sql('SELECT 1 FROM hb_edit_file_lock WHERE permit=%s',(held_case['permitId'],))
         accepted = await f.http(f.credentials['Owner']['token'],'POST',route,review)
         assert accepted['receipt']['permit']['state']=='settled'
+        observation_event = f.sql('SELECT data FROM hb_event WHERE id=%s',
+                                  (evidence['receipt']['eventId'],))
+        review_event = f.sql('SELECT data FROM hb_event WHERE id=%s',
+                             (accepted['receipt']['eventId'],))
+        assert observation_event['data']['evidenceOnly'] is True
+        assert review_event['data']['evidenceOnly'] is False
         assert accepted['admission'] is None and accepted['receipt']['mayApply'] is False
         assert accepted['receipt']['permit']['settlement']['originalSettlement']['outcome']=='unknown'
         assert not f.sql('SELECT 1 FROM hb_edit_file_lock WHERE permit=%s',(held_case['permitId'],))

@@ -71,5 +71,5 @@ def reconcile(store, c, actor, identity, payload):
                      {'schema': 'canonical-delivery-edits/v1', 'scope': 'delivery',
                       'permit': permit, 'reviewedBy': str(actor['id'])},
                      PATH + '/' + identity, permit['room'], native=False,
-                     receipt_key='deliveryEditReceipt')
+                     receipt_key='deliveryEditReceipt', evidence_only=False)
     return json_value({'receipt': receipt, 'admission': None, 'replayed': False})
