@@ -198,18 +198,9 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
             return event["data"]["workflowReceipt"]
         if action == "goal.create":
             store.room(c, a, identity, "can_request")
-            source = store.readable_event(c, a, payload["sourceEventId"])
-            if source["kind"] != "request" or str(source["room"]) != identity:
-                raise Denied("Goal requires an addressed source request in its room")
-            # Cross-room private delegation needs an explicit sharing contract.
-            # It must never be inferred from an administrator's ability to read.
-            if source["audience"] != "room":
-                raise Denied("Room-visible goal requires room-visible source")
-            from .attention import human_owner
+            from .goal_origin import resolve
 
-            human_owner(c, source)
-            if not a["administrator"] and a["id"] not in (source["author"], source["recipient"]):
-                raise Denied("Goal creation must belong to the addressed exchange")
+            source = resolve(store, c, a, identity, payload)
             owner = c.execute(
                 "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent' AND active",
                 (source["recipient"], a["authority"]),

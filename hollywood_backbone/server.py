@@ -354,6 +354,7 @@ class Activity(Input):
 
 
 class GoalCreate(Input):
+    publishScopedIntent: bool = Field(default=False, strict=True)
     operationId: str = Field(min_length=1, max_length=128)
     id: UUID
     sourceEventId: UUID
@@ -1202,13 +1203,18 @@ async def cooperation_change(request):
 
 async def goal_create(request):
     p = await body(request, GoalCreate)
+    payload = p.model_dump(mode="json", exclude={"operationId"})
+    # Preserve original workflow fingerprints for historical requests without
+    # the additive opt-in, including explicit false.
+    if not payload["publishScopedIntent"]:
+        payload.pop("publishScopedIntent")
     return await invoke(
         request,
         "workflow",
         "goal.create",
         str(UUID(request.match_info["room"])),
         p.operationId,
-        p.model_dump(mode="json", exclude={"operationId"}),
+        payload,
     )
 
 
