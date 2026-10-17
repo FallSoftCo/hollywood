@@ -727,3 +727,38 @@ CREATE TABLE IF NOT EXISTS hb_report_scope_read (
  FOREIGN KEY(prior_delivery) REFERENCES hb_delivery(id)
 );
 INSERT INTO hb_schema VALUES (26) ON CONFLICT DO NOTHING;
+
+-- Ordinary execution does not invent business work or a coedit plan. Both
+-- scopes keep the same permit identity, physical locks and original receipts.
+ALTER TABLE hb_edit_permit ADD COLUMN IF NOT EXISTS scope_kind text NOT NULL DEFAULT 'plan'
+ CHECK(scope_kind IN ('plan','delivery'));
+ALTER TABLE hb_edit_permit ALTER COLUMN plan DROP NOT NULL;
+ALTER TABLE hb_edit_permit ALTER COLUMN plan_revision DROP NOT NULL;
+ALTER TABLE hb_edit_permit ADD COLUMN IF NOT EXISTS delivery uuid REFERENCES hb_delivery(id);
+ALTER TABLE hb_edit_permit ADD COLUMN IF NOT EXISTS room uuid REFERENCES hb_room(id);
+DO $$ BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='hb_edit_permit_scope_shape'
+                AND conrelid='hb_edit_permit'::regclass) THEN
+  ALTER TABLE hb_edit_permit ADD CONSTRAINT hb_edit_permit_scope_shape CHECK(
+   (scope_kind='plan' AND plan IS NOT NULL AND plan_revision IS NOT NULL AND delivery IS NULL AND room IS NULL)
+   OR (scope_kind='delivery' AND plan IS NULL AND plan_revision IS NULL AND delivery IS NOT NULL AND room IS NOT NULL));
+ END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS hb_edit_permit_delivery ON hb_edit_permit(authority,delivery,state)
+ WHERE scope_kind='delivery';
+CREATE TABLE IF NOT EXISTS hb_physical_agent_grant (
+ workspace uuid NOT NULL REFERENCES hb_physical_workspace(id),
+ principal uuid NOT NULL REFERENCES hb_principal(id),
+ execution_host uuid NOT NULL REFERENCES hb_host(id),
+ revision bigint NOT NULL DEFAULT 1,
+ state text NOT NULL CHECK(state IN ('active','revoked')),
+ can_read boolean NOT NULL, can_write boolean NOT NULL,
+ PRIMARY KEY(workspace,principal), CHECK(NOT can_write OR can_read)
+);
+CREATE INDEX IF NOT EXISTS hb_command_delivery_edit_action ON hb_command
+ ((wire_request->'body'->'source'->>'deliveryId'),
+  (wire_request->'body'->'source'->>'generation'),
+  (wire_request->'body'->'source'->>'nativeTurn'),
+  (wire_request->'body'->'source'->>'callId'))
+ WHERE wire_request->>'path'='collaboration/delivery-edits';
+INSERT INTO hb_schema VALUES (27) ON CONFLICT DO NOTHING;

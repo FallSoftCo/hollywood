@@ -1,0 +1,481 @@
+{
+  "$defs": {
+    "DeliveryBegin": {
+      "additionalProperties": false,
+      "properties": {
+        "permitId": {
+          "format": "uuid",
+          "title": "Permitid",
+          "type": "string"
+        },
+        "briefingSequence": {
+          "minimum": 0,
+          "title": "Briefingsequence",
+          "type": "integer"
+        },
+        "note": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        },
+        "sourceRevision": {
+          "anyOf": [
+            {
+              "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourcerevision"
+        },
+        "patchSha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Patchsha256",
+          "type": "string"
+        },
+        "filesObserved": {
+          "items": {
+            "$ref": "#/$defs/ObservedFile"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Filesobserved",
+          "type": "array"
+        },
+        "action": {
+          "const": "begin",
+          "title": "Action",
+          "type": "string"
+        },
+        "permitRevision": {
+          "minimum": 1,
+          "title": "Permitrevision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "permitId",
+        "briefingSequence",
+        "note",
+        "sourceRevision",
+        "patchSha256",
+        "filesObserved",
+        "action",
+        "permitRevision"
+      ],
+      "title": "DeliveryBegin",
+      "type": "object"
+    },
+    "DeliveryFile": {
+      "additionalProperties": false,
+      "properties": {
+        "relativePath": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Relativepath",
+          "type": "string"
+        },
+        "beforeSha256": {
+          "pattern": "^(absent|[a-f0-9]{64})$",
+          "title": "Beforesha256",
+          "type": "string"
+        },
+        "beforeSize": {
+          "maximum": 16777216,
+          "minimum": 0,
+          "title": "Beforesize",
+          "type": "integer"
+        },
+        "afterSha256": {
+          "pattern": "^(absent|[a-f0-9]{64})$",
+          "title": "Aftersha256",
+          "type": "string"
+        },
+        "afterSize": {
+          "maximum": 16777216,
+          "minimum": 0,
+          "title": "Aftersize",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "relativePath",
+        "beforeSha256",
+        "beforeSize",
+        "afterSha256",
+        "afterSize"
+      ],
+      "title": "DeliveryFile",
+      "type": "object"
+    },
+    "DeliveryPreflight": {
+      "additionalProperties": false,
+      "properties": {
+        "permitId": {
+          "format": "uuid",
+          "title": "Permitid",
+          "type": "string"
+        },
+        "briefingSequence": {
+          "minimum": 0,
+          "title": "Briefingsequence",
+          "type": "integer"
+        },
+        "note": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        },
+        "sourceRevision": {
+          "anyOf": [
+            {
+              "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourcerevision"
+        },
+        "patchSha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Patchsha256",
+          "type": "string"
+        },
+        "filesObserved": {
+          "items": {
+            "$ref": "#/$defs/ObservedFile"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Filesobserved",
+          "type": "array"
+        },
+        "action": {
+          "const": "preflight",
+          "title": "Action",
+          "type": "string"
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/DeliveryFile"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Files",
+          "type": "array"
+        },
+        "leaseSeconds": {
+          "maximum": 30,
+          "minimum": 1,
+          "title": "Leaseseconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "permitId",
+        "briefingSequence",
+        "note",
+        "sourceRevision",
+        "patchSha256",
+        "filesObserved",
+        "action",
+        "files",
+        "leaseSeconds"
+      ],
+      "title": "DeliveryPreflight",
+      "type": "object"
+    },
+    "DeliverySettle": {
+      "additionalProperties": false,
+      "properties": {
+        "permitId": {
+          "format": "uuid",
+          "title": "Permitid",
+          "type": "string"
+        },
+        "briefingSequence": {
+          "minimum": 0,
+          "title": "Briefingsequence",
+          "type": "integer"
+        },
+        "note": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Note",
+          "type": "string"
+        },
+        "sourceRevision": {
+          "anyOf": [
+            {
+              "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Sourcerevision"
+        },
+        "patchSha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Patchsha256",
+          "type": "string"
+        },
+        "filesObserved": {
+          "items": {
+            "$ref": "#/$defs/ObservedFile"
+          },
+          "maxItems": 8,
+          "minItems": 1,
+          "title": "Filesobserved",
+          "type": "array"
+        },
+        "action": {
+          "const": "settle",
+          "title": "Action",
+          "type": "string"
+        },
+        "permitRevision": {
+          "minimum": 1,
+          "title": "Permitrevision",
+          "type": "integer"
+        },
+        "outcome": {
+          "enum": [
+            "applied",
+            "notApplied",
+            "unknown"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        }
+      },
+      "required": [
+        "permitId",
+        "briefingSequence",
+        "note",
+        "sourceRevision",
+        "patchSha256",
+        "filesObserved",
+        "action",
+        "permitRevision",
+        "outcome"
+      ],
+      "title": "DeliverySettle",
+      "type": "object"
+    },
+    "ObservedFile": {
+      "additionalProperties": false,
+      "properties": {
+        "relativePath": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Relativepath",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^(absent|[a-f0-9]{64})$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size": {
+          "maximum": 16777216,
+          "minimum": 0,
+          "title": "Size",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "relativePath",
+        "sha256",
+        "size"
+      ],
+      "title": "ObservedFile",
+      "type": "object"
+    },
+    "PhysicalTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "schema": {
+          "const": "hollywood-physical-target/v1",
+          "title": "Schema",
+          "type": "string"
+        },
+        "workspaceId": {
+          "format": "uuid",
+          "title": "Workspaceid",
+          "type": "string"
+        },
+        "workspaceRevision": {
+          "minimum": 1,
+          "title": "Workspacerevision",
+          "type": "integer"
+        },
+        "grantRevision": {
+          "minimum": 1,
+          "title": "Grantrevision",
+          "type": "integer"
+        },
+        "environmentSha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Environmentsha256",
+          "type": "string"
+        },
+        "rootIdentitySha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Rootidentitysha256",
+          "type": "string"
+        },
+        "resolution": {
+          "const": "beneath-no-symlinks/v1",
+          "title": "Resolution",
+          "type": "string"
+        },
+        "actionDigest": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Actiondigest",
+          "type": "string"
+        },
+        "paths": {
+          "items": {
+            "$ref": "#/$defs/ResolvedPath"
+          },
+          "maxItems": 32,
+          "title": "Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema",
+        "workspaceId",
+        "workspaceRevision",
+        "grantRevision",
+        "environmentSha256",
+        "rootIdentitySha256",
+        "resolution",
+        "actionDigest",
+        "paths"
+      ],
+      "title": "PhysicalTarget",
+      "type": "object"
+    },
+    "ResolvedPath": {
+      "additionalProperties": false,
+      "properties": {
+        "relativePath": {
+          "maxLength": 1024,
+          "minLength": 1,
+          "title": "Relativepath",
+          "type": "string"
+        },
+        "resolvedPath": {
+          "maxLength": 3072,
+          "minLength": 2,
+          "title": "Resolvedpath",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relativePath",
+        "resolvedPath"
+      ],
+      "title": "ResolvedPath",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "canonical-delivery-edits/v1",
+      "title": "Schema",
+      "type": "string"
+    },
+    "scope": {
+      "const": "delivery",
+      "title": "Scope",
+      "type": "string"
+    },
+    "target": {
+      "$ref": "#/$defs/PhysicalTarget"
+    },
+    "operationId": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Operationid",
+      "type": "string"
+    },
+    "bridgeRevision": {
+      "minimum": 1,
+      "title": "Bridgerevision",
+      "type": "integer"
+    },
+    "source": {
+      "additionalProperties": true,
+      "title": "Source",
+      "type": "object"
+    },
+    "executorId": {
+      "format": "uuid",
+      "title": "Executorid",
+      "type": "string"
+    },
+    "descriptorDigest": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Descriptordigest",
+      "type": "string"
+    },
+    "serviceBindingDigest": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Servicebindingdigest",
+      "type": "string"
+    },
+    "channel": {
+      "const": "captured-app-server-rpc/v1",
+      "title": "Channel",
+      "type": "string"
+    },
+    "command": {
+      "discriminator": {
+        "mapping": {
+          "begin": "#/$defs/DeliveryBegin",
+          "preflight": "#/$defs/DeliveryPreflight",
+          "settle": "#/$defs/DeliverySettle"
+        },
+        "propertyName": "action"
+      },
+      "oneOf": [
+        {
+          "$ref": "#/$defs/DeliveryPreflight"
+        },
+        {
+          "$ref": "#/$defs/DeliveryBegin"
+        },
+        {
+          "$ref": "#/$defs/DeliverySettle"
+        }
+      ],
+      "title": "Command"
+    }
+  },
+  "required": [
+    "schema",
+    "scope",
+    "target",
+    "operationId",
+    "bridgeRevision",
+    "source",
+    "executorId",
+    "descriptorDigest",
+    "serviceBindingDigest",
+    "channel",
+    "command"
+  ],
+  "title": "DeliveryEditCall",
+  "type": "object"
+}

@@ -178,6 +178,7 @@ def finish(c, plan, manifest, permit, outcome, evidence):
 def mutate(store, c, relay, actor, source, binding, work, goal, payload):
     command = payload["command"]
     action = command["action"]
+    claims.namespace_lock(c, actor["authority"], binding["physical_host"], binding["physical_workspace_id"])
     admission = None
     if action == "propose":
         need(not c.execute("SELECT 1 FROM hb_edit_plan WHERE id=%s", (command["planId"],)).fetchone(),
@@ -230,8 +231,7 @@ def mutate(store, c, relay, actor, source, binding, work, goal, payload):
             need(not c.execute("SELECT 1 FROM hb_edit_permit WHERE id=%s", (command["permitId"],)).fetchone(),
                  "permit_exists", "Permit identity cannot be retried or restarted")
             for file in manifest["files"]:
-                need(not c.execute("""SELECT 1 FROM hb_edit_file_lock WHERE authority=%s AND host=%s
-                    AND workspace_id=%s AND relative_path=%s""", (plan["authority"], plan["host"], plan["workspace_id"], file["relativePath"])).fetchone(),
+                need(not claims.lock_conflict(c, [str(plan["authority"]), str(plan["host"]), str(plan["workspace_id"])], file["relativePath"]),
                      "scope_busy", "Another unsettled all-file mutation owns this path")
             proof = {key: payload[key] for key in ("executorId", "descriptorDigest", "serviceBindingDigest")}
             proof.update(hostId=str(binding["physical_host"]), workspaceId=str(binding["physical_workspace_id"]),
@@ -337,6 +337,9 @@ def observe(store, actor_id, payload):
                            (payload["permitId"], relay["authority"])).fetchone()
         if not permit:
             raise Denied("Original mutation unavailable")
+        if permit["scope_kind"] == "delivery":
+            from .delivery_edits import observe_locked
+            return observe_locked(store, c, relay, payload, permit)
         source = permit["source"]
         profile = claims.bridge(c, relay, source["hostId"], payload["bridgeRevision"])
         need(profile["protocol"] == CAPABILITY, "capability_missing", "Edit-plan observation profile required")

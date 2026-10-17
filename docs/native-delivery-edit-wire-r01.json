@@ -1,0 +1,98 @@
+{
+  "schema": "hollywood-delivery-edit-wire-contract/v1",
+  "revision": 1,
+  "status": "Early exact wire contract; implementation and real PG/HTTP checks pending.",
+  "sourceEventId": "e47b066a-5486-4452-b674-7b864e4ab5a5",
+  "capability": "canonical-delivery-edits/v1",
+  "databaseVersion": 27,
+  "base": "/hollywood/v3/",
+  "bridge": "Retain canonical-edit-plans/v2 enrollment. Require deliveryEdits=true and deliveryEditSchema=canonical-delivery-edits/v1 in bridge capability read. No legacy fallback.",
+  "envelope": {
+    "schema": "canonical-delivery-edits/v1",
+    "scope": "delivery",
+    "operationId": "1..128 chars, stable per phase",
+    "bridgeRevision": "int >=1",
+    "source": "Exact hollywood-native-source/v2; tool apply_patch. Same original captured source across phases.",
+    "executorId": "UUID",
+    "descriptorDigest": "sha256",
+    "serviceBindingDigest": "sha256",
+    "channel": "captured-app-server-rpc/v1",
+    "target": "Existing PhysicalTarget v1. grantRevision identifies current agent grant. actionDigest hashes all other normalized envelope fields.",
+    "command": "preflight|begin|settle discriminator"
+  },
+  "commonCommand": {
+    "action": "phase literal",
+    "permitId": "UUID",
+    "briefingSequence": "int >=0, current sourced decisions",
+    "note": "nonblank 1..1000 chars",
+    "sourceRevision": "REQUIRED nullable 40/64 lowercase hex; null supports non-Git roots"
+  },
+  "commands": {
+    "preflight": {
+      "files": "1..8 unique files: relativePath,beforeSha256,beforeSize,afterSha256,afterSize",
+      "filesObserved": "1..8 exact before observations: relativePath,sha256,size",
+      "patchSha256": "sha256",
+      "leaseSeconds": "int 1..30"
+    },
+    "begin": {
+      "permitRevision": "int >=1 CAS",
+      "patchSha256": "same original patch",
+      "filesObserved": "exact before observations"
+    },
+    "settle": {
+      "permitRevision": "int >=1 CAS",
+      "patchSha256": "same original patch",
+      "filesObserved": "complete independently observed original files",
+      "outcome": "applied|notApplied|unknown"
+    }
+  },
+  "bounds": {
+    "requestBytes": 16000,
+    "fileBytes": 16777216,
+    "absent": "literal absent with size zero; otherwise lowercase sha256",
+    "paths": "canonical relative POSIX; no aliases or symlinks; root controller verifies actual handles"
+  },
+  "routes": {
+    "POST collaboration/delivery-edits": "Registered protected controller only. Typed envelope/commands above.",
+    "GET collaboration/delivery-edits/{permit}": "Original enrolled controller or authorized original agent room access. Original permit, mayApply=false; no grant.",
+    "GET collaboration/delivery-targets/{delivery}": "Controller for that execution host. Schema hollywood-agent-physical-target-registry/v1: deliveryId,principalId,targets raw root/grant metadata,mayApply=false. Metadata is not filesystem access proof.",
+    "PUT physical-workspaces/{workspace}/agent-grants/{agent}": {
+      "actor": "Canonical administrator. Agent administration keeps normal native source/current participation checks.",
+      "body": {
+        "operationId": "stable 1..128 chars",
+        "revision": "int >=0 CAS",
+        "workspaceRevision": "int >=1",
+        "executionHost": "UUID enrolled enabled agent placement",
+        "state": "active|revoked",
+        "canRead": "bool",
+        "canWrite": "bool; requires canRead"
+      },
+      "reply": "Schema hollywood-physical-agent-grant/v1: grant,mayApply=false; existing administrative receipt/recovery.",
+      "default": "Deny absent grant. No room-based implicit resource access. No context/work needed for a newly enrolled placed agent. Grant data never changes bridge revision/enrollment hash."
+    },
+    "GET collaboration/commands/{agent}/{operation}": "Existing recovery includes delivery-edits. Receipt only, no re-POST or filesystem retry authorization.",
+    "POST collaboration/mutation-observations": "Existing MutationObservation model. For delivery permits, derive original source/target and require independently stopped executor. Records held evidence only; no automatic lock release or apply grant. Reviewed later reconciliation remains separate."
+  },
+  "reply": {
+    "receipt": "schema canonical-delivery-edits/v1, scope delivery, original permit,eventId,mayApply=false,newExecutionAdmitted=false",
+    "admission": "Only original successful begin response: mayApply=true,permitId,permitRevision,expiresAt,sourceDigest,patchSha256,files,oneShotOriginalResponseOnly=true. All other responses null.",
+    "replayed": "boolean; replay always strips admission"
+  },
+  "authority": [
+    "Derive mode from canonical captured request. Event data.workId present requires existing planned/coedit semantics and cannot select delivery mode. No synthetic Goal/Work/plan rows.",
+    "Mandatory current delivery/generation/claim/context/role/thread/turn/executor, room posting rights, placement, credentials, current decisions, cancellation and protected callback/root identity.",
+    "Before/after and file set originate in real native callback. Server trusts protected controller observations, never a model path/digest alone.",
+    "Use same advisory key paths:+digest([authority,physicalHost,physicalWorkspace]) and same hb_edit_file_lock across both modes and legacy hb_path_claim file/directory ownership.",
+    "Unreleased ownership and unsettled permits conflict. Expiry never discards executing/held locks. Only conclusive exact original settlement releases direct locks; partial/unknown holds.",
+    "Preserve conversation filtering: collaborationProtocol activity and native effect receipt, no task admission, model/human/control input or business completion.",
+    "Canonical agent grants are data; newly enrolled agents need no static bridge agent-list edit/restart. Root independently verifies actual installed identity/OS access."
+  ],
+  "migration": "Add scope_kind plan|delivery default plan and strict scope-shape constraints to existing hb_edit_permit; plan/plan_revision nullable only for delivery scope; delivery/room columns. Preserve all old rows and same lock table. Add revisioned hb_physical_agent_grant. Database version27.",
+  "owners": {
+    "Hollywood": "Backend/SQL/API/custom index only.",
+    "LAX": "Native/connector/index, native admin access tools.",
+    "Root": "Independent installed real-model end-state, cutover and rollback."
+  },
+  "qualification": "Bounded real PG/HTTP changed-mechanism checks. Source/fixture pass is not native/runtime acceptance.",
+  "schemaExports": "Pydantic-generated schemas accompany final committed source. Send required nullable sourceRevision explicitly."
+}

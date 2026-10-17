@@ -74,6 +74,8 @@ def read_bridge(store, actor_id, host):
             "implemented": ["physical-claims", "receipt-recovery", "edit-plans", "mutation-permits", "stopped-observations"],
             "editPlans": enabled, "patchPermits": enabled, "nativeChildAdmission": False,
             "physicalTargets": enabled, "targetSchema": "hollywood-physical-target/v1",
+            "deliveryEdits": enabled, "deliveryEditSchema": "canonical-delivery-edits/v1",
+            "agentResourceGrants": True,
             "legacyImplicitContextMutations": False, "activationRequiresProtectedBridgeProof": True})
 
 
@@ -93,6 +95,9 @@ def participation(store, c, relay, payload, tools=None, patch_actions=None):
         AND x.observed_at > clock_timestamp()-make_interval(secs=>h.sample_max_age)""",
         (payload["executorId"], source["deliveryId"], source["generation"])).fetchone()
     if (not resource or resource["controller"] != relay["id"]
+            or resource["state"] != "live" or resource["launch_phase"] != "attached"
+            or resource["claim_id"] != source["claimId"] or resource["agent"] != actor["id"]
+            or str(resource["host"]) != source["hostId"]
             or resource["descriptor_digest"] != payload["descriptorDigest"]
             or (resource["evidence"] or {}).get("serviceBindingDigest") != payload["serviceBindingDigest"]
             or (resource["evidence"] or {}).get("reason") != "matched-live-incarnation"):
@@ -179,20 +184,29 @@ def settled_controls(c, claim):
             raise Conflict("Original effects/controls remain unresolved")
 
 
+def namespace_lock(c, authority, host, workspace):
+    namespace = [str(authority), str(host), str(workspace)]
+    c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("paths:" + digest(namespace),))
+    return namespace
+
+
+def lock_conflict(c, namespace, path):
+    return c.execute("""SELECT 1 FROM hb_edit_file_lock WHERE authority=%s AND host=%s
+        AND workspace_id=%s AND (relative_path=%s OR left(relative_path,length(%s)+1)=%s||'/'
+        OR left(%s,length(relative_path)+1)=relative_path||'/') LIMIT 1""",
+        (*namespace, path, path, path, path)).fetchone()
+
+
 def apply(store, c, actor, source, binding, work, goal, command):
     action, identity = command["action"], command["claimId"]
     # Serialize all overlapping paths in the actual physical namespace. Lease
     # expiry never deletes ownership or licenses another native execution.
-    namespace = [str(actor["authority"]), str(binding["physical_host"]), str(binding["physical_workspace_id"])]
-    c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("paths:" + digest(namespace),))
+    namespace = namespace_lock(c, actor["authority"], binding["physical_host"], binding["physical_workspace_id"])
     now = c.execute("SELECT clock_timestamp() AS value").fetchone()["value"]
     claim = c.execute("SELECT * FROM hb_path_claim WHERE id=%s FOR UPDATE", (identity,)).fetchone()
     if action != "inspect":
         path = canonical_path(command["relativePath"]) if action == "acquire" else claim["relative_path"] if claim else ""
-        kind = command["kind"] if action == "acquire" else claim["kind"] if claim else "file"
-        if c.execute("""SELECT 1 FROM hb_edit_file_lock WHERE authority=%s AND host=%s AND workspace_id=%s
-            AND (relative_path=%s OR (%s='directory' AND left(relative_path,length(%s)+1)=%s||'/')) LIMIT 1""",
-            (*namespace, path, kind, path, path)).fetchone():
+        if lock_conflict(c, namespace, path):
             raise Conflict("Unsettled all-file mutation holds claim metadata")
     if action == "acquire":
         if claim:
@@ -344,7 +358,7 @@ def read_command(store, actor_id, agent, operation):
         row = c.execute("SELECT * FROM hb_command WHERE authority=%s AND principal=%s AND operation=%s",
                         (relay["authority"], agent, operation)).fetchone()
         if not row or (row["wire_request"] or {}).get("path") not in (
-                "collaboration/path-claims", "collaboration/edit-plans", "collaboration/mutation-observations"):
+                "collaboration/path-claims", "collaboration/edit-plans", "collaboration/delivery-edits", "collaboration/mutation-observations"):
             raise Denied("Original collaboration receipt unavailable")
         original = row["wire_request"]["body"]
         observation = row["wire_request"]["path"] == "collaboration/mutation-observations"

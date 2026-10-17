@@ -26,7 +26,7 @@ def project(event, c=None, viewer=None):
     if c is not None:
         rows = c.execute("""SELECT cmd.principal,cmd.operation,cmd.event,cmd.accepted_result,cmd.wire_request
             FROM hb_command cmd JOIN hb_event e ON e.id=cmd.event WHERE e.room=%s
-            AND cmd.wire_request->>'path' IN ('collaboration/path-claims','collaboration/edit-plans','collaboration/mutation-observations')
+            AND cmd.wire_request->>'path' IN ('collaboration/path-claims','collaboration/edit-plans','collaboration/delivery-edits','collaboration/mutation-observations')
             AND cmd.wire_request->'body'->'source'->>'deliveryId'=%s
             AND cmd.wire_request->'body'->'source'->>'generation'=%s
             AND cmd.wire_request->'body'->'source'->>'nativeThread'=%s

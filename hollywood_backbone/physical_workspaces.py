@@ -89,10 +89,18 @@ def registered(c, authority, source, work_id, target, cleanup=False):
 def paths_for(c, payload):
     command = payload.get('command')
     if command is None:  # independently stopped observation
-        permit = c.execute('SELECT plan,plan_revision FROM hb_edit_permit WHERE id=%s', (payload['permitId'],)).fetchone()
+        permit = c.execute('SELECT * FROM hb_edit_permit WHERE id=%s', (payload['permitId'],)).fetchone()
+        if permit and permit['scope_kind'] == 'delivery':
+            return [f['relativePath'] for f in permit['proof']['files']]
         version = c.execute('SELECT manifest FROM hb_edit_plan_revision WHERE plan=%s AND revision=%s',
                             (permit['plan'], permit['plan_revision'])).fetchone() if permit else None
         return [f['relativePath'] for f in version['manifest']['files']] if version else []
+    if payload.get('scope') == 'delivery':
+        if command['action'] == 'preflight':
+            return [f['relativePath'] for f in command['files']]
+        permit = c.execute("SELECT proof FROM hb_edit_permit WHERE id=%s AND scope_kind='delivery'",
+                           (command['permitId'],)).fetchone()
+        return [f['relativePath'] for f in permit['proof']['files']] if permit else []
     if 'claimId' in command:
         if command['action'] == 'acquire':
             return [command['relativePath']]
@@ -112,7 +120,7 @@ def paths_for(c, payload):
     return [f['relativePath'] for f in manifest['files']]
 
 
-def attest(c, relay, source, binding, payload, work_id=None, cleanup=False):
+def attest(c, relay, source, binding, payload, work_id=None, cleanup=False, ordinary=False):
     from .collaboration import bridge, canonical_path
     policy = bridge(c, relay, source['hostId'], payload['bridgeRevision'])
     if policy['protocol'] != CAPABILITY:
@@ -120,7 +128,11 @@ def attest(c, relay, source, binding, payload, work_id=None, cleanup=False):
     target = payload['target']
     if target['actionDigest'] != digest({k: v for k, v in payload.items() if k != 'target'}):
         raise Conflict('Target attestation must bind exact operation/source/executor/command')
-    root, access = registered(c, relay['authority'], source, work_id or payload['command']['workId'], target, cleanup)
+    if ordinary:
+        from .agent_resources import registered as agent_registered
+        root, access = agent_registered(c, relay['authority'], source, target, cleanup)
+    else:
+        root, access = registered(c, relay['authority'], source, work_id or payload['command']['workId'], target, cleanup)
     if not cleanup and (payload.get('command') or {}).get('action') not in ('release', 'inspect'):
         if c.execute("SELECT 1 FROM hb_path_claim WHERE authority=%s AND state<>'released' AND target IS NULL LIMIT 1",
                      (relay['authority'],)).fetchone():

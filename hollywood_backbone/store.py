@@ -36,6 +36,26 @@ def json_value(value):
 
 
 class Store:
+    def physical_agent_grant(self, actor_id, workspace, principal, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "physical_agent_grant", [workspace, principal, payload], command)
+
+    def _admin_physical_agent_grant(self, c, actor, workspace, principal, payload):
+        from .agent_resources import grant
+        return grant(c, actor, workspace, principal, payload)
+
+    def delivery_targets_read(self, actor_id, identity):
+        from .agent_resources import read
+        return read(self, actor_id, identity)
+
+    def delivery_edit_call(self, actor_id, payload):
+        from .delivery_edits import call
+        return call(self, actor_id, payload)
+
+    def delivery_edit_read(self, actor_id, identity):
+        from .delivery_edits import read
+        return read(self, actor_id, identity)
+
     def report_scope_read(self, actor_id, identity, payload, *, wire=None):
         from .report_scope import read
         return read(self, actor_id, identity, payload, wire=wire)

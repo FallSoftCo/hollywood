@@ -17,6 +17,7 @@ from .collaboration_models import BridgeConfiguration, CollaborationCall
 from .edit_plan_models import EditPlanCall, MutationObservation
 from .edit_plan_scope import EditError
 from .physical_models import WorkspaceConfiguration, WorkspaceGrant
+from .delivery_edit_models import AgentWorkspaceGrant, DeliveryEditCall
 from .report_scope_models import ReportScopeRead, ReportScopeProof
 from .report_scope import ScopeError
 
@@ -495,7 +496,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant"):
+    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -540,6 +541,28 @@ async def physical_grant(request):
     p = await body(request, WorkspaceGrant)
     return await invoke(request, "physical_grant", str(UUID(request.match_info["workspace"])),
                         str(UUID(request.match_info["work"])), p.model_dump(mode="json"))
+
+
+async def physical_agent_grant(request):
+    p = await body(request, AgentWorkspaceGrant)
+    return await invoke(request, "physical_agent_grant", str(UUID(request.match_info["workspace"])),
+                        str(UUID(request.match_info["agent"])), p.model_dump(mode="json"))
+
+
+async def delivery_targets_read(request):
+    if request.query:
+        raise ValueError("Unknown delivery-target query")
+    return await invoke(request, "delivery_targets_read", str(UUID(request.match_info["delivery"])))
+
+
+async def delivery_edit_call(request):
+    return await edit_call_body(request, "delivery_edit_call", DeliveryEditCall)
+
+
+async def delivery_edit_read(request):
+    if request.query:
+        raise ValueError("Unknown delivery-edit query")
+    return await edit_invoke(request, "delivery_edit_read", str(UUID(request.match_info["permit"])))
 
 
 async def physical_targets_read(request):
@@ -1261,6 +1284,10 @@ def application(store):
             web.get("/hollywood/v3/collaboration/commands/{agent}/{operation}", collaboration_command),
             web.put("/hollywood/v3/hosts/{host}/physical-workspaces/{workspace}", physical_workspace),
             web.put("/hollywood/v3/physical-workspaces/{workspace}/grants/{work}", physical_grant),
+            web.put("/hollywood/v3/physical-workspaces/{workspace}/agent-grants/{agent}", physical_agent_grant),
+            web.get("/hollywood/v3/collaboration/delivery-targets/{delivery}", delivery_targets_read),
+            web.post("/hollywood/v3/collaboration/delivery-edits", delivery_edit_call),
+            web.get("/hollywood/v3/collaboration/delivery-edits/{permit}", delivery_edit_read),
             web.get("/hollywood/v3/collaboration/physical-targets/{work}", physical_targets_read),
             web.post("/hollywood/v3/collaboration/edit-plans", edit_plan_call),
             web.get("/hollywood/v3/collaboration/edit-plans/{plan}", edit_plan_read),
