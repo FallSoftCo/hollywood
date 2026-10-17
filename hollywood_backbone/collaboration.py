@@ -13,7 +13,7 @@ from . import native_effects
 from .collaboration_models import CollaborationCall
 from .store import Conflict, Denied, digest, json_value
 
-CAPABILITY = "canonical-physical-claims/v1"
+CAPABILITY = "canonical-physical-claims/v2"
 TOOLS = {"coordination_act", "apply_patch"}
 
 
@@ -69,11 +69,12 @@ def read_bridge(store, actor_id, host):
             bridge(c, actor, host)
         row = c.execute("SELECT * FROM hb_collaboration_bridge WHERE host=%s AND authority=%s",
                         (host, actor["authority"])).fetchone()
-        enabled = bool(row and row["state"] == "active" and row["protocol"] == "canonical-edit-plans/v1")
+        enabled = bool(row and row["state"] == "active" and row["protocol"] == "canonical-edit-plans/v2")
         return json_value({"schema": CAPABILITY, "bridge": row,
             "implemented": ["physical-claims", "receipt-recovery", "edit-plans", "mutation-permits", "stopped-observations"],
             "editPlans": enabled, "patchPermits": enabled, "nativeChildAdmission": False,
-            "activationRequiresProtectedBridgeProof": True})
+            "physicalTargets": enabled, "targetSchema": "hollywood-physical-target/v1",
+            "legacyImplicitContextMutations": False, "activationRequiresProtectedBridgeProof": True})
 
 
 def participation(store, c, relay, payload, tools=None, patch_actions=None):
@@ -149,6 +150,21 @@ def decisions(c, work, command):
         raise Conflict("Sourced decisions remain conflicted")
 
 
+def context_host(c, delivery):
+    return c.execute("SELECT host FROM hb_delivery WHERE id=%s", (delivery,)).fetchone()["host"]
+
+
+def action_reference(source, operation):
+    return {**{k: source[k] for k in ("agentId", "deliveryId", "generation", "nativeThread", "nativeTurn", "callId", "tool")},
+            "operationId": operation}
+
+
+def protocol_audience(c, source):
+    original = c.execute('SELECT audience,author FROM hb_event WHERE id=%s', (source['requestId'],)).fetchone()
+    return {'audience': original['audience'],
+            'recipient': original['author'] if original['audience'] == 'direct' else None}
+
+
 def reviewed(c, claim, command):
     if command["effectDisposition"] != "reviewed":
         raise Conflict("Unknown effects retain path ownership")
@@ -167,7 +183,7 @@ def apply(store, c, actor, source, binding, work, goal, command):
     action, identity = command["action"], command["claimId"]
     # Serialize all overlapping paths in the actual physical namespace. Lease
     # expiry never deletes ownership or licenses another native execution.
-    namespace = [str(actor["authority"]), source["hostId"], str(binding["workspace_id"])]
+    namespace = [str(actor["authority"]), str(binding["physical_host"]), str(binding["physical_workspace_id"])]
     c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("paths:" + digest(namespace),))
     now = c.execute("SELECT clock_timestamp() AS value").fetchone()["value"]
     claim = c.execute("SELECT * FROM hb_path_claim WHERE id=%s FOR UPDATE", (identity,)).fetchone()
@@ -191,11 +207,11 @@ def apply(store, c, actor, source, binding, work, goal, command):
             raise Conflict("Overlapping path ownership remains active or held")
         return c.execute("""INSERT INTO hb_path_claim
             (id,authority,work,owner,host,workspace_id,relative_path,kind,source_revision,content_sha256,
-             expires_at,origin_delivery) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-             %s+make_interval(secs=>%s),%s) RETURNING *""",
-            (identity, actor["authority"], work["id"], actor["id"], source["hostId"], binding["workspace_id"],
+             expires_at,origin_delivery,target) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+             %s+make_interval(secs=>%s),%s,%s) RETURNING *""",
+            (identity, actor["authority"], work["id"], actor["id"], binding["physical_host"], binding["physical_workspace_id"],
              path, command["kind"], command["sourceRevision"], command["contentSha256"], now,
-             command["leaseSeconds"], source["deliveryId"])).fetchone()
+             command["leaseSeconds"], source["deliveryId"], Jsonb(binding["physical_target"]))).fetchone()
     if (not claim or str(claim["authority"]) != namespace[0] or str(claim["host"]) != namespace[1]
             or str(claim["workspace_id"]) != namespace[2]):
         raise Denied("Claim differs from actual physical workspace")
@@ -211,22 +227,24 @@ def apply(store, c, actor, source, binding, work, goal, command):
         origin = c.execute("""SELECT d.* FROM hb_delivery d JOIN hb_agent_execution x
             ON x.delivery=d.id AND x.generation=d.generation JOIN hb_agent_role r
             ON r.principal=d.agent AND r.revision=x.role_revision
+            JOIN hb_agent_context a ON a.principal=x.principal AND a.context_id=x.context_id
+                AND a.workspace_id=x.workspace_id AND a.native_thread=x.native_thread AND a.host=d.host
             JOIN hb_placement p ON p.agent=d.agent AND p.host=d.host AND p.enabled
             JOIN hb_executor e ON e.delivery=d.id AND e.generation=d.generation AND e.claim_id=d.claim_id
             JOIN hb_host_admission h ON h.host=d.host
-            WHERE d.id=%s AND d.agent=%s AND d.host=%s AND x.workspace_id=%s
+            WHERE d.id=%s AND d.agent=%s AND d.host=%s AND x.principal=%s
             AND e.controller IS NOT NULL AND e.observed_at IS NOT NULL AND
             ((d.state='running' AND e.state='live' AND e.controller=h.controller AND
               e.observed_at>clock_timestamp()-make_interval(secs=>h.sample_max_age))
              OR (d.state='completed' AND e.state='stopped'))""",
-            (claim["origin_delivery"], claim["owner"], claim["host"], claim["workspace_id"])).fetchone()
+            (claim["origin_delivery"], claim["owner"], context_host(c, claim["origin_delivery"]), claim["owner"])).fetchone()
         if (origin_goal["id"] != goal["id"] or not origin or origin["cancellation_requested"]
                 or origin["state"] not in ("running", "completed")):
             raise Conflict("Original handoff consent or effects remain unsettled")
         settled_controls(c, claim)
         claim = c.execute("""UPDATE hb_path_claim SET owner=%s,work=%s,target_work=NULL,state='active',
-            revision=revision+1,expires_at=%s+make_interval(secs=>%s),origin_delivery=%s WHERE id=%s RETURNING *""",
-            (actor["id"], work["id"], now, command["leaseSeconds"], source["deliveryId"], identity)).fetchone()
+            revision=revision+1,expires_at=%s+make_interval(secs=>%s),origin_delivery=%s,target=%s WHERE id=%s RETURNING *""",
+            (actor["id"], work["id"], now, command["leaseSeconds"], source["deliveryId"], Jsonb(binding["physical_target"]), identity)).fetchone()
     else:
         if claim["owner"] != actor["id"] or claim["work"] != work["id"]:
             raise Denied("Exact canonical claim/work owner required")
@@ -258,16 +276,18 @@ def apply(store, c, actor, source, binding, work, goal, command):
             target, _ = work_scope(store, c, peer, str(target["id"]))
             context = c.execute("""SELECT a.* FROM hb_agent_context a JOIN hb_placement p ON p.agent=a.principal
                 AND p.host=a.host AND p.enabled WHERE a.principal=%s""", (peer["id"],)).fetchone()
-            if (target["revision"] != command["targetWorkRevision"] or not context
-                    or str(context["host"]) != namespace[1] or str(context["workspace_id"]) != namespace[2]):
-                raise Conflict("Cross-workspace handoff requires explicit source/artifact mapping")
+            if target["revision"] != command["targetWorkRevision"] or not context:
+                raise Conflict("Current recipient context/revision required")
+            from .physical_workspaces import peer_access
+            peer_access(c, actor["authority"], {"agentId": str(peer["id"]), "contextId": context["context_id"],
+                "hostId": str(context["host"])}, target, claim["workspace_id"])
             claim = c.execute("UPDATE hb_path_claim SET state='handoff',target_work=%s,revision=revision+1 WHERE id=%s RETURNING *",
                               (target["id"], identity)).fetchone()
     return claim
 
 
 def call(store, actor_id, payload):
-    payload = CollaborationCall.model_validate(payload).model_dump(mode="json")
+    payload = CollaborationCall.model_validate(payload).model_dump(mode="json", by_alias=True)
     command, operation = payload["command"], payload["operationId"]
     with store.pool.connection() as c:
         relay = store.actor(c, actor_id)  # Exclusive authority transport fence.
@@ -279,6 +299,8 @@ def call(store, actor_id, payload):
         if not command["note"].strip():
             raise ValueError("Specific collaboration note required")
         decisions(c, work, command)
+        from .physical_workspaces import attest
+        binding = attest(c, relay, source, binding, payload, cleanup=command["action"] in ("release", "inspect"))
         c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (str(actor["id"]) + ":" + operation,))
         key = digest({"collaboration": payload})
         old = c.execute("SELECT * FROM hb_command WHERE principal=%s AND operation=%s", (actor["id"], operation)).fetchone()
@@ -297,7 +319,8 @@ def call(store, actor_id, payload):
             "patchPermitIssued": False, "newExecutionAdmitted": False,
             "inspectionIsHistorical": True})
         event = store.event(c, actor, work["room"], "progress", "Canonical path claim: " + command["note"],
-                            source=source["requestId"], data={"collaborationReceipt": result})
+                            source=source["requestId"], **protocol_audience(c, source),
+                            data={"type": "collaborationProtocol", "nativeAction": action_reference(source, operation), "collaborationReceipt": result})
         result["eventId"] = str(event)
         c.execute("UPDATE hb_event SET data=jsonb_set(data,'{collaborationReceipt}',%s) WHERE id=%s",
                   (Jsonb(result), event))

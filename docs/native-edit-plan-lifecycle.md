@@ -1,5 +1,10 @@
 # Canonical edit plans and one-shot mutation permits
 
+Historical r02 contract: r03 [registered physical resource authority](physical-resource-authority.md)
+supersedes its context-derived target namespace and requires the v2 bridge profile
+and explicit protected target envelope. Consent/permit/settlement semantics below
+remain the base lifecycle; protocol events are now audit rather than conversation.
+
 This server implements `canonical-edit-plans/v1` on top of canonical work,
 physical path claims, protected source-v2 participation and original command
 receipts. It creates no tasks, work admission, native children, reports or business

@@ -47,7 +47,7 @@ class Fixture:
         for name in ('i', 'p', 'r', 't', 'outsider'):
             host = self.hosts['host2' if name == 'r' else 'host1']
             agent = {'id': uid(), 'token': secrets.token_urlsafe(40), 'work': uid(), 'name': name,
-                     'host': host, 'workspace': self.ids['workspace2' if name == 't' else 'workspace1']}
+                     'host': host, 'privateWorkspace': uid(), 'workspace': uid() if name == 'r' else self.ids['workspace2' if name == 't' else 'workspace1']}
             agent['root'] = self.out / 'namespaces' / host['id'] / agent['workspace']
             agent['root'].mkdir(parents=True, exist_ok=True)
             self.store.principal(self.owner, agent['id'], 'SYNTHETIC worker ' + name, 'agent', agent['token'])
@@ -73,6 +73,7 @@ class Fixture:
             assigned = self.store.workflow(self.owner, 'work.assign', agent['work'], uid(), {'revision': 1})
             self.bind(agent, assigned['deliveryId'], assigned['requestEventId'])
         self.trace, self.race = [], []
+        self.resources = {}
 
     def sql(self, query, args=(), many=False):
         with self.store.pool.connection() as c:
@@ -87,9 +88,9 @@ class Fixture:
                  (agent['host']['id'], claim, thread, turn, delivery))
         if not self.sql('SELECT 1 FROM hb_agent_context WHERE principal=%s', (agent['id'],)):
             self.sql('INSERT INTO hb_agent_context(principal,authority,context_id,native_thread,host,workspace_id) VALUES(%s,%s,%s,%s,%s,%s)',
-                     (agent['id'], self.ids['authority'], context, thread, agent['host']['id'], agent['workspace']))
+                     (agent['id'], self.ids['authority'], context, thread, agent['host']['id'], agent['privateWorkspace']))
         self.sql('INSERT INTO hb_agent_execution VALUES(%s,1,%s,%s,%s,%s,1,%s)',
-                 (delivery, agent['id'], context, thread, agent['workspace'], digest(delivery)))
+                 (delivery, agent['id'], context, thread, agent['privateWorkspace'], digest(delivery)))
         agent['executor'] = uid()
         self.sql("""INSERT INTO hb_executor(id,authority,delivery,agent,host,generation,claim_id,descriptor,
             descriptor_digest,state,controller,evidence,observed_at) VALUES(%s,%s,%s,%s,%s,1,%s,'{}',%s,'live',%s,%s,clock_timestamp())""",
@@ -110,17 +111,70 @@ class Fixture:
         for host in self.hosts.values():
             await self.http(self.credentials['Owner']['token'], 'PUT', f"hosts/{host['id']}/collaboration-bridge", {
                 'operationId': uid(), 'revision': 0, 'controllerId': host['controller'], 'state': 'active',
-                'protocol': 'canonical-edit-plans/v1', 'adapterSha256': 'a' * 64, 'enrollmentSha256': 'b' * 64})
+                'protocol': 'canonical-edit-plans/v2', 'adapterSha256': 'a' * 64, 'enrollmentSha256': 'b' * 64})
+
+        for agent in self.agents.values():
+            if agent['workspace'] not in self.resources:
+                await self.register_root(agent['workspace'], agent['host']['id'], agent['root'])
+            await self.grant_root(agent, agent['workspace'])
+
+    async def register_root(self, identity, host, path):
+        path.mkdir(parents=True, exist_ok=True)
+        st = path.stat()
+        resource = {'id': identity, 'host': host, 'root': path, 'revision': 1,
+            'environment': sha(('SYNTHETIC environment:' + host).encode()),
+            'identity': sha(f'{st.st_dev}:{st.st_ino}'.encode())}
+        self.resources[identity] = resource
+        await self.http(self.credentials['Owner']['token'], 'PUT', f"hosts/{host}/physical-workspaces/{identity}", {
+            'operationId': uid(), 'revision': 0, 'state': 'active', 'rootPath': str(path),
+            'environmentSha256': resource['environment'], 'rootIdentitySha256': resource['identity'],
+            'registrationSha256': sha(('SYNTHETIC reviewed root:' + identity).encode())})
+
+    async def grant_root(self, agent, workspace):
+        await self.http(self.credentials['Owner']['token'], 'PUT', f"physical-workspaces/{workspace}/grants/{agent['work']}", {
+            'operationId': uid(), 'revision': 0, 'workspaceRevision': self.resources[workspace]['revision'],
+            'workRevision': 2, 'state': 'active'})
+
+    def attest(self, body, workspace=None):
+        from hollywood_backbone.physical_workspaces import paths_for
+        source = body.get('source')
+        if source is None:
+            source = self.sql('SELECT source FROM hb_edit_permit WHERE id=%s', (body['permitId'],))['source']
+        agent = next(a for a in self.agents.values() if a['id'] == source['agentId'])
+        resource = self.resources[workspace or agent['workspace']]
+        access = self.sql('SELECT revision FROM hb_physical_grant WHERE workspace=%s AND work=%s',
+                          (resource['id'], agent['work']))
+        with self.store.pool.connection() as c:
+            paths = sorted(set(paths_for(c, body)))
+        # Actual owned RAM resolver: reject every existing symlink component and
+        # resolve beneath the registered root. This is not a native adapter proof.
+        import stat
+        for relative in paths:
+            current = resource['root']
+            for part in relative.split('/'):
+                current = current / part
+                if current.exists() or current.is_symlink():
+                    assert not stat.S_ISLNK(current.lstat().st_mode), 'SYNTHETIC resolver denied symlink'
+            assert current.resolve().is_relative_to(resource['root'].resolve())
+        body['target'] = {'schema': 'hollywood-physical-target/v1', 'workspaceId': resource['id'],
+            'workspaceRevision': resource['revision'], 'grantRevision': access['revision'] if access else 1,
+            'environmentSha256': resource['environment'], 'rootIdentitySha256': resource['identity'],
+            'resolution': 'beneath-no-symlinks/v1',
+            'actionDigest': digest({k: v for k, v in body.items() if k != 'target'}),
+            'paths': [{'relativePath': p, 'resolvedPath': str(resource['root'] / p)} for p in paths]}
+        return body
 
     async def close(self):
         await self.client.close()
         await self.runner.cleanup()
         self.store.close()
 
-    async def http(self, token, method, path, body=None, status=200):
+    async def http(self, token, method, path, body=None, status=200, attest=True):
+        if attest and method == 'POST' and path in ('collaboration/path-claims', 'collaboration/edit-plans', 'collaboration/mutation-observations'):
+            body = self.attest(body)
         async with self.client.request(method, self.url + path, json=body, headers={'Authorization': 'Bearer ' + token}) as response:
             value = await response.json()
-            row = {'method': method, 'path': path, 'status': response.status, 'result': value}
+            row = {'method': method, 'path': path, 'request': copy.deepcopy(body), 'status': response.status, 'result': value}
             self.trace.append(row)
             with (self.out / 'http-trace.jsonl').open('a') as output:
                 output.write(json.dumps(row, default=str) + '\n')

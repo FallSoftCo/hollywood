@@ -6,7 +6,9 @@ from pydantic import Field
 
 from .collaboration_models import Input
 
-CAPABILITY = "canonical-edit-plans/v1"
+from .physical_models import PhysicalTarget
+
+CAPABILITY = "canonical-edit-plans/v2"
 SHA = r"^[a-f0-9]{64}$"
 REVISION = r"^([a-f0-9]{40}|[a-f0-9]{64})$"
 CONTENT = r"^(absent|[a-f0-9]{64})$"
@@ -142,6 +144,7 @@ class Withdraw(Command):
 
 
 class EditPlanCall(Input):
+    target: PhysicalTarget
     operationId: str = Field(min_length=1, max_length=128)
     bridgeRevision: int = Field(ge=1, strict=True)
     source: dict
@@ -154,6 +157,7 @@ class EditPlanCall(Input):
 
 
 class MutationObservation(Input):
+    target: PhysicalTarget
     operationId: str = Field(min_length=1, max_length=128)
     bridgeRevision: int = Field(ge=1, strict=True)
     permitId: UUID

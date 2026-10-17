@@ -36,6 +36,26 @@ def json_value(value):
 
 
 class Store:
+    def physical_workspace(self, actor_id, host, identity, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "physical_workspace", [host, identity, payload], command)
+
+    def _admin_physical_workspace(self, c, actor, host, identity, payload):
+        from .physical_workspaces import configure
+        return configure(c, actor, host, identity, payload)
+
+    def physical_grant(self, actor_id, workspace, work, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "physical_grant", [workspace, work, payload], command)
+
+    def _admin_physical_grant(self, c, actor, workspace, work, payload):
+        from .physical_workspaces import grant
+        return grant(c, actor, workspace, work, payload)
+
+    def physical_targets_read(self, actor_id, identity):
+        from .physical_workspaces import read
+        return read(self, actor_id, identity)
+
     def edit_plan_call(self, actor_id, payload):
         from .edit_plans import call
         return call(self, actor_id, payload)
@@ -820,7 +840,9 @@ class Store:
         # a burst of actions must not hide a conversation behind an empty page.
         filters = {
             "all": "",
-            "conversation": " AND data->>'type' IS DISTINCT FROM 'executionActivity'",
+            "conversation": " AND data->>'type' IS DISTINCT FROM 'executionActivity'"
+                " AND data->>'type' IS DISTINCT FROM 'collaborationProtocol'"
+                " AND NOT (kind='progress' AND (data ? 'collaborationReceipt' OR data ? 'editPlanReceipt'))",
             "activity": " AND data->>'type' = 'executionActivity'",
         }
         if view not in filters:
@@ -845,7 +867,7 @@ class Store:
                     "authorityId": str(a["authority"]),
                     "roomId": room,
                     "view": view,
-                    "events": json_value([project(row) for row in rows]),
+                    "events": json_value([project(row, c, a) for row in rows]),
                     "nextCursor": ceiling,
                     "olderCursor": rows[0]["seq"] if more else None,
                 }
@@ -859,7 +881,7 @@ class Store:
                 "authorityId": str(a["authority"]),
                 "roomId": room,
                 "view": view,
-                "events": json_value([project(row) for row in rows]),
+                "events": json_value([project(row, c, a) for row in rows]),
                 "nextCursor": rows[-1]["seq"] if len(rows) == limit else ceiling,
             }
 

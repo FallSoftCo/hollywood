@@ -29,7 +29,7 @@ def main():
     free = fs.f_bavail * fs.f_frsize
     if free < 80 * 1024**3:
         raise RuntimeError('80GiB hard reserve unmet')
-    area = AREA / 'r02' if args.scenario == 'edit-plans' else AREA
+    area = AREA / 'r03'
     area.mkdir(exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix='fresh-plans-' if args.scenario == 'edit-plans' else 'fresh-claims-', dir=area))
     tmp = root / 'tmp'

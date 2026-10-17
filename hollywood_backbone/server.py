@@ -16,6 +16,7 @@ from . import native_effects
 from .collaboration_models import BridgeConfiguration, CollaborationCall
 from .edit_plan_models import EditPlanCall, MutationObservation
 from .edit_plan_scope import EditError
+from .physical_models import WorkspaceConfiguration, WorkspaceGrant
 
 
 class Input(BaseModel):
@@ -491,7 +492,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge"):
+    if method in ("principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -526,6 +527,24 @@ async def native_effect_list(request):
                         after, limit)
 
 
+async def physical_workspace(request):
+    p = await body(request, WorkspaceConfiguration)
+    return await invoke(request, "physical_workspace", str(UUID(request.match_info["host"])),
+                        str(UUID(request.match_info["workspace"])), p.model_dump(mode="json"))
+
+
+async def physical_grant(request):
+    p = await body(request, WorkspaceGrant)
+    return await invoke(request, "physical_grant", str(UUID(request.match_info["workspace"])),
+                        str(UUID(request.match_info["work"])), p.model_dump(mode="json"))
+
+
+async def physical_targets_read(request):
+    if request.query:
+        raise ValueError("Unknown physical-target query")
+    return await invoke(request, "physical_targets_read", str(UUID(request.match_info["work"])))
+
+
 async def collaboration_bridge(request):
     p = await body(request, BridgeConfiguration)
     return await invoke(request, "collaboration_bridge", str(UUID(request.match_info["host"])),
@@ -534,7 +553,7 @@ async def collaboration_bridge(request):
 
 async def collaboration_call(request):
     p = await body(request, CollaborationCall)
-    return await invoke(request, "collaboration_call", p.model_dump(mode="json"))
+    return await invoke(request, "collaboration_call", p.model_dump(mode="json", by_alias=True))
 
 
 async def collaboration_bridge_read(request):
@@ -567,7 +586,7 @@ async def edit_call_body(request, method, model):
         p = await body(request, model)
     except (ValidationError, ValueError, TypeError):
         return web.json_response({"error": "invalid_edit_request", "mayApply": False}, status=400)
-    return await edit_invoke(request, method, p.model_dump(mode="json"))
+    return await edit_invoke(request, method, p.model_dump(mode="json", by_alias=True))
 
 
 async def edit_plan_call(request):
@@ -1208,6 +1227,9 @@ def application(store):
             web.get("/hollywood/v3/hosts/{host}/collaboration-bridge", collaboration_bridge_read),
             web.post("/hollywood/v3/collaboration/path-claims", collaboration_call),
             web.get("/hollywood/v3/collaboration/commands/{agent}/{operation}", collaboration_command),
+            web.put("/hollywood/v3/hosts/{host}/physical-workspaces/{workspace}", physical_workspace),
+            web.put("/hollywood/v3/physical-workspaces/{workspace}/grants/{work}", physical_grant),
+            web.get("/hollywood/v3/collaboration/physical-targets/{work}", physical_targets_read),
             web.post("/hollywood/v3/collaboration/edit-plans", edit_plan_call),
             web.get("/hollywood/v3/collaboration/edit-plans/{plan}", edit_plan_read),
             web.post("/hollywood/v3/collaboration/mutation-observations", mutation_observe),

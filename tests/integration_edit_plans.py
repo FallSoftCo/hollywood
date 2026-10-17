@@ -19,6 +19,7 @@ async def main():
     original_contexts = f.sql('SELECT * FROM hb_agent_context ORDER BY principal', many=True)
     original_bindings = f.sql('SELECT * FROM hb_agent_execution ORDER BY delivery', many=True)
     deliveries_before = f.sql('SELECT count(*) AS n FROM hb_delivery')['n']
+    from physical_target_checks import qualify
     checks = []
 
     async def ready(case):
@@ -34,16 +35,18 @@ async def main():
         return await f.call(case['integrator'], body=body)
 
     async def arbitrary_status(agent, body):
+        f.attest(body)
         async with f.client.post(f.url + 'collaboration/edit-plans', json=body,
                                 headers={'Authorization': 'Bearer ' + agent['host']['token']}) as response:
             value = await response.json()
-            row = {'status': response.status, 'result': value}
+            row = {'request': copy.deepcopy(body), 'status': response.status, 'result': value}
             f.race.append(row)
             with (f.out / 'race-trace.jsonl').open('a') as output:
                 output.write(json.dumps(row) + '\n')
             return row
 
     try:
+        checks.extend(await qualify(f))
         policy = await f.http(i['host']['token'], 'GET', f"hosts/{i['host']['id']}/collaboration-bridge")
         assert policy['editPlans'] and policy['patchPermits'] and policy['nativeChildAdmission'] is False
         case = await f.case('positive')
@@ -224,6 +227,13 @@ async def main():
         authority = await f.case('authority')
         await ready(authority)
         auth_source, auth_reservation = await f.reserve(authority)
+        for table, where in [('hb_physical_grant', ('workspace', i['workspace'])), ('hb_physical_workspace', ('id', i['workspace']))]:
+            column, identity = where
+            f.sql(f"UPDATE {table} SET state='revoked' WHERE {column}=%s", (identity,))
+            await f.call(i, body=f.phase(authority, auth_source, auth_reservation['receipt']['permit'], 'begin'), status=409)
+            assert f.sql('SELECT count(*) AS n FROM hb_edit_file_lock WHERE permit=%s', (auth_reservation['receipt']['permit']['id'],))['n'] == 2
+            f.sql(f"UPDATE {table} SET state='active' WHERE {column}=%s", (identity,))
+        checks.append('Current physical root and per-work grant revocation at begin deny mutation and retain the whole all-file reservation')
         f.sql('UPDATE hb_membership SET can_post=false WHERE room=%s AND principal=%s', (f.ids['room'], p['id']))
         await f.call(i, body=f.phase(authority, auth_source, auth_reservation['receipt']['permit'], 'begin'), status=403)
         assert (await f.view(authority))['permits'][0]['effectiveState'] == 'held'
@@ -287,6 +297,12 @@ async def main():
         assert f.sql('SELECT count(*) AS n FROM hb_delivery')['n'] == deliveries_before + 1
         assert f.sql('SELECT count(*) AS n FROM hb_work_report_reconciliation')['n'] == 0
         checks.append('All original work attempts/context/bindings preserved; one explicit synthetic later request only; zero work reports/acceptance/new native admissions from editing metadata')
+        audit = {'schema': 'synthetic-canonical-collaboration-evidence/v1', 'nativeFacts': 'SYNTHETIC ONLY',
+            'tables': {table: f.sql('SELECT * FROM ' + table + ' ORDER BY 1', many=True) for table in (
+                'hb_command', 'hb_native_effect', 'hb_activity', 'hb_path_claim', 'hb_edit_plan',
+                'hb_edit_plan_revision', 'hb_edit_consent', 'hb_edit_permit', 'hb_edit_file_lock',
+                'hb_physical_workspace', 'hb_physical_grant')}}
+        (f.out / 'canonical-audit.json').write_text(json.dumps(audit, indent=2, default=str) + '\n')
         result = {'state': 'passed', 'groups': checks, 'actualPostgreSQL': True, 'actualAuthenticatedHTTP': True,
             'nativeLifecycle': 'SYNTHETIC ONLY', 'nativeProof': False, 'httpRecords': len(f.trace), 'raceRecords': len(f.race),
             'positiveFixtureMutationCount': case['counter'], 'unknownFixtureMutationCount': unknown['counter']}

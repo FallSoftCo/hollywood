@@ -18,6 +18,7 @@ HEADER = "X-Hollywood-Native-Source"
 _request = contextvars.ContextVar("hollywood_native_request", default=None)
 
 BUSINESS = {
+    "physical_workspace", "physical_grant",
     "post", "workflow", "decision_write", "principal", "create_room",
     "membership", "placement", "role", "host_policy_set", "portfolio_policy_set",
     "cancel", "native_control_create", "communication_set",
@@ -34,6 +35,7 @@ METADATA = {
     "edit_plan_call", "mutation_observe",
 }
 EXCLUSIVE = {
+    "physical_workspace", "physical_grant",
     "principal", "membership", "placement", "role", "host_policy_set",
     "portfolio_policy_set", "cancel", "workflow", "executor_observe",
     "transition", "native_goal_binding",

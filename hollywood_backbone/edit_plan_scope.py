@@ -113,7 +113,7 @@ def validate_manifest(store, c, actor, work, goal, source, binding, manifest):
         need((file["beforeSha256"] != "absent" or file["beforeSize"] == 0)
              and (file["afterSha256"] != "absent" or file["afterSize"] == 0),
              "invalid_manifest", "Absent files have zero bytes")
-    plan = dict(authority=actor["authority"], host=source["hostId"], workspace_id=binding["workspace_id"])
+    plan = dict(authority=actor["authority"], host=binding["physical_host"], workspace_id=binding["physical_workspace_id"])
     # UUID values from SQL are compared through canonical JSON in this helper.
     result = claims_snapshot_json(c, plan, manifest)
     return result
@@ -132,10 +132,12 @@ def participant_fences(store, c, plan, manifest, rows, cleanup=False):
     for vote in rows:
         profile = c.execute("""SELECT 1 FROM hb_collaboration_bridge b JOIN hb_host_admission h
             ON h.host=b.host AND h.controller=b.controller WHERE b.host=%s AND b.controller=%s
-            AND b.revision=%s AND b.state='active' AND b.protocol='canonical-edit-plans/v1'""",
-            (vote["host"], vote["bridge"], vote["bridge_revision"])).fetchone()
+            AND b.revision=%s AND b.state='active' AND b.protocol='canonical-edit-plans/v2'""",
+            (vote["source"]["hostId"], vote["bridge"], vote["bridge_revision"])).fetchone()
         need(profile, "consent_changed", "Participant bridge enrollment was revoked or changed")
         source = vote["source"]
+        from .physical_workspaces import registered
+        registered(c, plan["authority"], source, vote["work"], vote["target"])
         actor = store.actor(c, source["agentId"])
         work, goal = claims.work_scope(store, c, actor, str(vote["work"]), cleanup=cleanup)
         need(goal["id"] == plan["goal"] and work["room"] == plan["room"]
@@ -151,7 +153,7 @@ def participant_fences(store, c, plan, manifest, rows, cleanup=False):
              JOIN hb_host_admission h ON h.host=d.host
              WHERE d.id=%s AND d.agent=%s AND d.host=%s AND x.workspace_id=%s
                AND x.context_id=%s AND x.role_revision=%s""",
-             (source["deliveryId"], actor["id"], vote["host"], vote["workspace_id"],
+             (source["deliveryId"], actor["id"], source["hostId"], vote["context_workspace"],
               source["contextId"], source["roleRevision"])).fetchone()
         need(row and not row["cancellation_requested"] and (cleanup or str(work["delivery"]) == source["deliveryId"]),
              "participant_unsettled", "Participant consent lineage changed")
@@ -189,7 +191,9 @@ def record(store, c, actor, source, payload, result, path, room, native=True):
     operation = payload["operationId"]
     result = json_value({**result, "mayApply": False, "newExecutionAdmitted": False})
     event = store.event(c, actor, room, "progress", "Canonical edit metadata recorded",
-                        source=source["requestId"], data={"editPlanReceipt": result})
+                        source=source["requestId"], **claims.protocol_audience(c, source),
+                        data={"type": "collaborationProtocol", "nativeAction": claims.action_reference(source, operation) if native else None,
+                            "evidenceOnly": not native, "editPlanReceipt": result})
     result["eventId"] = str(event)
     c.execute("UPDATE hb_event SET data=jsonb_set(data,'{editPlanReceipt}',%s) WHERE id=%s", (Jsonb(result), event))
     wire = {"method": "POST", "path": path, "body": payload}

@@ -4,6 +4,8 @@ Historical r01 stage: the inventory and claims contract below describe that cut.
 The implemented r02 [edit-plan lifecycle](native-edit-plan-lifecycle.md) supersedes
 its statements that canonical plans and permits are unavailable. Native bridge
 integration and child admission remain separate, unqualified dependencies.
+The r03 [registered physical-resource correction](physical-resource-authority.md)
+also supersedes private-context-derived namespace and receipt projection below.
 
 This is the first server stage, based on `56fb68c11a331905d9a81770dd8093a95deb4212`.
 It implements physical path claims, explicit handoff and canonical receipts.

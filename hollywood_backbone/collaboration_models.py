@@ -1,4 +1,4 @@
-"""Strict wire for the first canonical native collaboration port.
+"""Strict claim wire with registered per-action physical-resource attestation.
 
 The envelope is produced by a separately enrolled protected LAX bridge. Native
 tool arguments contain only `command`; source/physical identity is never theirs.
@@ -6,11 +6,9 @@ tool arguments contain only `command`; source/physical identity is never theirs.
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class Input(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+from pydantic import Field
+from .collaboration_models_base import Input
+from .physical_models import PhysicalTarget
 
 
 class BridgeConfiguration(Input):
@@ -18,7 +16,7 @@ class BridgeConfiguration(Input):
     revision: int = Field(ge=0, strict=True)
     controllerId: UUID
     state: Literal["active", "revoked"]
-    protocol: Literal["canonical-physical-claims/v1", "canonical-edit-plans/v1"]
+    protocol: Literal["canonical-physical-claims/v1", "canonical-edit-plans/v1", "canonical-edit-plans/v2"]
     adapterSha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     enrollmentSha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
@@ -69,6 +67,7 @@ class Inspect(Command):
 
 
 class CollaborationCall(Input):
+    target: PhysicalTarget
     operationId: str = Field(min_length=1, max_length=128)
     bridgeRevision: int = Field(ge=1, strict=True)
     source: dict

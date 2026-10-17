@@ -685,3 +685,29 @@ CREATE TABLE IF NOT EXISTS hb_edit_file_lock (
  PRIMARY KEY(authority,host,workspace_id,relative_path)
 );
 INSERT INTO hb_schema VALUES (24) ON CONFLICT DO NOTHING;
+
+-- Physical edited-resource identity is never the private execution workspace.
+CREATE TABLE IF NOT EXISTS hb_physical_workspace (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, host uuid NOT NULL,
+ revision bigint NOT NULL DEFAULT 1, state text NOT NULL CHECK(state IN ('active','revoked')),
+ root_path text NOT NULL, environment_sha256 text NOT NULL, root_identity_sha256 text NOT NULL,
+ registration_sha256 text NOT NULL,
+ FOREIGN KEY(authority,host) REFERENCES hb_host(authority,id),
+ UNIQUE(authority,host,root_identity_sha256)
+);
+CREATE TABLE IF NOT EXISTS hb_physical_grant (
+ workspace uuid NOT NULL REFERENCES hb_physical_workspace(id), work uuid NOT NULL REFERENCES hb_work(id),
+ owner uuid NOT NULL REFERENCES hb_principal(id), context_id text NOT NULL, execution_host uuid NOT NULL,
+ revision bigint NOT NULL DEFAULT 1, work_revision bigint NOT NULL,
+ state text NOT NULL CHECK(state IN ('active','revoked')), PRIMARY KEY(workspace,work)
+);
+ALTER TABLE hb_edit_consent ADD COLUMN IF NOT EXISTS context_workspace uuid;
+ALTER TABLE hb_edit_consent ADD COLUMN IF NOT EXISTS target jsonb;
+ALTER TABLE hb_path_claim ADD COLUMN IF NOT EXISTS target jsonb;
+CREATE INDEX IF NOT EXISTS hb_command_collaboration_action ON hb_command
+ ((wire_request->'body'->'source'->>'deliveryId'),
+  (wire_request->'body'->'source'->>'generation'),
+  (wire_request->'body'->'source'->>'nativeTurn'),
+  (wire_request->'body'->'source'->>'callId'))
+ WHERE wire_request->>'path' IN ('collaboration/path-claims','collaboration/edit-plans','collaboration/mutation-observations');
+INSERT INTO hb_schema VALUES (25) ON CONFLICT DO NOTHING;

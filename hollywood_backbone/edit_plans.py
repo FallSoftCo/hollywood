@@ -90,7 +90,7 @@ def consent(store, c, plan, version, relay, actor, source, binding, work, comman
     need(str(work["id"]) in members and command["manifestSha256"] == version["manifest_digest"]
          and command["sourceRevision"] == members[str(work["id"])]["sourceRevision"],
          "scope_mismatch", "Consent must bind exact participant/source/manifest")
-    if source["hostId"] == str(plan["host"]) and binding["workspace_id"] == plan["workspace_id"]:
+    if binding["physical_host"] == plan["host"] and binding["physical_workspace_id"] == plan["workspace_id"]:
         need(command["sourceRevision"] == manifest["sourceRevision"], "source_changed", "Same physical namespace must share the actual source revision")
     old = c.execute("SELECT * FROM hb_edit_consent WHERE plan=%s AND plan_revision=%s AND work=%s FOR UPDATE",
                     (plan["id"], plan["revision"], work["id"])).fetchone()
@@ -102,7 +102,7 @@ def consent(store, c, plan, version, relay, actor, source, binding, work, comman
              and digest(outstanding[0]["observation"]) == command["settlementDigest"],
              "observation_changed", "Fresh consent must name the exact stopped-executor observation")
         if old:
-            need(str(old["host"]) == source["hostId"] and old["workspace_id"] == binding["workspace_id"],
+            need(old["host"] == binding["physical_host"] and old["workspace_id"] == binding["physical_workspace_id"],
                  "scope_mismatch", "Settlement consent cannot move a participant namespace")
     else:
         need(plan["state"] in ("collecting", "ready"), "plan_closed", "Revise a settled/withdrawn plan before consent")
@@ -118,20 +118,21 @@ def consent(store, c, plan, version, relay, actor, source, binding, work, comman
              "consent_required", "Integrator must explicitly approve exact participant receipts last")
         foreign_work = {str(v["work"]) for v in peers if v["host"] != plan["host"] or v["workspace_id"] != plan["workspace_id"]}
         check_artifacts(command["imports"], [s for s in manifest["slices"] if s["workId"] in foreign_work])
-        need(source["hostId"] == str(plan["host"]) and binding["workspace_id"] == plan["workspace_id"],
+        need(binding["physical_host"] == plan["host"] and binding["physical_workspace_id"] == plan["workspace_id"],
              "scope_mismatch", "Integrator imports must be observed in the target namespace")
     else:
         need(not command["imports"] and command["participantConsentDigest"] is None,
              "scope_mismatch", "Only the integrator may attest imports/aggregate consent")
     c.execute("""INSERT INTO hb_edit_consent(plan,plan_revision,work,revision,active,source,host,workspace_id,
-        artifacts,imports,bridge,bridge_revision,peer_digest,settlement_digest) VALUES(%s,%s,%s,1,true,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        artifacts,imports,bridge,bridge_revision,peer_digest,settlement_digest,context_workspace,target) VALUES(%s,%s,%s,1,true,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         ON CONFLICT(plan,plan_revision,work) DO UPDATE SET revision=hb_edit_consent.revision+1,active=true,
         source=EXCLUDED.source,host=EXCLUDED.host,workspace_id=EXCLUDED.workspace_id,artifacts=EXCLUDED.artifacts,
         imports=EXCLUDED.imports,bridge=EXCLUDED.bridge,bridge_revision=EXCLUDED.bridge_revision,
-        peer_digest=EXCLUDED.peer_digest,settlement_digest=EXCLUDED.settlement_digest""",
-        (plan["id"], plan["revision"], work["id"], Jsonb(source), source["hostId"], binding["workspace_id"],
+        peer_digest=EXCLUDED.peer_digest,settlement_digest=EXCLUDED.settlement_digest,
+        context_workspace=EXCLUDED.context_workspace,target=EXCLUDED.target""",
+        (plan["id"], plan["revision"], work["id"], Jsonb(source), binding["physical_host"], binding["physical_workspace_id"],
          Jsonb(command["artifacts"]), Jsonb(command["imports"]), relay["id"], bridge_revision,
-         command["participantConsentDigest"], command["settlementDigest"]))
+         command["participantConsentDigest"], command["settlementDigest"], binding["workspace_id"], Jsonb(binding["physical_target"])))
     # Updating consent after reservation invalidates that admission, never its locks.
     if outstanding and not cleanup:
         c.execute("UPDATE hb_edit_permit SET state='held',revision=revision+1 WHERE plan=%s AND state IN ('reserved','executing')", (plan["id"],))
@@ -184,7 +185,7 @@ def mutate(store, c, relay, actor, source, binding, work, goal, payload):
         validate_manifest(store, c, actor, work, goal, source, binding, command["manifest"])
         plan = c.execute("""INSERT INTO hb_edit_plan(id,authority,goal,room,integrator_work,host,workspace_id)
             VALUES(%s,%s,%s,%s,%s,%s,%s) RETURNING *""", (command["planId"], actor["authority"], goal["id"],
-            work["room"], work["id"], source["hostId"], binding["workspace_id"])).fetchone()
+            work["room"], work["id"], binding["physical_host"], binding["physical_workspace_id"])).fetchone()
         c.execute("INSERT INTO hb_edit_plan_revision VALUES(%s,1,%s,%s,%s,clock_timestamp())",
                   (plan["id"], Jsonb(command["manifest"]), digest(command["manifest"]), Jsonb(source)))
         return {"plan": plan, "manifestSha256": digest(command["manifest"])}, None
@@ -204,8 +205,8 @@ def mutate(store, c, relay, actor, source, binding, work, goal, payload):
         c.execute("UPDATE hb_edit_plan SET state='collecting' WHERE id=%s", (plan["id"],))
         c.execute("UPDATE hb_edit_permit SET state='held',revision=revision+1 WHERE plan=%s AND state IN ('reserved','executing')", (plan["id"],))
     else:
-        need(work["id"] == plan["integrator_work"] and source["hostId"] == str(plan["host"])
-             and binding["workspace_id"] == plan["workspace_id"], "scope_mismatch", "Exact target integrator namespace required")
+        need(work["id"] == plan["integrator_work"] and binding["physical_host"] == plan["host"]
+             and binding["physical_workspace_id"] == plan["workspace_id"], "scope_mismatch", "Exact target integrator namespace required")
         if action in ("revise", "withdraw"):
             need(not pending(c, plan), "permit_held", "Settle original mutation before revising/withdrawing")
             if action == "withdraw":
@@ -233,7 +234,8 @@ def mutate(store, c, relay, actor, source, binding, work, goal, payload):
                     AND workspace_id=%s AND relative_path=%s""", (plan["authority"], plan["host"], plan["workspace_id"], file["relativePath"])).fetchone(),
                      "scope_busy", "Another unsettled all-file mutation owns this path")
             proof = {key: payload[key] for key in ("executorId", "descriptorDigest", "serviceBindingDigest")}
-            proof.update(hostId=source["hostId"], workspaceId=str(binding["workspace_id"]),
+            proof.update(hostId=str(binding["physical_host"]), workspaceId=str(binding["physical_workspace_id"]),
+                         target=payload["target"], contextWorkspaceId=str(binding["workspace_id"]),
                          manifestSha256=version["manifest_digest"], patchSha256=manifest["patchSha256"], claims=json_value(snapshots))
             permit = c.execute("""INSERT INTO hb_edit_permit(id,authority,plan,plan_revision,state,expires_at,
                 source,bridge,bridge_revision,proof,consent_digest) VALUES(%s,%s,%s,%s,'reserved',%s,%s,%s,%s,%s,%s) RETURNING *""",
@@ -300,7 +302,7 @@ def mutate(store, c, relay, actor, source, binding, work, goal, payload):
 
 
 def call(store, actor_id, payload):
-    payload = EditPlanCall.model_validate(payload).model_dump(mode="json")
+    payload = EditPlanCall.model_validate(payload).model_dump(mode="json", by_alias=True)
     need(len(json.dumps(payload).encode()) <= 16000, "request_too_large", "Bounded edit metadata exceeds limit")
     command = payload["command"]
     with store.pool.connection() as c:
@@ -314,6 +316,8 @@ def call(store, actor_id, payload):
         work, goal = claims.work_scope(store, c, actor, command["workId"], cleanup=cleanup)
         need(cleanup or str(work["delivery"]) == source["deliveryId"], "source_changed", "Current original owned work admission required")
         claims.decisions(c, work, command)
+        from .physical_workspaces import attest
+        binding = attest(c, relay, source, binding, payload, cleanup=command["action"] == "revoke")
         need(command["note"].strip(), "invalid_request", "Specific note required")
         old = original_command(c, actor, payload, PATH)
         if old:
@@ -326,7 +330,7 @@ def call(store, actor_id, payload):
 
 
 def observe(store, actor_id, payload):
-    payload = MutationObservation.model_validate(payload).model_dump(mode="json")
+    payload = MutationObservation.model_validate(payload).model_dump(mode="json", by_alias=True)
     with store.pool.connection() as c:
         relay = store.actor(c, actor_id)
         permit = c.execute("SELECT * FROM hb_edit_permit WHERE id=%s AND authority=%s FOR UPDATE",
@@ -351,6 +355,10 @@ def observe(store, actor_id, payload):
              and (resource["evidence"] or {}).get("serviceBindingDigest") == payload["serviceBindingDigest"] == permit["proof"]["serviceBindingDigest"],
              "executor_unsettled", "Original independently stopped executor/service binding required")
         plan = plan_row(c, relay["authority"], str(permit["plan"]))
+        from .physical_workspaces import attest
+        target_binding = attest(c, relay, source, {}, payload, work_id=str(plan["integrator_work"]), cleanup=True)
+        need(target_binding["physical_workspace_id"] == plan["workspace_id"] and target_binding["physical_host"] == plan["host"],
+             "scope_mismatch", "Observation must resolve original physical target")
         files = revision(c, plan)["manifest"]["files"]
         observed_scope(payload["filesObserved"], files)
         observation = {"outcome": payload["outcome"], "filesObserved": payload["filesObserved"],

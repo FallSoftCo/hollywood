@@ -101,6 +101,29 @@ async def main():
                 ('hb_work_attempt', 'hb_agent_context', 'hb_agent_execution')}
     baseline_deliveries = sql('SELECT count(*) AS n FROM hb_delivery')['n']
     checks = []
+    resources = {}
+    for agent in agents:
+        key = (agent['host']['id'], agent['workspace'])
+        if key not in resources:
+            resource = {'id': identity(), 'root': out / 'roots' / identity(), 'host': agent['host']['id']}
+            resource['root'].mkdir(parents=True)
+            st = resource['root'].stat()
+            resource['identity'] = digest([st.st_dev, st.st_ino])
+            resources[key] = resource
+        agent['resource'] = resources[key]
+
+    def attest(payload):
+        from hollywood_backbone.physical_workspaces import paths_for
+        agent = next(a for a in agents if a['id'] == payload['source']['agentId'])
+        resource = agent['resource']
+        with store.pool.connection() as connection:
+            paths = sorted(set(paths_for(connection, payload)))
+        payload['target'] = {'schema': 'hollywood-physical-target/v1', 'workspaceId': resource['id'],
+            'workspaceRevision': 1, 'grantRevision': 1, 'environmentSha256': 'c' * 64,
+            'rootIdentitySha256': resource['identity'], 'resolution': 'beneath-no-symlinks/v1',
+            'actionDigest': digest({k: v for k,v in payload.items() if k != 'target'}),
+            'paths': [{'relativePath': path, 'resolvedPath': str(resource['root']) + '/' + path} for path in paths]}
+        return payload
     runner = web.AppRunner(application(store))
     await runner.setup()
     site = web.TCPSite(runner, '127.0.0.1', 0)
@@ -133,10 +156,10 @@ async def main():
             return result
 
         def envelope(agent, cmd):
-            return {'operationId': identity(), 'bridgeRevision': 1,
+            return attest({'operationId': identity(), 'bridgeRevision': 1,
                 'source': {**agent['source'], 'callId': identity()}, 'executorId': agent['executor'],
                 'descriptorDigest': 'd' * 64, 'serviceBindingDigest': 'e' * 64,
-                'channel': 'captured-app-server-rpc/v1', 'command': cmd}
+                'channel': 'captured-app-server-rpc/v1', 'command': cmd})
 
         async def call(agent, cmd=None, body=None, status=200, token=None):
             return await http(token or agent['host']['token'], 'POST', 'collaboration/path-claims',
@@ -147,12 +170,22 @@ async def main():
             await call(a, status=403)
             for host in hosts.values():
                 policy = {'operationId': identity(), 'revision': 0, 'controllerId': host['controller'],
-                    'state': 'active', 'protocol': 'canonical-physical-claims/v1',
+                    'state': 'active', 'protocol': 'canonical-edit-plans/v2',
                     'adapterSha256': 'a' * 64, 'enrollmentSha256': 'b' * 64}
                 created = await http(credentials['Owner']['token'], 'PUT', f"hosts/{host['id']}/collaboration-bridge", policy)
                 assert await http(credentials['Owner']['token'], 'PUT', f"hosts/{host['id']}/collaboration-bridge", policy) == created
                 policy_read = await http(host['token'], 'GET', f"hosts/{host['id']}/collaboration-bridge")
-                assert policy_read['patchPermits'] is False and policy_read['nativeChildAdmission'] is False
+                assert policy_read['patchPermits'] is True and policy_read['nativeChildAdmission'] is False
+            for resource in resources.values():
+                await http(credentials['Owner']['token'], 'PUT',
+                    f"hosts/{resource['host']}/physical-workspaces/{resource['id']}", {
+                        'operationId': identity(), 'revision': 0, 'state': 'active', 'rootPath': str(resource['root']),
+                        'environmentSha256': 'c' * 64, 'rootIdentitySha256': resource['identity'],
+                        'registrationSha256': 'a' * 64})
+            for agent in agents:
+                await http(credentials['Owner']['token'], 'PUT',
+                    f"physical-workspaces/{agent['resource']['id']}/grants/{agent['work']}", {
+                        'operationId': identity(), 'revision': 0, 'workspaceRevision': 1, 'workRevision': 2, 'state': 'active'})
             await call(a, token=a['token'], status=403)
             await call(a, token=hosts['host2']['token'], status=403)
             spoofed = envelope(a, command(a))
@@ -207,7 +240,7 @@ async def main():
 
             shared = await call(a, command(a, relativePath='src/shared.py'))
             shared_id = shared['claim']['id']
-            await call(a, command(a, 'handoff', shared_id, 1, targetWorkId=d['work'], targetWorkRevision=2), status=409)
+            await call(a, command(a, 'handoff', shared_id, 1, targetWorkId=d['work'], targetWorkRevision=2), status=403)
             offered = await call(a, command(a, 'handoff', shared_id, 1, targetWorkId=b['work'], targetWorkRevision=2))
             assert offered['claim']['state'] == 'handoff' and offered['leaseUsableAtReceipt'] is False
             await call(a, command(a, 'renew', shared_id, 2), status=409)
@@ -325,7 +358,7 @@ async def main():
             checks.append('Current posting-right and placement revocation fence even original receipt replay')
 
             revoked = {'operationId': identity(), 'revision': 1, 'controllerId': a['host']['controller'],
-                'state': 'revoked', 'protocol': 'canonical-physical-claims/v1', 'adapterSha256': 'a' * 64, 'enrollmentSha256': 'b' * 64}
+                'state': 'revoked', 'protocol': 'canonical-edit-plans/v2', 'adapterSha256': 'a' * 64, 'enrollmentSha256': 'b' * 64}
             await http(credentials['Owner']['token'], 'PUT', f"hosts/{a['host']['id']}/collaboration-bridge", revoked)
             await call(a, body=original, status=403)
             await http(a['host']['token'], 'GET', f"collaboration/commands/{a['id']}/{original['operationId']}", status=403)
