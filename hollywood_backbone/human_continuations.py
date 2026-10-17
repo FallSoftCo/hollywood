@@ -1,0 +1,139 @@
+"""Human questions survive input handling; answers enter the same agent context.
+
+This extends the existing Attention and delivery records. It starts no runtime
+and never represents an accepted human reply as an agent or developer message.
+"""
+
+import json
+
+from .store import Conflict, Denied, uid
+
+QUESTION_METHODS = ("hollywood/question", "item/tool/requestUserInput")
+
+
+def nonblocking(row):
+    return row["method"] in QUESTION_METHODS and row["request"].get("isBlocking") is False
+
+
+def context(c, row):
+    original = c.execute(
+        "SELECT * FROM hb_agent_execution WHERE delivery=%s AND generation=%s",
+        (row["delivery"], row["generation"]),
+    ).fetchone()
+    current = c.execute(
+        "SELECT * FROM hb_agent_context WHERE principal=%s", (row["agent"],)
+    ).fetchone()
+    if (not original or not current
+            or original["principal"] != row["agent"]
+            or original["native_thread"] != row["native_thread"]
+            or current["native_thread"] != row["native_thread"]
+            or current["context_id"] != original["context_id"]):
+        raise Conflict("Original question context changed; explicit reconciliation required")
+    return current
+
+
+def accepting(c, row, delivery):
+    if delivery["cancellation_requested"]:
+        return False
+    if delivery["state"] in ("claimed", "running") or (
+            nonblocking(row) and delivery["state"] == "completed"):
+        if nonblocking(row):
+            context(c, row)
+        return True
+    return False
+
+
+def can_respond(store, c, actor, row, delivery):
+    question = row["method"] in QUESTION_METHODS
+    authorized = (actor["id"] == row["human"] or actor["administrator"])
+    if question:
+        authorized = authorized and actor["kind"] == "human"
+    try:
+        if not (authorized and row["state"] == "pending" and accepting(c, row, delivery)):
+            return False
+        if nonblocking(row):
+            store.room(c, actor, row["room"], "can_request")
+            target = store.actor(c, row["agent"])
+            if target["kind"] != "agent":
+                return False
+            store.room(c, target, row["room"])
+        return True
+    except (Conflict, Denied):
+        return False
+
+
+def enqueue(store, c, actor, row, delivery, response):
+    """Commit the authenticated answer and exactly one canonical queued input."""
+    if not nonblocking(row):
+        raise ValueError("Only a nonblocking question creates a continuation")
+    binding = context(c, row)
+    store.room(c, actor, row["room"], "can_request")
+    target = store.actor(c, row["agent"])
+    if target["kind"] != "agent":
+        raise Denied("Original question agent unavailable")
+    store.room(c, target, row["room"])
+    body = json.dumps({
+        "type": "hollywoodQuestionAnswer", "attentionId": str(row["id"]),
+        "answers": response["answers"],
+    })
+    if len(body.encode()) > 6000:
+        raise ValueError("Question answer exceeds the 6000-byte continuation limit")
+    event = store.event(
+        c, actor, row["room"], "request", body,
+        recipient=row["agent"], audience="direct", source=row["event"],
+        data={"type": "humanQuestionAnswer", "attentionId": str(row["id"]),
+              "originalDeliveryId": str(delivery["id"]),
+              "contextId": binding["context_id"]},
+    )
+    c.execute(
+        "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
+        (uid(), actor["authority"], event, row["agent"]),
+    )
+    return event
+
+
+def continuation(c, row):
+    if not nonblocking(row) or not row["response_event"]:
+        return None
+    value = c.execute(
+        "SELECT id,event,state,native_thread,native_turn FROM hb_delivery WHERE event=%s",
+        (row["response_event"],),
+    ).fetchone()
+    return dict(value) if value else None
+
+
+def settle(store, c, actor, delivery, state):
+    """Record reply input admission separately from the parent task's completion."""
+    rows = c.execute(
+        """SELECT * FROM hb_attention WHERE response_event=%s
+           AND state IN ('response_submitted','native_submitted') FOR UPDATE""",
+        (delivery["event"],),
+    ).fetchall()
+    for row in rows:
+        if not nonblocking(row):
+            continue
+        if state == "running":
+            if delivery["native_thread"] != row["native_thread"]:
+                raise Conflict("Question answer admitted to another native context")
+            after = "native_submitted"
+        elif state == "completed":
+            after = "closed"
+        elif state == "cancelled":
+            after = "expired"
+        elif state in ("failed", "unknown"):
+            after = "unknown"
+        else:
+            continue
+        if after == row["state"]:
+            continue
+        c.execute(
+            """UPDATE hb_attention SET state=%s,revision=revision+1,
+               updated_at=clock_timestamp() WHERE id=%s""", (after, row["id"]),
+        )
+        store.event(
+            c, actor, row["room"], "control", "Question answer input " + after,
+            recipient=row["human"], audience="direct", source=row["event"],
+            data={"attentionId": str(row["id"]), "state": after,
+                  "continuationDeliveryId": str(delivery["id"]),
+                  "semanticWorkCompletionProved": False},
+        )

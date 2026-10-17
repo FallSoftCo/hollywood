@@ -693,18 +693,21 @@ class Store:
                          count(*) FILTER (WHERE d.state='claimed') AS claimed,
                          count(*) FILTER (WHERE d.state='running') AS running,
                          count(*) FILTER (WHERE d.state='cancel_requested') AS cancelling,
-                         count(*) FILTER (WHERE d.state='unknown') AS unknown,
-                         count(*) FILTER (WHERE EXISTS(
-                           SELECT 1 FROM hb_attention h WHERE h.delivery=d.id
-                           AND h.generation=d.generation AND h.claim_id=d.claim_id
-                           AND h.state='pending' AND (%s OR h.human=%s)
-                         )) AS waiting
+                         count(*) FILTER (WHERE d.state='unknown') AS unknown
                        FROM hb_delivery d JOIN hb_event e ON e.id=d.event
                        JOIN readable_rooms r ON r.id=e.room
                        WHERE d.authority=%s
                        AND d.state IN ('pending','claimed','running','cancel_requested','unknown')
                        AND (%s OR e.audience='room' OR e.author=%s OR e.recipient=%s)
                        GROUP BY e.room
+                   ), waiting AS (
+                       SELECT h.room,count(DISTINCT h.delivery) AS waiting
+                       FROM hb_attention h JOIN hb_delivery d ON d.id=h.delivery
+                       JOIN readable_rooms r ON r.id=h.room
+                       WHERE h.authority=%s AND h.state='pending'
+                       AND h.generation=d.generation AND h.claim_id=d.claim_id
+                       AND (%s OR h.human=%s)
+                       GROUP BY h.room
                    )
                    SELECT r.*,jsonb_build_object(
                      'version',1,
@@ -714,14 +717,14 @@ class Store:
                      'running',coalesce(c.running,0),
                      'cancelRequested',coalesce(c.cancelling,0),
                      'unknown',coalesce(c.unknown,0),
-                     'waitingForHuman',coalesce(c.waiting,0)
+                     'waitingForHuman',coalesce(w.waiting,0)
                    ) AS activity
                    FROM readable_rooms r LEFT JOIN counts c ON c.room=r.id
-                   ORDER BY r.name""",
+                   LEFT JOIN waiting w ON w.room=r.id ORDER BY r.name""",
                 (
                     a["authority"], a["administrator"], a["id"],
-                    a["administrator"], a["id"],
                     a["authority"], a["administrator"], a["id"], a["id"],
+                    a["authority"], a["administrator"], a["id"],
                 ),
             ).fetchall()
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}
@@ -1205,6 +1208,13 @@ class Store:
                 "UPDATE hb_delivery SET state=%s,native_thread=COALESCE(%s,native_thread),native_turn=COALESCE(%s,native_turn),result_event=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
                 (state, payload.get("nativeThread"), payload.get("nativeTurn"), result, identity),
             )
+            from .human_continuations import settle as settle_human_continuation
+            settle_human_continuation(
+                self, c, a,
+                {**d, "native_thread": payload.get("nativeThread") or d["native_thread"],
+                 "native_turn": payload.get("nativeTurn") or d["native_turn"]},
+                state,
+            )
             if state == "cancelled":
                 acknowledge_cancellation(c, work)
             if terminal:
@@ -1214,16 +1224,18 @@ class Store:
             if terminal:
                 from .native_controls import terminal as settle_controls
                 settle_controls(self, c, a, d)
-                # Terminal execution cannot retain an actionable old native prompt.
-                # A submitted response's consumption remains a separate fact.
+                # Exact callbacks expire with execution. Nonblocking questions
+                # survive successful input handling and receive a later input.
                 c.execute(
                     """UPDATE hb_attention SET state=CASE
                           WHEN state='pending' THEN 'expired'
                           WHEN state='native_submitted' THEN 'closed'
                           ELSE 'unknown' END, revision=revision+1,updated_at=clock_timestamp()
                           WHERE delivery=%s AND generation=%s
-                          AND state IN ('pending','response_submitted','native_submitted')""",
-                    (identity, d["generation"]),
+                          AND state IN ('pending','response_submitted','native_submitted')
+                          AND NOT (%s AND method IN ('hollywood/question','item/tool/requestUserInput')
+                            AND request->>'isBlocking'='false')""",
+                    (identity, d["generation"], state == "completed"),
                 )
             if state == "unknown":
                 self.event(
@@ -1288,6 +1300,8 @@ class Store:
                 )
                 if state == "cancelled":
                     acknowledge_cancellation(c, work)
+                from .human_continuations import settle as settle_human_continuation
+                settle_human_continuation(self, c, a, d, state)
                 self.event(
                     c,
                     a,

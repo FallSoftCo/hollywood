@@ -1,6 +1,7 @@
 """Principal-scoped communication hints. Reads never admit or wake execution."""
 
 from .store import Conflict, Denied, json_value
+from .human_continuations import can_respond, nonblocking
 
 
 KINDS = ("message", "result", "question", "approval")
@@ -18,10 +19,14 @@ def hint(store, c, actor, event):
     revision = NOTIFICATION_POLICY_REVISION
     attention_id = None
     if attention:
-        revision = attention["revision"] + attention["delivery_revision"] + NOTIFICATION_POLICY_REVISION
+        # Ending an inference slice is not a new human question.
+        revision = attention["revision"] + NOTIFICATION_POLICY_REVISION
+        if not nonblocking(attention):
+            revision += attention["delivery_revision"]
         attention_id = attention["id"]
         if attention["human"] == actor["id"]:
-            if attention["state"] == "pending" and attention["delivery_state"] in ("claimed", "running"):
+            delivery = c.execute("SELECT * FROM hb_delivery WHERE id=%s", (attention["delivery"],)).fetchone()
+            if can_respond(store, c, actor, attention, delivery):
                 notify, reason = True, event["kind"]
             elif attention["state"] == "unknown" or attention["delivery_state"] == "unknown":
                 notify, reason = True, "unknown_delivery"

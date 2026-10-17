@@ -3,6 +3,7 @@
 from psycopg.types.json import Jsonb
 
 from .store import Conflict, Denied, digest, json_value
+from . import human_continuations as continuations
 
 TERMINAL = {"completed", "failed", "cancelled"}
 
@@ -69,6 +70,9 @@ def receipt(store, c, actor, row, delivery):
         "scope": scope(row, delivery),
         "deliveryState": delivery["state"],
         "nativeConsumptionProved": False,
+        "canRespond": continuations.can_respond(store, c, actor, row, delivery),
+        "responseMode": "same-agent-context-input" if continuations.nonblocking(row) else "native-callback",
+        "continuation": json_value(continuations.continuation(c, row)),
     }
 
 
@@ -169,6 +173,8 @@ def create(store, actor_id, identity, payload):
             ),
         )
         row = c.execute("SELECT * FROM hb_attention WHERE id=%s", (identity,)).fetchone()
+        if continuations.nonblocking(row):
+            continuations.context(c, row)
         return receipt(store, c, a, row, d)
 
 
@@ -240,7 +246,7 @@ def respond(store, actor_id, identity, operation, payload):
             return old["result"]
         if (
             row["state"] != "pending"
-            or d["state"] not in ("claimed", "running")
+            or not continuations.accepting(c, row, d)
             or d["generation"] != row["generation"]
         ):
             raise Conflict("Native attention is no longer pending")
@@ -251,17 +257,15 @@ def respond(store, actor_id, identity, operation, payload):
                 raise ValueError("Every original question needs an answer")
         elif response.get("decision") not in ("accept", "decline"):
             raise ValueError("This action accepts only accept or decline")
-        eid = store.event(
-            c,
-            a,
-            row["room"],
-            "control",
-            "Response accepted; native submission pending",
-            recipient=row["agent"],
-            audience="direct",
-            source=row["event"],
-            data={"attentionId": identity, "state": "response_submitted"},
-        )
+        if continuations.nonblocking(row):
+            eid = continuations.enqueue(store, c, a, row, d, response)
+        else:
+            eid = store.event(
+                c, a, row["room"], "control",
+                "Response accepted; native submission pending",
+                recipient=row["agent"], audience="direct", source=row["event"],
+                data={"attentionId": identity, "state": "response_submitted"},
+            )
         c.execute(
             "UPDATE hb_attention SET response=%s,response_author=%s,response_event=%s,state='response_submitted',revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
             (Jsonb(response), a["id"], eid, identity),
