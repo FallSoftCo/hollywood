@@ -14,6 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from .store import Conflict, Denied, Store, digest
 from . import native_effects
 from .collaboration_models import BridgeConfiguration, CollaborationCall
+from .edit_plan_models import EditPlanCall, MutationObservation
+from .edit_plan_scope import EditError
 
 
 class Input(BaseModel):
@@ -544,6 +546,42 @@ async def collaboration_command(request):
         raise ValueError("Unknown collaboration receipt query")
     return await invoke(request, "collaboration_command", str(UUID(request.match_info["agent"])),
                         request.match_info["operation"])
+
+
+async def edit_invoke(request, method, *args):
+    try:
+        return await invoke(request, method, *args)
+    except EditError as error:
+        return web.json_response({"error": error.code, "message": str(error), "mayApply": False,
+                                  "retry": "read-original-operation-or-reconcile"}, status=409)
+    except Denied:
+        return web.json_response({"error": "authority_denied", "mayApply": False}, status=403)
+    except Conflict:
+        return web.json_response({"error": "source_or_scope_changed", "mayApply": False}, status=409)
+    except (ValidationError, ValueError, TypeError, KeyError):
+        return web.json_response({"error": "invalid_edit_request", "mayApply": False}, status=400)
+
+
+async def edit_call_body(request, method, model):
+    try:
+        p = await body(request, model)
+    except (ValidationError, ValueError, TypeError):
+        return web.json_response({"error": "invalid_edit_request", "mayApply": False}, status=400)
+    return await edit_invoke(request, method, p.model_dump(mode="json"))
+
+
+async def edit_plan_call(request):
+    return await edit_call_body(request, "edit_plan_call", EditPlanCall)
+
+
+async def edit_plan_read(request):
+    if request.query:
+        raise ValueError("Unknown edit plan query")
+    return await edit_invoke(request, "edit_plan_read", str(UUID(request.match_info["plan"])))
+
+
+async def mutation_observe(request):
+    return await edit_call_body(request, "mutation_observe", MutationObservation)
 
 
 async def administrative_command(request):
@@ -1170,6 +1208,9 @@ def application(store):
             web.get("/hollywood/v3/hosts/{host}/collaboration-bridge", collaboration_bridge_read),
             web.post("/hollywood/v3/collaboration/path-claims", collaboration_call),
             web.get("/hollywood/v3/collaboration/commands/{agent}/{operation}", collaboration_command),
+            web.post("/hollywood/v3/collaboration/edit-plans", edit_plan_call),
+            web.get("/hollywood/v3/collaboration/edit-plans/{plan}", edit_plan_read),
+            web.post("/hollywood/v3/collaboration/mutation-observations", mutation_observe),
             web.get("/hollywood/v3/deliveries/{delivery}/native-effects", native_effect_list),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/executor", executor_begin),
             web.post(

@@ -41,12 +41,12 @@ def configure(c, actor, host, payload):
     if (old["revision"] if old else 0) != payload["revision"]:
         raise Conflict("Bridge enrollment revision changed")
     row = c.execute("""INSERT INTO hb_collaboration_bridge
-        (authority,host,controller,state,adapter_sha256,enrollment_sha256)
-        VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(host) DO UPDATE SET
+        (authority,host,controller,state,adapter_sha256,enrollment_sha256,protocol)
+        VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(host) DO UPDATE SET
         controller=EXCLUDED.controller,state=EXCLUDED.state,adapter_sha256=EXCLUDED.adapter_sha256,
-        enrollment_sha256=EXCLUDED.enrollment_sha256,revision=hb_collaboration_bridge.revision+1
+        enrollment_sha256=EXCLUDED.enrollment_sha256,protocol=EXCLUDED.protocol,revision=hb_collaboration_bridge.revision+1
         RETURNING *""", (actor["authority"], host, payload["controllerId"], payload["state"],
-                          payload["adapterSha256"], payload["enrollmentSha256"])).fetchone()
+                          payload["adapterSha256"], payload["enrollmentSha256"], payload["protocol"])).fetchone()
     return json_value({"schema": CAPABILITY, "bridge": row,
                        "meaning": "Administrator attests protected bridge installation; not native proof"})
 
@@ -69,17 +69,18 @@ def read_bridge(store, actor_id, host):
             bridge(c, actor, host)
         row = c.execute("SELECT * FROM hb_collaboration_bridge WHERE host=%s AND authority=%s",
                         (host, actor["authority"])).fetchone()
+        enabled = bool(row and row["state"] == "active" and row["protocol"] == "canonical-edit-plans/v1")
         return json_value({"schema": CAPABILITY, "bridge": row,
-            "implemented": ["physical-claims", "receipt-recovery"],
-            "editPlans": False, "patchPermits": False, "nativeChildAdmission": False,
+            "implemented": ["physical-claims", "receipt-recovery", "edit-plans", "mutation-permits", "stopped-observations"],
+            "editPlans": enabled, "patchPermits": enabled, "nativeChildAdmission": False,
             "activationRequiresProtectedBridgeProof": True})
 
 
-def participation(store, c, relay, payload):
+def participation(store, c, relay, payload, tools=None, patch_actions=None):
     source = native_effects.source(json.dumps(payload["source"]))
-    if source["schema"] != "hollywood-native-source/v2" or source["tool"] not in TOOLS:
+    if source["schema"] != "hollywood-native-source/v2" or source["tool"] not in (tools if tools is not None else TOOLS):
         raise Denied("Captured native collaboration callback required")
-    if source["tool"] == "apply_patch" and payload["command"]["action"] != "inspect":
+    if source["tool"] == "apply_patch" and payload["command"]["action"] not in (patch_actions if patch_actions is not None else {"inspect"}):
         raise Denied("Patch preflight cannot silently create ownership or an edit plan")
     bridge(c, relay, source["hostId"], payload["bridgeRevision"])
     actor = store.actor(c, source["agentId"])
@@ -170,6 +171,13 @@ def apply(store, c, actor, source, binding, work, goal, command):
     c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("paths:" + digest(namespace),))
     now = c.execute("SELECT clock_timestamp() AS value").fetchone()["value"]
     claim = c.execute("SELECT * FROM hb_path_claim WHERE id=%s FOR UPDATE", (identity,)).fetchone()
+    if action != "inspect":
+        path = canonical_path(command["relativePath"]) if action == "acquire" else claim["relative_path"] if claim else ""
+        kind = command["kind"] if action == "acquire" else claim["kind"] if claim else "file"
+        if c.execute("""SELECT 1 FROM hb_edit_file_lock WHERE authority=%s AND host=%s AND workspace_id=%s
+            AND (relative_path=%s OR (%s='directory' AND left(relative_path,length(%s)+1)=%s||'/')) LIMIT 1""",
+            (*namespace, path, kind, path, path)).fetchone():
+            raise Conflict("Unsettled all-file mutation holds claim metadata")
     if action == "acquire":
         if claim:
             raise Conflict("Claim identity already exists; inspect original receipt")
@@ -312,12 +320,15 @@ def read_command(store, actor_id, agent, operation):
         relay = store.actor(c, actor_id)
         row = c.execute("SELECT * FROM hb_command WHERE authority=%s AND principal=%s AND operation=%s",
                         (relay["authority"], agent, operation)).fetchone()
-        if not row or not (row["wire_request"] or {}).get("path") == "collaboration/path-claims":
+        if not row or (row["wire_request"] or {}).get("path") not in (
+                "collaboration/path-claims", "collaboration/edit-plans", "collaboration/mutation-observations"):
             raise Denied("Original collaboration receipt unavailable")
         original = row["wire_request"]["body"]
-        bridge(c, relay, original["source"]["hostId"])
-        actor = store.actor(c, agent)
-        store.readable_event(c, actor, row["event"])
+        observation = row["wire_request"]["path"] == "collaboration/mutation-observations"
+        bridge(c, relay, row["accepted_result"]["hostId"] if observation else original["source"]["hostId"])
+        if not observation:
+            actor = store.actor(c, agent)
+            store.readable_event(c, actor, row["event"])
         return json_value({"schema": "hollywood-command/v1", "authorityId": row["authority"],
                            "actorId": row["principal"], "operationId": operation, "eventId": row["event"],
                            "semanticDigest": row["digest"], "wireRequest": row["wire_request"],

@@ -638,3 +638,50 @@ CREATE TABLE IF NOT EXISTS hb_path_claim (
 );
 CREATE INDEX IF NOT EXISTS hb_path_claim_namespace ON hb_path_claim(authority,host,workspace_id,state);
 INSERT INTO hb_schema VALUES (23) ON CONFLICT DO NOTHING;
+
+-- Editing metadata references canonical work; no additional task lifecycle.
+ALTER TABLE hb_collaboration_bridge ADD COLUMN IF NOT EXISTS protocol text NOT NULL
+ DEFAULT 'canonical-physical-claims/v1';
+CREATE TABLE IF NOT EXISTS hb_edit_plan (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, goal uuid NOT NULL, room uuid NOT NULL,
+ integrator_work uuid NOT NULL, host uuid NOT NULL, workspace_id uuid NOT NULL,
+ revision bigint NOT NULL DEFAULT 1,
+ state text NOT NULL DEFAULT 'collecting' CHECK(state IN ('collecting','ready','settled','withdrawn')),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ FOREIGN KEY(authority,goal) REFERENCES hb_goal(authority,id),
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
+ FOREIGN KEY(authority,integrator_work) REFERENCES hb_work(authority,id),
+ FOREIGN KEY(authority,host) REFERENCES hb_host(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_edit_plan_revision (
+ plan uuid NOT NULL REFERENCES hb_edit_plan(id), revision bigint NOT NULL,
+ manifest jsonb NOT NULL, manifest_digest text NOT NULL, source jsonb NOT NULL,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(plan,revision)
+);
+CREATE TABLE IF NOT EXISTS hb_edit_consent (
+ plan uuid NOT NULL, plan_revision bigint NOT NULL, work uuid NOT NULL REFERENCES hb_work(id),
+ revision bigint NOT NULL, active boolean NOT NULL, source jsonb NOT NULL,
+ host uuid NOT NULL, workspace_id uuid NOT NULL, artifacts jsonb NOT NULL, imports jsonb NOT NULL,
+ bridge uuid NOT NULL, bridge_revision bigint NOT NULL,
+ peer_digest text, settlement_digest text,
+ PRIMARY KEY(plan,plan_revision,work),
+ FOREIGN KEY(plan,plan_revision) REFERENCES hb_edit_plan_revision(plan,revision)
+);
+CREATE TABLE IF NOT EXISTS hb_edit_permit (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, plan uuid NOT NULL, plan_revision bigint NOT NULL,
+ revision bigint NOT NULL DEFAULT 1,
+ state text NOT NULL CHECK(state IN ('reserved','executing','held','settled')),
+ expires_at timestamptz NOT NULL, source jsonb NOT NULL, bridge uuid NOT NULL,
+ bridge_revision bigint NOT NULL, proof jsonb NOT NULL, consent_digest text NOT NULL,
+ settlement jsonb, observation jsonb,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ FOREIGN KEY(plan,plan_revision) REFERENCES hb_edit_plan_revision(plan,revision),
+ FOREIGN KEY(authority,bridge) REFERENCES hb_principal(authority,id)
+);
+CREATE INDEX IF NOT EXISTS hb_edit_permit_plan ON hb_edit_permit(plan,state);
+CREATE TABLE IF NOT EXISTS hb_edit_file_lock (
+ authority uuid NOT NULL, host uuid NOT NULL, workspace_id uuid NOT NULL, relative_path text NOT NULL,
+ permit uuid NOT NULL REFERENCES hb_edit_permit(id),
+ PRIMARY KEY(authority,host,workspace_id,relative_path)
+);
+INSERT INTO hb_schema VALUES (24) ON CONFLICT DO NOTHING;

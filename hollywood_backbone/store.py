@@ -36,6 +36,18 @@ def json_value(value):
 
 
 class Store:
+    def edit_plan_call(self, actor_id, payload):
+        from .edit_plans import call
+        return call(self, actor_id, payload)
+
+    def edit_plan_read(self, actor_id, identity):
+        from .edit_plans import read
+        return read(self, actor_id, identity)
+
+    def mutation_observe(self, actor_id, payload):
+        from .edit_plans import observe
+        return observe(self, actor_id, payload)
+
     def collaboration_bridge(self, actor_id, host, payload, *, command=None):
         from .administrative import mutate
         return mutate(self, actor_id, "collaboration_bridge", [host, payload], command)

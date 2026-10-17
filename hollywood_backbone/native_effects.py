@@ -31,13 +31,16 @@ METADATA = {
     "attention_acknowledge", "review_dispatch", "supervision_ack",
     "portfolio_dispatch", "agent_execution_binding",
     "collaboration_call",
+    "edit_plan_call", "mutation_observe",
 }
 EXCLUSIVE = {
     "principal", "membership", "placement", "role", "host_policy_set",
     "portfolio_policy_set", "cancel", "workflow", "executor_observe",
     "transition", "native_goal_binding",
     "collaboration_call", "collaboration_bridge",
+    "edit_plan_call", "mutation_observe",
 }
+FENCED_READS = {"edit_plan_read"}
 FIELDS = {
     "schema", "authorityId", "agentId", "hostId", "deliveryId", "claimId",
     "generation", "requestId", "nativeThread", "nativeTurn", "callId", "tool",
@@ -111,10 +114,10 @@ def enter(c, identity):
     if not principal:
         raise Denied("Principal inactive")
     write = request is None or request["method"] != "GET"
-    if write:
-        if request and request["action"] not in BUSINESS | METADATA:
+    if write or request and request["action"] in FENCED_READS:
+        if write and request and request["action"] not in BUSINESS | METADATA:
             raise Conflict("Mutation transport upgrade required")
-        exclusive = request is None or request["action"] in EXCLUSIVE
+        exclusive = write and (request is None or request["action"] in EXCLUSIVE)
         function = "pg_advisory_xact_lock" if exclusive else "pg_advisory_xact_lock_shared"
         c.execute("SELECT " + function + "(hashtextextended(%s,0))",
                   ("native-authority:" + str(principal["authority"]),))

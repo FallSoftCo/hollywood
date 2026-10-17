@@ -3,6 +3,7 @@
 Existing dependencies only. No native/controller/model process is started.
 """
 import getpass
+import argparse
 import json
 import os
 import subprocess
@@ -20,12 +21,17 @@ def write(path, value):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--scenario', choices=('claims', 'edit-plans'), default='claims')
+    args = parser.parse_args()
     os.umask(0o077)
     fs = os.statvfs('/aosp')
     free = fs.f_bavail * fs.f_frsize
     if free < 80 * 1024**3:
         raise RuntimeError('80GiB hard reserve unmet')
-    root = Path(tempfile.mkdtemp(prefix='fresh-claims-', dir=AREA))
+    area = AREA / 'r02' if args.scenario == 'edit-plans' else AREA
+    area.mkdir(exist_ok=True)
+    root = Path(tempfile.mkdtemp(prefix='fresh-plans-' if args.scenario == 'edit-plans' else 'fresh-claims-', dir=area))
     tmp = root / 'tmp'
     tmp.mkdir()
     sock = Path(tempfile.mkdtemp(prefix='.c-', dir=SOURCE))
@@ -60,7 +66,8 @@ def main():
         token = ticks(pid)
         lifecycle.update(pid=pid, startTicks=token)
         run([str(binary / 'createdb'), '-h', str(sock), '-p', str(config['port']), '-U', config['user'], config['dbname']], 'createdb')
-        run([PYTHON, str(SOURCE / 'tests/integration_canonical_collaboration.py')], 'integration')
+        test = 'integration_edit_plans.py' if args.scenario == 'edit-plans' else 'integration_canonical_collaboration.py'
+        run([PYTHON, str(SOURCE / 'tests' / test)], 'integration')
         write(root / 'status.json', {'state': 'passed', 'nativeProof': False})
     except BaseException as error:
         write(root / 'status.json', {'state': 'failed_or_held', 'error': str(error), 'nativeProof': False})
