@@ -18,6 +18,7 @@ HEADER = "X-Hollywood-Native-Source"
 _request = contextvars.ContextVar("hollywood_native_request", default=None)
 
 BUSINESS = {
+    "report_scope_read",
     "physical_workspace", "physical_grant",
     "post", "workflow", "decision_write", "principal", "create_room",
     "membership", "placement", "role", "host_policy_set", "portfolio_policy_set",
@@ -35,6 +36,7 @@ METADATA = {
     "edit_plan_call", "mutation_observe",
 }
 EXCLUSIVE = {
+    "report_scope_read",
     "physical_workspace", "physical_grant",
     "principal", "membership", "placement", "role", "host_policy_set",
     "portfolio_policy_set", "cancel", "workflow", "executor_observe",
@@ -231,10 +233,10 @@ def validate(c, actor, value):
         raise Conflict("Original executor is not independently live")
 
 
-def current_participation(c, actor):
+def current_participation(c, actor, *, actions=frozenset({"workflow"})):
     """Use authenticated live transport scope, never reconciliation caller hints."""
     request = _request.get()
-    if (not request or not request["entered"] or request["action"] != "workflow"
+    if (not request or not request["entered"] or request["action"] not in actions
             or request["actor"] != str(actor["id"]) or not request["source"]):
         raise Denied("Authenticated current native participation required")
     # Validate again at the mutation point under the same authority fence.

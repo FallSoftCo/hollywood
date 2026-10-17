@@ -36,6 +36,10 @@ def json_value(value):
 
 
 class Store:
+    def report_scope_read(self, actor_id, identity, payload, *, wire=None):
+        from .report_scope import read
+        return read(self, actor_id, identity, payload, wire=wire)
+
     def physical_workspace(self, actor_id, host, identity, payload, *, command=None):
         from .administrative import mutate
         return mutate(self, actor_id, "physical_workspace", [host, identity, payload], command)
@@ -842,6 +846,7 @@ class Store:
             "all": "",
             "conversation": " AND data->>'type' IS DISTINCT FROM 'executionActivity'"
                 " AND data->>'type' IS DISTINCT FROM 'collaborationProtocol'"
+                " AND data->>'type' IS DISTINCT FROM 'reportScopeProtocol'"
                 " AND NOT (kind='progress' AND (data ? 'collaborationReceipt' OR data ? 'editPlanReceipt'))",
             "activity": " AND data->>'type' = 'executionActivity'",
         }

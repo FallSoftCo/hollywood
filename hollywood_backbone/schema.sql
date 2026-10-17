@@ -711,3 +711,19 @@ CREATE INDEX IF NOT EXISTS hb_command_collaboration_action ON hb_command
   (wire_request->'body'->'source'->>'callId'))
  WHERE wire_request->>'path' IN ('collaboration/path-claims','collaboration/edit-plans','collaboration/mutation-observations');
 INSERT INTO hb_schema VALUES (25) ON CONFLICT DO NOTHING;
+
+-- Issuance/HTTP coverage of original-scope snapshots is not model-read proof.
+CREATE TABLE IF NOT EXISTS hb_report_scope_read (
+ id uuid PRIMARY KEY, authority uuid NOT NULL, principal uuid NOT NULL, work uuid NOT NULL,
+ prior_delivery uuid NOT NULL, reader jsonb NOT NULL, scope jsonb NOT NULL,
+ decisions jsonb NOT NULL, decision_scopes jsonb NOT NULL, as_of_sequence bigint NOT NULL,
+ decision_sequence bigint NOT NULL, original_room_sequence bigint NOT NULL,
+ snapshot_sha256 text NOT NULL, scope_sha256 text NOT NULL, decisions_sha256 text NOT NULL,
+ covered_count integer NOT NULL DEFAULT 0, complete boolean NOT NULL DEFAULT false,
+ revision bigint NOT NULL DEFAULT 0, issued_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ expires_at timestamptz NOT NULL DEFAULT (clock_timestamp()+interval '15 minutes'),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,work) REFERENCES hb_work(authority,id),
+ FOREIGN KEY(prior_delivery) REFERENCES hb_delivery(id)
+);
+INSERT INTO hb_schema VALUES (26) ON CONFLICT DO NOTHING;

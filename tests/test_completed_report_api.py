@@ -13,7 +13,9 @@ from hollywood_backbone.store import Denied
 
 def report():
     return {"operationId": "wire-reconcile", "revision": 2,
-            "priorDeliveryId": str(uuid4()), "state": "submitted",
+            "priorDeliveryId": str(uuid4()), "scopeRead": {"schema": "completed-report-scope-proof/v1",
+                "readId": str(uuid4()), "revision": 1, "snapshotSha256": "a" * 64,
+                "scopeSha256": "b" * 64, "decisionsSha256": "c" * 64, "complete": True}, "state": "submitted",
             "effectDisposition": "reviewed", "note": "Original effects inspected.",
             "evidence": [{"hostId": str(uuid4()), "workspaceId": str(uuid4()),
                           "relativePath": "result.json", "sha256": "a" * 64, "size": 12}]}
@@ -32,7 +34,7 @@ class PathBoundary(unittest.TestCase):
     def test_effect_attestation_and_no_original_live_claim_fields(self):
         value = report()
         WorkReportReconcile.model_validate(value)
-        for field in ("effectDisposition", "priorDeliveryId"):
+        for field in ("effectDisposition", "priorDeliveryId", "scopeRead"):
             bad = dict(value)
             del bad[field]
             with self.assertRaises(ValueError):

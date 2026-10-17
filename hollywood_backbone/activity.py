@@ -10,14 +10,14 @@ def action_identity(delivery, generation, turn, item):
 
 def project(event, c=None, viewer=None):
     """Add read metadata to old records without rewriting their original receipts."""
-    if (event['data'].get('type') == 'collaborationProtocol' or event['kind'] == 'progress'
+    if (event['data'].get('type') in ('collaborationProtocol', 'reportScopeProtocol') or event['kind'] == 'progress'
             and ('collaborationReceipt' in event['data'] or 'editPlanReceipt' in event['data'])):
         command = c.execute('SELECT principal,operation,wire_request FROM hb_command WHERE event=%s',
                             (event['id'],)).fetchone() if c is not None else None
         return {**event, 'projection': {'kind': 'protocolAudit', 'conversation': False, 'actionCard': False,
             'eventId': str(event['id']), 'actorId': str(event['author']),
             'operationId': command['operation'] if command else None,
-            'source': command['wire_request']['body'].get('source') if command else None,
+            'source': (command['wire_request'].get('nativeSource') or command['wire_request']['body'].get('source')) if command else None,
             'receiptOnly': True}}
     if event["data"].get("type") != "executionActivity":
         return event

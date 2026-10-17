@@ -132,7 +132,6 @@ def fences(store, c, actor, work, goal, payload, source):
 
 
 def reconcile(store, actor_id, identity, operation, payload, *, wire=None):
-    from .memory import current_sequence
     from .work import work_row
 
     key = digest({"workflow": ACTION, "identity": identity, **payload})
@@ -168,12 +167,10 @@ def reconcile(store, actor_id, identity, operation, payload, *, wire=None):
         if (work["state"] != "assigned" or work["report_event"] or work["evidence"]
                 or attempt["report_event"] or attempt["evidence"] or attempt["review_event"]):
             raise Conflict("Only an unreported latest assignment may reconcile")
-        latest = current_sequence(c, work["room"], work["goal"])
-        head = c.execute("SELECT next_seq FROM hb_authority WHERE id=%s",
-                         (actor["authority"],)).fetchone()["next_seq"]
-        seen = payload.get("briefingSequence")
-        if (seen is not None and (seen < latest or seen > head)) or (latest and seen is None):
-            raise Conflict("Read current original-room/work decisions before reconciliation")
+        from .report_scope import verify
+        scope_evidence = verify(store, c, actor, work, goal, prior, attempt, binding, source, payload.get("scopeRead"))
+        # Only server-verified ORIGINAL-room decision sequence feeds legacy review.
+        seen = scope_evidence["originalRoomDecisionSequence"]
         unresolved = {
             "attention": [str(x["id"]) for x in c.execute(
                 "SELECT id FROM hb_attention WHERE delivery=%s AND state NOT IN ('closed','expired')",
@@ -193,7 +190,7 @@ def reconcile(store, actor_id, identity, operation, payload, *, wire=None):
         ):
             raise Conflict("Submission needs evidence and explicit effect review without unresolved controls")
         audit = json_value({
-            "schema": "completed-work-report-reconciliation/v1",
+            "schema": "completed-work-report-reconciliation/v2",
             "priorDeliveryId": prior["id"], "originalRequestId": prior["event"],
             "originalResultEventId": prior["result_event"], "attemptNumber": attempt["number"],
             "originalGeneration": prior["generation"], "originalContextId": binding["context_id"],
@@ -203,6 +200,7 @@ def reconcile(store, actor_id, identity, operation, payload, *, wire=None):
             "unresolvedEffects": unresolved, "note": payload["note"],
             "evidence": payload["evidence"], "briefingSequence": seen,
             "originalBriefingSequence": attempt["briefing_sequence"],
+            "callerBriefingSequence": payload.get("briefingSequence"), "scopeVerification": scope_evidence,
             "attestation": "Current owner attests effect review; stopped/completed alone proves no effect outcome. Connector hashes bytes on original pinned host/workspace; server verifies scope, not remote filesystem bytes.",
             "newExecutionAdmitted": False, "originalAttemptPreserved": True,
         })

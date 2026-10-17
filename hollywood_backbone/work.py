@@ -477,6 +477,9 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                            WHERE a.delivery=%s""",
                         (work["delivery"],),
                     ).fetchone()
+                    if attempt and attempt["reconciliation_event"] == work["report_event"]:
+                        from .report_scope import verify_review
+                        verify_review(store, c, a, work, goal, attempt["reconciliation"])
                     # A later report's decision read belongs to its additive audit,
                     # never to the original attempt's historical briefing field.
                     report_sequence = (

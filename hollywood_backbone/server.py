@@ -17,6 +17,8 @@ from .collaboration_models import BridgeConfiguration, CollaborationCall
 from .edit_plan_models import EditPlanCall, MutationObservation
 from .edit_plan_scope import EditError
 from .physical_models import WorkspaceConfiguration, WorkspaceGrant
+from .report_scope_models import ReportScopeRead, ReportScopeProof
+from .report_scope import ScopeError
 
 
 class Input(BaseModel):
@@ -399,6 +401,7 @@ class WorkReport(WorkflowRevision):
 
 
 class WorkReportReconcile(WorkflowRevision):
+    scopeRead: ReportScopeProof
     priorDeliveryId: UUID
     briefingSequence: int | None = Field(default=None, ge=0, le=9007199254740991)
     state: Literal["submitted", "blocked"]
@@ -486,7 +489,7 @@ async def body(request, model):
 
 async def invoke(request, method, *args):
     kwargs = {}
-    if method in ("post", "workflow", "decision_write"):
+    if method in ("post", "workflow", "decision_write", "report_scope_read"):
         kwargs["wire"] = {
             "method": request.method,
             "path": request.path.removeprefix("/hollywood/v3/"),
@@ -1043,6 +1046,30 @@ async def attention_command(request):
     )
 
 
+async def report_invoke(request, method, *args):
+    try:
+        return await invoke(request, method, *args)
+    except ScopeError as error:
+        return web.json_response({"error": error.code, "message": str(error),
+            "newExecutionAdmitted": False, "receiptOnly": True}, status=409)
+    except Denied:
+        return web.json_response({"error": "authority_denied", "newExecutionAdmitted": False, "receiptOnly": True}, status=403)
+    except Conflict as error:
+        return web.json_response({"error": "source_or_scope_changed", "message": str(error),
+            "newExecutionAdmitted": False, "receiptOnly": True}, status=409)
+    except (ValidationError, ValueError, TypeError, KeyError):
+        return web.json_response({"error": "invalid_scope_request", "newExecutionAdmitted": False, "receiptOnly": True}, status=400)
+
+
+async def report_scope_read(request):
+    try:
+        p = await body(request, ReportScopeRead)
+    except (ValidationError, ValueError, TypeError):
+        return web.json_response({"error": "invalid_scope_request", "newExecutionAdmitted": False, "receiptOnly": True}, status=400)
+    return await report_invoke(request, "report_scope_read", str(UUID(request.match_info["work"])),
+                               p.model_dump(mode="json", by_alias=True))
+
+
 async def workflow(request):
     action = request.match_info["action"]
     model = {
@@ -1055,8 +1082,13 @@ async def workflow(request):
         "revise": WorkRevise,
         "recover": WorkRecover,
     }[action]
-    p = await body(request, model)
-    payload = p.model_dump(mode="json", exclude={"operationId"})
+    try:
+        p = await body(request, model)
+    except (ValidationError, ValueError, TypeError):
+        if action != "report-reconcile":
+            raise
+        return web.json_response({"error": "invalid_scope_request", "newExecutionAdmitted": False, "receiptOnly": True}, status=400)
+    payload = p.model_dump(mode="json", by_alias=True, exclude={"operationId"})
     if action == "report-reconcile":
         from .report_reconciliation import evidence_paths
 
@@ -1068,7 +1100,7 @@ async def workflow(request):
             path = PurePosixPath(evidence["relativePath"])
             if path.is_absolute() or ".." in path.parts or "\\" in evidence["relativePath"]:
                 raise ValueError("Evidence requires a relative workspace path")
-    return await invoke(
+    return await (report_invoke if action == "report-reconcile" else invoke)(
         request,
         "workflow",
         "work." + action.replace("-", "_"),
@@ -1257,6 +1289,7 @@ def application(store):
             web.get("/hollywood/v3/rooms/{room}/decisions", decisions),
             web.post("/hollywood/v3/rooms/{room}/decisions", decisions),
             web.get("/hollywood/v3/connector/deliveries/{delivery}/briefing", briefing),
+            web.post("/hollywood/v3/work/{work}/report-briefing", report_scope_read),
             web.post(
                 "/hollywood/v3/work/{work}/{action:assign|claim|report|report-reconcile|review|cancel|revise|recover}",
                 workflow,
