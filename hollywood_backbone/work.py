@@ -426,6 +426,9 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                     raise Conflict("Work no longer accepts a report")
                 if any(e["hostId"] != str(d["host"]) for e in payload["evidence"]):
                     raise Denied("Artifact host differs from execution host")
+                from .artifact_roots import validate as validate_artifact_roots
+
+                validate_artifact_roots(c, a, d, payload["evidence"])
                 if payload["state"] == "submitted" and not payload["evidence"]:
                     raise Conflict("Submitted work requires evidence")
                 if payload["state"] == "submitted":

@@ -78,6 +78,7 @@ def read_bridge(store, actor_id, host):
             "workDeliveryEdits": enabled, "workDeliveryEditPolicy": "canonical-work-delivery-edits/v1",
             "agentResourceGrants": True,
             "resourceRouting": "canonical-agent-resources/v1", "resourceDefaults": True, "resourceMetadata": True, "readOnlyResourceDefaults": True, "agentOriginGoals": True, "deliveryEditReconciliation": True, "scopedGoalOrigins": True,
+            "artifactResourceEvidence": True, "artifactRootPolicy": "hollywood-artifact-root/v1",
             "placementControl": "canonical-placement-control/v1", "pausedResourceSetup": True,
             "legacyImplicitContextMutations": False, "activationRequiresProtectedBridgeProof": True})
 

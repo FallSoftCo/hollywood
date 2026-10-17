@@ -22,6 +22,7 @@ from .placement_models import PlacementState
 from .resource_models import ResourceDefault
 from .report_scope_models import ReportScopeRead, ReportScopeProof
 from .report_scope import ScopeError
+from .artifact_roots import ArtifactRoot
 
 
 class Input(BaseModel):
@@ -388,6 +389,7 @@ class CooperationChange(WorkflowRevision):
 
 
 class ArtifactEvidence(Input):
+    artifactRoot: ArtifactRoot | None = None
     hostId: UUID
     workspaceId: UUID
     relativePath: str = Field(min_length=1, max_length=2048)
@@ -1173,6 +1175,10 @@ async def workflow(request):
             raise
         return web.json_response({"error": "invalid_scope_request", "newExecutionAdmitted": False, "receiptOnly": True}, status=400)
     payload = p.model_dump(mode="json", by_alias=True, exclude={"operationId"})
+    if action in ("report", "report-reconcile"):
+        from .artifact_roots import normalize
+
+        normalize(payload["evidence"])
     if action == "report-reconcile":
         from .report_reconciliation import evidence_paths
 

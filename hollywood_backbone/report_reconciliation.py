@@ -127,6 +127,9 @@ def fences(store, c, actor, work, goal, payload, source):
     if any(e["hostId"] != str(prior["host"])
            or e["workspaceId"] != str(original["workspace_id"]) for e in payload["evidence"]):
         raise Denied("Evidence differs from original host/workspace")
+    from .artifact_roots import validate as validate_artifact_roots
+
+    validate_artifact_roots(c, actor, prior, payload["evidence"])
     evidence_paths(payload["evidence"])
     return prior, attempt, original
 
