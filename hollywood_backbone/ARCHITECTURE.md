@@ -15,7 +15,8 @@ prevent other agents from participating.
 
 Passive messages retain actual human/agent authorship and never admit a model.
 Explicit requests address an authorized agent and create a durable delivery.
-Native tool data preserves peer authority separately from human input.
+LAX consumes verified peer deliveries as primary agent-authored input, separately
+from human input. A passive history/tool read does not itself admit execution.
 
 An agent can explicitly request a completion reply. Its terminal result and one
 peer-completion delivery commit together in the original transition transaction.
@@ -74,3 +75,11 @@ Existing context adoption is explicit and retains every prior native history.
 A runtime downgrade after new cross-room effects requires draining and explicit
 context reconciliation; do not erase service state or replay requests to make
 an older runtime appear healthy.
+
+Admission pause and workspace identity: a same-host placement pause blocks new
+execution admission and temporarily holds resource use. It retains the explicit
+workspace routing choice and its revision. Re-enabling the same placement
+restores routing only if current principal, root and grant authorization still
+passes. Principal deactivation, enrollment deletion and host movement retain
+permanent participation holds; migrations preserve existing holds until an
+administrator explicitly reselects through the normal CAS API.

@@ -911,3 +911,27 @@ DROP TRIGGER IF EXISTS hb_goal_control_epoch ON hb_goal;
 CREATE TRIGGER hb_goal_control_epoch BEFORE UPDATE ON hb_goal
  FOR EACH ROW EXECUTE FUNCTION hb_goal_control_epoch();
 INSERT INTO hb_schema VALUES (32) ON CONFLICT DO NOTHING;
+
+
+-- Admission pause is scheduling, not identity or resource revocation. Keep the
+-- routing choice while paused; live authorization still rejects paused use.
+-- Detachment, host movement and principal deactivation retain permanent holds.
+-- Existing holds remain historical evidence and require explicit reselection.
+CREATE OR REPLACE FUNCTION hb_resource_default_invalidate() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF TG_TABLE_NAME='hb_principal' THEN
+  IF OLD.active AND NOT NEW.active THEN
+   INSERT INTO hb_resource_default_hold(principal,execution_host,revision,reason)
+    SELECT principal,execution_host,revision,'participation-invalidated' FROM hb_resource_default
+     WHERE principal=OLD.id AND state='selected' ON CONFLICT DO NOTHING;
+  END IF;
+ ELSE
+  IF TG_OP='DELETE' OR NEW.host<>OLD.host THEN
+   INSERT INTO hb_resource_default_hold(principal,execution_host,revision,reason)
+    SELECT principal,execution_host,revision,'participation-invalidated' FROM hb_resource_default
+     WHERE principal=OLD.agent AND execution_host=OLD.host AND state='selected' ON CONFLICT DO NOTHING;
+  END IF;
+ END IF;
+ RETURN NULL;
+END $$;
+INSERT INTO hb_schema VALUES (33) ON CONFLICT DO NOTHING;
