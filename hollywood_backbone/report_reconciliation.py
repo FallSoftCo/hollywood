@@ -178,11 +178,7 @@ def reconcile(store, actor_id, identity, operation, payload, *, wire=None):
             "controls": [str(x["id"]) for x in c.execute(
                 "SELECT id FROM hb_native_control WHERE delivery=%s AND state NOT IN ('native_recorded','rejected')",
                 (prior["id"],)).fetchall()],
-            "decisions": [str(x["id"]) for x in c.execute(
-                """SELECT d.id FROM hb_decision d JOIN hb_decision_revision v
-                     ON v.decision=d.id AND v.revision=d.revision
-                   WHERE d.room=%s AND (d.goal IS NULL OR d.goal=%s) AND v.state='conflicted'""",
-                (work["room"], work["goal"])).fetchall()],
+            "decisions": [d["id"] for d in scope_evidence["decisions"] if d["state"] == "conflicted"],
         }
         if payload["state"] == "submitted" and (
             not payload["evidence"] or payload["effectDisposition"] != "reviewed"

@@ -94,6 +94,9 @@ current independently live execution, current original work owner, cooperation,
 posting/reading in original and current rooms, private context, role/placement,
 present cancellation and competing execution fences remain required. Reading the
 prior scope never changes active participation or re-admits the old assignment.
+Submission also holds on conflicted decisions anywhere in the exact verified
+scope, including the parent-goal room. A complete read of a conflict is evidence
+of that conflict, not permission to submit past it.
 
 For new reconciliations the server derives `briefingSequence` from the verified
 original work-room snapshot. An optional caller scalar is recorded separately as

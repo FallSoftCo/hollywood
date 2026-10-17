@@ -116,6 +116,15 @@ async def main():
         assert f.sql('SELECT count(*) AS n FROM hb_activity')['n']==0
         checks.append('Scope pages are immutable private audit/command evidence, absent from conversation and foreign-member audit; no native lifecycle/action/card is fabricated')
 
+        await f.decision(a,'global','goal-requirement',revision=1,identity=parent,goal=f.ids['goal'],state='conflicted')
+        conflicted=await f.read(a)
+        assert any(d['id']==parent and d['state']=='conflicted' for d in conflicted['decisions'])
+        await f.report(a,f.report_body(a,conflicted['scopeRead']),status=409)
+        assert f.sql('SELECT count(*) AS n FROM hb_work_report_reconciliation')['n']==0
+        await f.decision(a,'global','goal-requirement',revision=2,identity=parent,goal=f.ids['goal'])
+        current=await f.read(a)
+        checks.append('A complete fresh snapshot containing a conflicted parent-goal decision cannot authorize submitted evidence; unresolved conflicts cover the same exact verified scopes')
+
         submitted_body=f.report_body(a,current['scopeRead'],briefingSequence=b['asOfSequence'])
         submitted_source=f.source(a,'hollywood_work_report_reconcile')
         report=await f.report(a,submitted_body,submitted_source)
@@ -148,7 +157,7 @@ async def main():
         await f.api('owner','POST',f"work/{p['work']}/review", {'operationId':uid(),'revision':3,'decision':'accepted',
             'note':'SYNTHETIC legacy unscoped receipt cannot become new acceptance'},status=409)
         f.sql('UPDATE hb_work_report_reconciliation SET evidence=%s WHERE delivery=%s',(Jsonb(peer_report['reconciliation']),p['prior']))
-        await f.decision(a,'global','goal-requirement',revision=1,identity=parent,goal=f.ids['goal'])
+        await f.decision(a,'global','goal-requirement',revision=3,identity=parent,goal=f.ids['goal'])
         await f.api('owner','POST',f"work/{p['work']}/review", {'operationId':uid(),'revision':3,'decision':'accepted','note':'SYNTHETIC parent-goal decision changed after report'},status=409)
         assert f.sql('SELECT state FROM hb_work WHERE id=%s',(p['work'],))['state']=='submitted'
         checks.append('Independent review is separate; exact relevant parent-goal revision changes after submission also fence later acceptance')

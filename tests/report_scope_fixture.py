@@ -148,9 +148,9 @@ class Fixture:
         return await self.api(a,'POST',f"work/{a['work']}/report-reconcile",body,
                              source or self.source(a,'hollywood_work_report_reconcile'),status)
 
-    async def decision(self,a,room,key,revision=0,identity=None,goal=None):
+    async def decision(self,a,room,key,revision=0,identity=None,goal=None,state="active"):
         source=self.goal_source if room=='global' else a['request'] if room=='A' else a['source']['requestId']
         body={'operationId':uid(),'id':identity or uid(),'key':key,'revision':revision,'goalId':goal,
-            'state':'active','body':'SYNTHETIC scoped requirement '+str(revision),'sourceEventId':source}
+            'state':state,'body':'SYNTHETIC scoped requirement '+str(revision),'sourceEventId':source}
         await self.api('owner','POST',f"rooms/{self.ids[room]}/decisions",body)
         return body['id']
