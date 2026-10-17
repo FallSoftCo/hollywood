@@ -62,7 +62,7 @@ def default_view(c, authority, principal, host):
                 reason = 'participation-unavailable'
             elif not root or not access:
                 reason = 'resource-unavailable'
-            elif root['state'] != 'active' or access['state'] != 'active' or not access['can_read'] or not access['can_write']:
+            elif root['state'] != 'active' or access['state'] != 'active' or not access['can_read']:
                 reason = 'access-unavailable'
             elif str(root['host']) != str(host) or str(access['execution_host']) != str(host):
                 reason = 'execution-host-incompatible'
@@ -95,9 +95,9 @@ def select(c, actor, principal, host, payload):
                            (principal, host)).fetchone()
         if not root or not grant or not agent['active'] or not placed:
             raise Denied('Active resource access and registered placement required for routing setup')
-        if (root['state'] != 'active' or grant['state'] != 'active' or not grant['can_read'] or not grant['can_write']
+        if (root['state'] != 'active' or grant['state'] != 'active' or not grant['can_read']
                 or str(root['host']) != host or str(grant['execution_host']) != host):
-            raise Denied('Active local read/write resource access required')
+            raise Denied('Active local readable resource access required')
         if root['revision'] != payload['workspaceRevision'] or grant['revision'] != payload['grantRevision']:
             raise Conflict('Resource selection revisions changed')
     row = c.execute('''INSERT INTO hb_resource_default

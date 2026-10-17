@@ -23,12 +23,12 @@ async def main():
     contexts_before = f.sql('SELECT * FROM hb_agent_context ORDER BY principal', many=True)
     work_before = f.sql('SELECT * FROM hb_work ORDER BY id', many=True)
 
-    async def grant(agent, state='active'):
+    async def grant(agent, state='active', write=True):
         prior = f.sql('SELECT revision FROM hb_physical_agent_grant WHERE workspace=%s AND principal=%s',
                       (resource['id'], agent['id']))
         return await f.http(owner, 'PUT', f"physical-workspaces/{resource['id']}/agent-grants/{agent['id']}", {
             'operationId': uid(), 'revision': prior['revision'] if prior else 0, 'workspaceRevision': resource['revision'],
-            'executionHost': agent['host']['id'], 'state': state, 'canRead': True, 'canWrite': True})
+            'executionHost': agent['host']['id'], 'state': state, 'canRead': True, 'canWrite': write})
 
     def case(path, existing=False):
         actual = resource['root'] / path
@@ -151,6 +151,40 @@ async def main():
         targets = await f.http(actor['host']['token'], 'GET', 'collaboration/delivery-targets/' + actor['source']['deliveryId'])
         assert targets['targets'] and not targets['mayApply']
         checks.append('Actual admitted Work edits directly with independent agent access, canonical attempt pin, one-shot begin/replay/settle, no file plan and no task completion')
+
+        # Routing a reviewer to readable work must never grant mutation rights.
+        readonly = f.agents['outsider']
+        await grant(readonly, write=False)
+        pointer = 'agents/' + readonly['id'] + '/resource-defaults/' + readonly['host']['id']
+        async def choose_readonly():
+            current = await f.http(owner, 'GET', pointer)
+            access = f.sql('SELECT revision FROM hb_physical_agent_grant WHERE workspace=%s AND principal=%s',
+                           (resource['id'], readonly['id']))
+            return await f.http(owner, 'PUT', pointer, {'operationId': uid(),
+                'revision': current['selectionRevision'], 'state': 'selected',
+                'workspaceId': resource['id'], 'workspaceRevision': resource['revision'],
+                'grantRevision': access['revision']})
+        chosen = await choose_readonly()
+        assert capabilities['readOnlyResourceDefaults'] is True
+        assert chosen['effectiveState'] == 'selected' and not chosen['mayApply']
+        assert chosen['resource']['grant']['can_read'] and not chosen['resource']['grant']['can_write']
+        assert (await f.http(readonly['token'], 'GET', pointer)) == chosen
+        attempted = case('readonly/forbidden.txt')
+        await reserve(attempted, readonly, status=403)
+        assert not f.sql('SELECT 1 FROM hb_edit_permit WHERE id=%s', (attempted['permitId'],))
+        await grant(readonly, state='revoked', write=False)
+        assert (await f.http(owner, 'GET', pointer))['holdReason'] == 'access-unavailable'
+        await grant(readonly, write=False)
+        assert (await f.http(owner, 'GET', pointer))['holdReason'] == 'selection-revisions-changed'
+        assert (await choose_readonly())['effectiveState'] == 'selected'
+        for enabled in (False, True):
+            placement = f.sql('SELECT revision FROM hb_placement WHERE agent=%s', (readonly['id'],))
+            await f.http(owner, 'PUT', 'placements/' + readonly['id'], {'operationId': uid(),
+                'revision': placement['revision'], 'hostId': readonly['host']['id'], 'enabled': enabled})
+            assert (await f.http(owner, 'GET', pointer))['effectiveState'] == 'held'
+        assert (await choose_readonly())['effectiveState'] == 'selected'
+        await reserve(case('readonly/still-forbidden.txt'), readonly, status=403)
+        checks.append('Read-only defaults select/read without mutation authority; edit403, revoke/regrant revision holds and sticky pause/resume require fresh reviewed CAS')
 
         ordinary = {'id': uid(), 'token': secrets.token_urlsafe(40), 'host': actor['host'], 'name': 'ordinary',
             'privateWorkspace': uid(), 'workspace': actor['workspace'], 'root': resource['root'], 'work': None}
