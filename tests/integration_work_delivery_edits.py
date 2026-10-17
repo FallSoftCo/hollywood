@@ -44,8 +44,11 @@ async def main():
     def frame(agent, item, action='preflight', permit=None, source=None, outcome=None):
         observed = []
         for file in item['files']:
-            data = (resource['root'] / file['relativePath']).read_bytes()
-            observed.append({'relativePath': file['relativePath'], 'sha256': sha(data), 'size': len(data)})
+            target = resource['root'] / file['relativePath']
+            data = target.read_bytes() if target.exists() else None
+            observed.append({'relativePath': file['relativePath'],
+                             'sha256': sha(data) if data is not None else 'absent',
+                             'size': len(data) if data is not None else 0})
         command = {'action': action, 'permitId': item['permitId'],
             'briefingSequence': f.sql('SELECT next_seq FROM hb_authority WHERE id=%s', (f.ids['authority'],))['next_seq'],
             'note': 'SYNTHETIC Work/editing separation qualification', 'sourceRevision': None,
@@ -214,7 +217,7 @@ async def main():
         for file in scope['manifest']['files']:
             await release_claim(file['claimId'])
         assert (await f.view(scope))['plan']['state'] == 'collecting'
-        await conclusive(case(contested['relativePath'], existing=True))
+        await reserve(case(contested['relativePath'], existing=True), status=409)
         await f.ready(scope)
         assert (await f.view(scope))['plan']['state'] == 'ready'
         await reserve(case(contested['relativePath'], existing=True), status=409)
@@ -222,7 +225,7 @@ async def main():
         await conclusive(case('scope-transitions/outside.txt'))
         await f.call(scope['integrator'], f.command(scope, scope['integrator'], 'withdraw'))
         await conclusive(case(contested['relativePath'], existing=True))
-        checks.append('Same-actor claim and mixed patch refusal; released draft permits direct scope; ready plan holds only its files; explicit withdrawal retires it without granting planned apply')
+        checks.append('Collecting/ready joint targets and mixed patches remain blocked even after claim release; explicit withdrawal retires scope without granting planned apply')
 
         planned = await f.case('planned-conflict')
         await f.propose(planned)
@@ -238,6 +241,54 @@ async def main():
         assert planned_settle['receipt']['permit']['state'] == 'settled'
         await reserve(case(planned['manifest']['files'][0]['relativePath'], existing=True), status=409)
         checks.append('Existing exact participant consent and planned one-use path remain intact; direct Work cannot bypass active or settled-but-unreleased file ownership')
+
+        # Ordinary editing is authorized by the current Work's exclusive file
+        # ownership; a joint plan is a separate collaboration commitment.
+        async def own(item):
+            file = item['files'][0]
+            value = f.envelope(actor, {'action': 'acquire', 'workId': actor['work'],
+                'workRevision': 2, 'claimId': uid(), 'claimRevision': 0,
+                'briefingSequence': 0, 'note': 'SYNTHETIC owned native edit',
+                'relativePath': file['relativePath'], 'kind': 'file',
+                'sourceRevision': 'a' * 40, 'contentSha256': file['beforeSha256'],
+                'leaseSeconds': 3600})
+            value['source']['tool'] = 'coordination_act'
+            return (await f.http(actor['host']['token'], 'POST',
+                    'collaboration/path-claims', value))['claim']
+
+        owned_item = case('owned/direct.txt')
+        (resource['root'] / 'owned/direct.txt').unlink()
+        owned_item['files'][0].update(beforeSha256='absent', beforeSize=0)
+        owned_claim = await own(owned_item)
+        owned_permit = await conclusive(owned_item, applied=True)
+        advanced = f.sql('SELECT * FROM hb_path_claim WHERE id=%s', (owned_claim['id'],))
+        assert advanced['revision'] == 2
+        assert advanced['content_sha256'] == owned_item['files'][0]['afterSha256']
+        assert owned_permit['proof']['ownershipClaims'][0]['claimId'] == owned_claim['id']
+        settled_owned = f.sql('SELECT settlement FROM hb_edit_permit WHERE id=%s', (owned_item['permitId'],))
+        assert len(settled_owned['settlement']['ownershipTransitions']) == 1
+        await reserve(case('owned/direct.txt', existing=True), f.agents['p'], status=409)
+
+        stale_claim_item = case('owned/changed.txt')
+        stale_claim = await own(stale_claim_item)
+        stale_body, stale_permit = await reserve(stale_claim_item)
+        f.sql('UPDATE hb_path_claim SET revision=revision+1 WHERE id=%s', (stale_claim['id'],))
+        await phase(stale_claim_item, stale_body, stale_permit, 'begin', status=409)
+        assert f.sql('SELECT state FROM hb_edit_permit WHERE id=%s', (stale_permit['id'],))['state'] == 'reserved'
+        assert f.sql('SELECT 1 FROM hb_edit_file_lock WHERE permit=%s', (stale_permit['id'],))
+
+        sibling_item = case('parallel/sibling-progress.txt')
+        sibling_body, sibling_permit = await reserve(sibling_item)
+        epoch = f.sql('SELECT control_revision FROM hb_goal WHERE id=%s', (f.ids['goal'],))['control_revision']
+        # Exactly the board revision update made by a sibling Work transition.
+        f.sql('UPDATE hb_goal SET revision=revision+1 WHERE id=%s', (f.ids['goal'],))
+        assert f.sql('SELECT control_revision FROM hb_goal WHERE id=%s', (f.ids['goal'],))['control_revision'] == epoch
+        _, sibling_begin = await phase(sibling_item, sibling_body, sibling_permit, 'begin')
+        assert sibling_begin['admission']['mayApply']
+        _, sibling_settle = await phase(sibling_item, sibling_body, sibling_begin['receipt']['permit'],
+                                        'settle', outcome='notApplied')
+        assert sibling_settle['receipt']['permit']['state'] == 'settled'
+        checks.append('Owned Work file edit advances exact claim bytes/revision; foreign ownership and changed claim retain locks; sibling progress permits concurrent work while Goal control transitions still fence')
 
         work_id, delivery = actor['work'], actor['source']['deliveryId']
         await fault('owner', lambda: f.sql('UPDATE hb_work SET owner=%s WHERE id=%s', (f.agents['p']['id'], work_id)),
@@ -328,7 +379,7 @@ async def main():
         result = {'state': 'passed', 'checks': checks, 'httpCalls': len(f.trace), 'authorityFaults': len(faults),
             'nativeStarts': 0, 'controllerStarts': 0, 'modelStarts': 0, 'productionChanges': 0,
             'nativeProvenance': 'SYNTHETIC fixture only', 'nativeRuntimeProof': False,
-            'fixtureRAMApplications': 1, 'originalNativeProofRepeated': False}
+            'fixtureRAMApplications': 2, 'originalNativeProofRepeated': False}
         (f.out / 'qualification.json').write_text(json.dumps(result, indent=2) + '\n')
         print(json.dumps({'state': 'passed', 'groups': len(checks), 'httpCalls': len(f.trace)}))
     finally:

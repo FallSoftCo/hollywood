@@ -893,3 +893,21 @@ CREATE TABLE IF NOT EXISTS hb_delivery_recovery (
  FOREIGN KEY(authority,actor) REFERENCES hb_principal(authority,id)
 );
 INSERT INTO hb_schema VALUES (31) ON CONFLICT DO NOTHING;
+
+-- Work progress changes the board revision, not the Goal authorization epoch.
+-- Pause/resume/cancel and definition changes permanently fence older permits.
+ALTER TABLE hb_goal ADD COLUMN IF NOT EXISTS control_revision bigint NOT NULL DEFAULT 1;
+CREATE OR REPLACE FUNCTION hb_goal_control_epoch() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF (NEW.state,NEW.owner,NEW.source,NEW.objective,NEW.acceptance)
+    IS DISTINCT FROM (OLD.state,OLD.owner,OLD.source,OLD.objective,OLD.acceptance) THEN
+  NEW.control_revision := OLD.control_revision + 1;
+ ELSE
+  NEW.control_revision := OLD.control_revision;
+ END IF;
+ RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS hb_goal_control_epoch ON hb_goal;
+CREATE TRIGGER hb_goal_control_epoch BEFORE UPDATE ON hb_goal
+ FOR EACH ROW EXECUTE FUNCTION hb_goal_control_epoch();
+INSERT INTO hb_schema VALUES (32) ON CONFLICT DO NOTHING;

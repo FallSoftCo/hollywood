@@ -63,6 +63,7 @@ def current(store, c, actor, source, request, binding=None):
                   'request_event', 'specification', 'acceptance', 'origin')}
     return json_value({'schema': CAPABILITY, 'workId': work['id'], 'workRevision': work['revision'],
         'goalId': goal['id'], 'goalRevision': goal['revision'],
+        'goalControlRevision': goal['control_revision'],
         'decisionSequence': current_sequence(c, str(work['room']), str(goal['id'])),
         'cooperationRevision': policy['revision'] if policy else None,
         'placementRevision': placement['revision'],
@@ -75,8 +76,21 @@ def current(store, c, actor, source, request, binding=None):
 def pinned(permit, authority):
     # Older ordinary permits have no key. They remain ordinary; they cannot
     # acquire a Work scope through recovery or a later request mutation.
-    need(permit['proof'].get('workAuthority') == authority, 'work_changed',
+    original = permit['proof'].get('workAuthority')
+    # Older permits retain their original stricter revision fence. New permits
+    # fence the independent Goal control epoch, allowing sibling Work progress.
+    if isinstance(original, dict) and 'goalControlRevision' in original:
+        def comparable(value):
+            return ({key: item for key, item in value.items() if key != 'goalRevision'}
+                    if isinstance(value, dict) else value)
+        same = comparable(original) == comparable(authority)
+    else:
+        current = ({key: item for key, item in authority.items() if key != 'goalControlRevision'}
+                   if isinstance(authority, dict) else authority)
+        same = original == current
+    need(same, 'work_changed',
          'Original Work/goal/attempt authority changed; retain original permit and locks')
+
 
 
 def read_current(store, c, actor, source, permit):

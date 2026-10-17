@@ -4,7 +4,7 @@ import json
 
 from psycopg.types.json import Jsonb
 
-from . import agent_resources, collaboration as claims, work_edit_authority
+from . import agent_resources, collaboration as claims, work_edit_authority, owned_work_claims
 from .delivery_edit_models import CAPABILITY, DeliveryEditCall
 from .edit_plan_scope import need, now, observed, observed_scope, record
 from .edit_plans import original_command
@@ -20,26 +20,20 @@ def files(c, permit):
     return permit['proof']['files']
 
 
-def block_collaboration(c, namespace, paths):
-    # No age-based release, and no special exemption for the same agent's work.
+def block_collaboration(c, namespace, paths, source=None, authority=None, wanted=()):
+    owned = owned_work_claims.authorize(c, namespace, paths, source, authority, wanted)
     for path in paths:
-        conflict = c.execute('''SELECT id FROM hb_path_claim WHERE authority=%s AND host=%s
-            AND workspace_id=%s AND state<>'released' AND (relative_path=%s
-            OR (kind='directory' AND left(%s,length(relative_path)+1)=relative_path||'/')
-            OR left(relative_path,length(%s)+1)=%s||'/') LIMIT 1''',
-            (*namespace, path, path, path, path)).fetchone()
-        need(not conflict, 'scope_busy', 'Unreleased file/directory work ownership blocks direct editing')
-        # Collecting plans are proposals. Ready is explicit coordinated scope;
-        # claim release alone does not withdraw a ready plan. Retired metadata
-        # cannot grant or block execution independently of claims/permit locks.
+        # Declared coordinated scope cannot be bypassed by an ordinary edit.
         plan = c.execute('''SELECT p.id FROM hb_edit_plan p JOIN hb_edit_plan_revision r
             ON r.plan=p.id AND r.revision=p.revision
             CROSS JOIN LATERAL jsonb_array_elements(r.manifest->'files') f
-            WHERE p.authority=%s AND p.host=%s AND p.workspace_id=%s AND p.state='ready'
+            WHERE p.authority=%s AND p.host=%s AND p.workspace_id=%s
+            AND p.state IN ('collecting','ready')
             AND (f->>'relativePath'=%s OR left(f->>'relativePath',length(%s)+1)=%s||'/'
               OR left(%s,length(f->>'relativePath')+1)=(f->>'relativePath')||'/') LIMIT 1''',
             (*namespace, path, path, path, path)).fetchone()
-        need(not plan, 'scope_busy', 'Ready coordinated file scope requires planned editing or explicit withdrawal')
+        need(not plan, 'scope_busy', 'Declared coordinated target requires planned editing or explicit withdrawal')
+    return owned
 
 
 def original_fences(permit, relay, source, binding, payload):
@@ -89,13 +83,13 @@ def call(store, actor_id, payload):
             observed(command['filesObserved'], wanted, 'before')
             need(not c.execute('SELECT 1 FROM hb_edit_permit WHERE id=%s', (command['permitId'],)).fetchone(),
                  'permit_exists', 'Read the original permit; never restart it')
-            block_collaboration(c, namespace, paths)
+            ownership = block_collaboration(c, namespace, paths, source, authority, wanted)
             for path in paths:
                 need(not claims.lock_conflict(c, namespace, path), 'scope_busy', 'Unsettled mutation owns physical path')
             proof = {k: payload[k] for k in ('executorId', 'descriptorDigest', 'serviceBindingDigest', 'target')}
             proof.update(files=wanted, patchSha256=command['patchSha256'], sourceRevision=command['sourceRevision'],
                          contextWorkspaceId=str(binding['workspace_id']), hostId=str(binding['physical_host']),
-                         workspaceId=str(binding['physical_workspace_id']), workAuthority=authority)
+                         workspaceId=str(binding['physical_workspace_id']), workAuthority=authority, ownershipClaims=ownership)
             permit = c.execute('''INSERT INTO hb_edit_permit(id,authority,scope_kind,delivery,room,
                 state,expires_at,source,bridge,bridge_revision,proof,consent_digest)
                 VALUES(%s,%s,'delivery',%s,%s,'reserved',%s,%s,%s,%s,%s,%s) RETURNING *''',
@@ -115,7 +109,8 @@ def call(store, actor_id, payload):
             if command['action'] == 'begin':
                 need(permit['state'] == 'reserved' and permit['expires_at'] > now(c),
                      'permit_expired', 'Only live unconsumed ordinary reservation may begin')
-                block_collaboration(c, namespace, [f['relativePath'] for f in wanted])
+                ownership = block_collaboration(c, namespace, [f['relativePath'] for f in wanted], source, authority, wanted)
+                owned_work_claims.pinned(permit, ownership)
                 observed(command['filesObserved'], wanted, 'before')
                 permit = c.execute("UPDATE hb_edit_permit SET state='executing',revision=revision+1 WHERE id=%s RETURNING *",
                                    (permit['id'],)).fetchone()
@@ -130,11 +125,14 @@ def call(store, actor_id, payload):
                 try:
                     need(permit['state'] == 'executing' and permit['expires_at'] > now(c),
                          'permit_expired', 'Expired/held original remains held')
-                    block_collaboration(c, namespace, [f['relativePath'] for f in wanted])
+                    ownership = block_collaboration(c, namespace, [f['relativePath'] for f in wanted], source, authority, wanted)
+                    owned_work_claims.pinned(permit, ownership)
                     need(command['outcome'] != 'unknown', 'unknown_effect', 'Unknown or partial mutation remains held')
                     observed(command['filesObserved'], wanted, 'after' if command['outcome'] == 'applied' else 'before')
                 except (Conflict, Denied) as error:
                     holds.append(getattr(error, 'code', 'authority_changed'))
+                if not holds:
+                    evidence['ownershipTransitions'] = owned_work_claims.advance(c, permit, command['outcome'])
                 if holds:
                     evidence['holds'] = holds
                 permit = c.execute('UPDATE hb_edit_permit SET state=%s,revision=revision+1,settlement=%s WHERE id=%s RETURNING *',
@@ -168,8 +166,11 @@ def read(store, actor_id, identity):
                 claims.settled_controls(c, {'origin_delivery': source['deliveryId']})
                 agent_resources.registered(c, reader['authority'], source, permit['proof']['target'])
                 work_edit_authority.read_current(store, c, store.actor(c, source['agentId']), source, permit)
-                block_collaboration(c, [str(permit['authority']), permit['proof']['hostId'], permit['proof']['workspaceId']],
-                                    [f['relativePath'] for f in files(c, permit)])
+                authority = work_edit_authority.current(store, c, store.actor(c, source['agentId']), source,
+                                                         store.readable_event(c, store.actor(c, source['agentId']), source['requestId']))
+                ownership = block_collaboration(c, [str(permit['authority']), permit['proof']['hostId'], permit['proof']['workspaceId']],
+                                    [f['relativePath'] for f in files(c, permit)], source, authority, files(c, permit))
+                owned_work_claims.pinned(permit, ownership)
                 need(effective != 'held' and permit['expires_at'] > now(c), 'permit_held', 'Held original')
             except (Conflict, Denied):
                 effective = 'held'

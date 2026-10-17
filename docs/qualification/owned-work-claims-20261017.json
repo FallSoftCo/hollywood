@@ -1,0 +1,38 @@
+{
+  "sourceVersion": "0.3.0.dev37",
+  "schemaVersion": 32,
+  "changes": [
+    "Exclusive active file claims authorize only the owning agent current canonical Work and matching physical bytes; actual applied settlement CAS advances claim content and revision.",
+    "Collecting and ready coordinated targets require their plan and participant consent, including after claim release.",
+    "Goal control epoch changes on state/owner/source/objective/acceptance changes, independently of sibling Work progress. Existing permits keep old stricter revision fences.",
+    "Reviewed held ordinary applied cleanup advances only the exact original pinned claim snapshot, granting no new execution."
+  ],
+  "proofPath": "/dev/shm/hollywood-owned-claims-20261017-r02/proof/qualification.json",
+  "proofSha256": "f76f71df7a1f576ab17d72e775169e9644a4d83a83dfd11653fbd31740299ea4",
+  "proof": {
+    "state": "passed",
+    "checks": [
+      "Actual admitted Work edits directly with independent agent access, canonical attempt pin, one-shot begin/replay/settle, no file plan and no task completion",
+      "Read-only defaults select/read without mutation authority; edit403, revoke/regrant revision holds and sticky pause/resume require fresh reviewed CAS",
+      "One ordinary non-Work compatibility case retains null Work authority and existing wire/one-shot behavior",
+      "Collecting/ready joint targets and mixed patches remain blocked even after claim release; explicit withdrawal retires scope without granting planned apply",
+      "Existing exact participant consent and planned one-use path remain intact; direct Work cannot bypass active or settled-but-unreleased file ownership",
+      "Owned Work file edit advances exact claim bytes/revision; foreign ownership and changed claim retain locks; sibling progress permits concurrent work while Goal control transitions still fence",
+      "Synthetic authority fault matrix rejects changed owner/revision/attempt/cooperation/context/prerequisites and hidden Work; original reservations/executing locks remain untouched",
+      "Supported Goal/placement pause-resume, room revoke-regrant and newer decisions cannot revive original Work permits, even with a newer numeric watermark",
+      "Unknown Work mutation holds the common namespace against same/peer direct edits; supported cancellation denies begin and preserves original lock"
+    ],
+    "httpCalls": 162,
+    "authorityFaults": 9,
+    "nativeStarts": 0,
+    "controllerStarts": 0,
+    "modelStarts": 0,
+    "productionChanges": 0,
+    "nativeProvenance": "SYNTHETIC fixture only",
+    "nativeRuntimeProof": false,
+    "fixtureRAMApplications": 2,
+    "originalNativeProofRepeated": false
+  },
+  "actualModelContinuation": "pending, original W2/W3 blocked attempts retained",
+  "productionChanged": false
+}

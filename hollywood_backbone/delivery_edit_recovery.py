@@ -1,7 +1,7 @@
 """Reviewed cleanup of held ordinary edits, never a new mutation admission."""
 from psycopg.types.json import Jsonb
 
-from . import agent_resources, collaboration as claims
+from . import agent_resources, collaboration as claims, owned_work_claims
 from .edit_plan_scope import need, now, observed, record
 from .store import digest, json_value
 
@@ -59,6 +59,7 @@ def reconcile(store, c, actor, identity, payload):
         'reviewerId': str(actor['id']), 'reviewedAt': str(now(c)), 'note': payload['note'],
         'effectDisposition': 'reviewed', 'reconciliationOnly': True,
         'originalSettlement': permit['settlement'],
+        'ownershipTransitions': owned_work_claims.advance(c, permit, payload['outcome']),
         'classification': 'observed-original-after-content' if payload['outcome'] == 'applied'
                           else 'observed-original-before-content',
         'externalEffectsUndone': False,
