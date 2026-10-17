@@ -59,8 +59,8 @@ def registered(c, authority, source, target, cleanup=False):
 
 def delivery(store, c, actor, source):
     request = store.readable_event(c, actor, source['requestId'])
-    if request['data'].get('workId') is not None:
-        raise Conflict('Captured structured work requires its explicit planned editing route')
+    # Editing mode is decided by actual file ownership, not business allocation.
+    # The mutation path separately derives/pins current canonical Work authority.
     return request
 
 

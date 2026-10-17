@@ -11,7 +11,7 @@ import tempfile
 from pathlib import Path
 
 SOURCE = Path(__file__).resolve().parents[1]
-AREA = Path('/dev/shm/lax-native-fork-global-20261017-r01/hollywood-owned')
+AREA = Path(os.environ.get('CANONICAL_TEST_AREA', '/dev/shm/lax-native-fork-global-20261017-r01/hollywood-owned'))
 PYTHON = '/opt/harness/production-core-20261016-r03/venv/bin/python'
 DEPENDENCY = Path('/dev/shm/harness-completed-report-recovery-20261016-r01/shared/pg-dependency-route-r01.json')
 
@@ -22,14 +22,14 @@ def write(path, value):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--scenario', choices=('claims', 'edit-plans', 'report-scope', 'delivery-edits', 'resource-routing', 'placement-control'), default='claims')
+    parser.add_argument('--scenario', choices=('claims', 'edit-plans', 'report-scope', 'delivery-edits', 'resource-routing', 'placement-control', 'work-delivery-edits'), default='claims')
     args = parser.parse_args()
     os.umask(0o077)
     fs = os.statvfs('/aosp')
     free = fs.f_bavail * fs.f_frsize
     if free < 80 * 1024**3:
         raise RuntimeError('80GiB hard reserve unmet')
-    area = AREA / ('placement-r01' if args.scenario == 'placement-control' else 'resource-r01' if args.scenario == 'resource-routing' else 'ordinary-r01' if args.scenario == 'delivery-edits' else 'r04' if args.scenario == 'report-scope' else 'r03')
+    area = AREA / ('work-edit-r01' if args.scenario == 'work-delivery-edits' else 'placement-r01' if args.scenario == 'placement-control' else 'resource-r01' if args.scenario == 'resource-routing' else 'ordinary-r01' if args.scenario == 'delivery-edits' else 'r04' if args.scenario == 'report-scope' else 'r03')
     area.mkdir(exist_ok=True)
     root = Path(tempfile.mkdtemp(prefix='fresh-report-scope-' if args.scenario == 'report-scope' else 'fresh-plans-' if args.scenario == 'edit-plans' else 'fresh-claims-', dir=area))
     tmp = root / 'tmp'
@@ -66,7 +66,7 @@ def main():
         token = ticks(pid)
         lifecycle.update(pid=pid, startTicks=token)
         run([str(binary / 'createdb'), '-h', str(sock), '-p', str(config['port']), '-U', config['user'], config['dbname']], 'createdb')
-        test = 'integration_placement_control.py' if args.scenario == 'placement-control' else 'integration_resource_routing.py' if args.scenario == 'resource-routing' else 'integration_delivery_edits.py' if args.scenario == 'delivery-edits' else 'integration_report_scope.py' if args.scenario == 'report-scope' else 'integration_edit_plans.py' if args.scenario == 'edit-plans' else 'integration_canonical_collaboration.py'
+        test = 'integration_work_delivery_edits.py' if args.scenario == 'work-delivery-edits' else 'integration_placement_control.py' if args.scenario == 'placement-control' else 'integration_resource_routing.py' if args.scenario == 'resource-routing' else 'integration_delivery_edits.py' if args.scenario == 'delivery-edits' else 'integration_report_scope.py' if args.scenario == 'report-scope' else 'integration_edit_plans.py' if args.scenario == 'edit-plans' else 'integration_canonical_collaboration.py'
         run([PYTHON, str(SOURCE / 'tests' / test)], 'integration')
         write(root / 'status.json', {'state': 'passed', 'nativeProof': False})
     except BaseException as error:

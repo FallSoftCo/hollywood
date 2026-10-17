@@ -151,3 +151,7 @@ paths and genuine action projection remains required. Root performs independent
 review; LAX owns native/connector integration. No native/model/controller start,
 deployment, private-context rebinding or independent candidate acceptance is
 established by this server cut.
+
+## Assigned work and file coordination
+
+The canonical-work-delivery-edits/v1 capability permits a captured original Work execution to use the existing delivery edit protocol when its target files have no explicit collaboration owner or ready plan. Work allocation does not itself require a file plan. The server derives and pins the current goal, assignment, attempt, role/context, decision, placement and membership revisions in permit.proof.workAuthority. Subsequent phase and original-operation reads recheck that authority. Resource grants remain independent, and claims, ready plans and unsettled permits share the existing physical namespace, including conflicts from the same agent. A newer watermark, restored access or resumed goal cannot revive a changed original authority. Ordinary requests retain null Work authority. These metadata checks do not stop an already executing OS command or establish transactionality of filesystem effects.

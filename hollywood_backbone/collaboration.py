@@ -75,6 +75,7 @@ def read_bridge(store, actor_id, host):
             "editPlans": enabled, "patchPermits": enabled, "nativeChildAdmission": False,
             "physicalTargets": enabled, "targetSchema": "hollywood-physical-target/v1",
             "deliveryEdits": enabled, "deliveryEditSchema": "canonical-delivery-edits/v1",
+            "workDeliveryEdits": enabled, "workDeliveryEditPolicy": "canonical-work-delivery-edits/v1",
             "agentResourceGrants": True,
             "resourceRouting": "canonical-agent-resources/v1", "resourceDefaults": True, "resourceMetadata": True,
             "placementControl": "canonical-placement-control/v1", "pausedResourceSetup": True,
