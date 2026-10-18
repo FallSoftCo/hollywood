@@ -65,4 +65,6 @@ def completion(store, c, actor, request, delivery, result, state):
         "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
         (identity, actor["authority"], event, target["id"]),
     )
+    from .context_system import ingest
+    ingest(c, target["id"], event)
     return identity

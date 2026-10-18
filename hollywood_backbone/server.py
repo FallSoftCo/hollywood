@@ -54,7 +54,7 @@ class ContextSystemConfiguration(Input):
 class ContextCall(Input):
     operationId: str = Field(min_length=1, max_length=128)
     action: Literal["bind", "begin", "close", "end", "pending", "snapshot", "read", "accept", "answer", "announce",
-                    "progress", "complete", "publish", "suppress"]
+                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "peer_result"]
     nativeThread: str = Field(min_length=1, max_length=128)
     nativeTurn: str = Field(min_length=1, max_length=128)
     value: dict = Field(default_factory=dict)

@@ -748,6 +748,21 @@ class Store:
             ).fetchall()
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}
 
+    def room_actors(self, c, a, room, *, after=None, limit=None):
+        query = """SELECT p.id,p.name,p.kind,r.primary_role,r.home_room,r.purpose
+               FROM hb_principal p LEFT JOIN hb_agent_role r ON r.principal=p.id
+               WHERE p.authority=%s AND p.active AND (p.id=%s OR EXISTS
+                (SELECT 1 FROM hb_membership m WHERE m.room=%s AND m.principal=p.id AND m.can_read))"""
+        args = [a["authority"],room["owner"],room["id"]]
+        if after is not None:
+            query += " AND p.id>%s::uuid"
+            args.append(after)
+        query += " ORDER BY p.id" if limit is not None else " ORDER BY p.name,p.id"
+        if limit is not None:
+            query += " LIMIT %s"
+            args.append(limit)
+        return c.execute(query,args).fetchall()
+
     def room_detail(self, actor_id, identity):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
@@ -759,14 +774,7 @@ class Store:
                 key: bool(a["administrator"] or own and own[key])
                 for key in ("can_read", "can_post", "can_request")
             }
-            actors = c.execute(
-                """SELECT p.id,p.name,p.kind,r.primary_role,r.home_room,r.purpose
-                        FROM hb_principal p LEFT JOIN hb_agent_role r ON r.principal=p.id
-                        WHERE p.authority=%s AND p.active AND (p.id=%s OR EXISTS
-                         (SELECT 1 FROM hb_membership m WHERE m.room=%s AND m.principal=p.id AND m.can_read))
-                        ORDER BY p.name,p.id""",
-                (a["authority"], room["owner"], identity),
-            ).fetchall()
+            actors = self.room_actors(c, a, room)
             work = c.execute(
                 """SELECT d.*,e.author AS requester,e.seq AS request_seq,
                           (e.author=%s OR %s) AS can_cancel
@@ -813,101 +821,105 @@ class Store:
     def post(self, actor_id, room_id, operation, payload, *, wire=None):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
-            kind, audience = payload["kind"], payload["audience"]
-            room = self.room(c, a, room_id, "can_request" if kind == "request" else "can_post")
-            fingerprint = digest({"roomId": room_id, **payload})
-            # Serialize command identity before its first acceptance, including requests
-            # to different rooms. Existing receipts retain their original resolution.
-            c.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
-                (str(a["id"]) + ":" + operation,),
-            )
-            old = c.execute(
-                "SELECT * FROM hb_command WHERE principal=%s AND operation=%s", (a["id"], operation)
+            return self.post_in_transaction(c, a, room_id, operation, payload, wire=wire)
+
+    def post_in_transaction(self, c, a, room_id, operation, payload, *, wire=None, native_context=None):
+        """Accept communication in the caller's already-authorized transaction."""
+        kind, audience = payload["kind"], payload["audience"]
+        room = self.room(c, a, room_id, "can_request" if kind == "request" else "can_post")
+        fingerprint = digest({"roomId": room_id, **payload})
+        # Serialize command identity before its first acceptance, including requests
+        # to different rooms. Existing receipts retain their original resolution.
+        c.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",
+            (str(a["id"]) + ":" + operation,),
+        )
+        old = c.execute(
+            "SELECT * FROM hb_command WHERE principal=%s AND operation=%s", (a["id"], operation)
+        ).fetchone()
+        if old:
+            if old["digest"] != fingerprint:
+                raise Conflict("Operation ID reused with changed contents")
+            self.readable_event(c, a, old["event"])
+            return self.receipt(c, old["event"])
+        recipient = payload.get("recipientId")
+        if kind == "request" and not recipient:
+            recipient = str(room["owner"])
+        if kind == "request" and a["kind"] == "agent" and str(recipient) == str(a["id"]):
+            raise Denied("Self execution requests require an explicit lifecycle policy")
+        if recipient:
+            target = c.execute(
+                "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND active",
+                (recipient, a["authority"]),
             ).fetchone()
-            if old:
-                if old["digest"] != fingerprint:
-                    raise Conflict("Operation ID reused with changed contents")
-                self.readable_event(c, a, old["event"])
-                return self.receipt(c, old["event"])
-            recipient = payload.get("recipientId")
-            if kind == "request" and not recipient:
-                recipient = str(room["owner"])
-            if kind == "request" and a["kind"] == "agent" and str(recipient) == str(a["id"]):
-                raise Denied("Self execution requests require an explicit lifecycle policy")
-            if recipient:
-                target = c.execute(
-                    "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND active",
-                    (recipient, a["authority"]),
+            if not target or (kind == "request" and target["kind"] != "agent"):
+                raise Denied("Invalid execution recipient")
+            if (
+                not target["administrator"]
+                and not c.execute(
+                    "SELECT 1 FROM hb_membership WHERE room=%s AND principal=%s AND can_read",
+                    (room_id, recipient),
                 ).fetchone()
-                if not target or (kind == "request" and target["kind"] != "agent"):
-                    raise Denied("Invalid execution recipient")
-                if (
-                    not target["administrator"]
-                    and not c.execute(
-                        "SELECT 1 FROM hb_membership WHERE room=%s AND principal=%s AND can_read",
-                        (room_id, recipient),
-                    ).fetchone()
-                ):
-                    raise Denied("Recipient cannot access the room")
-            if audience == "direct" and not recipient:
-                raise Conflict("Private message requires an explicit recipient")
-            source = payload.get("sourceEventId")
-            data = {}
-            if payload.get("expectsReply"):
-                if kind != "request" or a["kind"] != "agent":
-                    raise ValueError("Only an explicit agent request may establish a peer reply obligation")
-                data["expectsReply"] = True
-            if source:
-                parent = self.readable_event(c, a, source)
-                if parent["audience"] == "direct":
-                    original = {str(parent["author"]), str(parent["recipient"])}
-                    reply = {str(a["id"]), recipient}
-                    if str(parent["room"]) != room_id or audience != "direct" or reply != original:
-                        raise Denied("Private source cannot expand its audience")
-                if kind == "request" and str(parent["room"]) == room_id:
-                    goals = c.execute(
-                        """SELECT id FROM hb_goal WHERE authority=%s AND room=%s AND owner=%s
-                           AND (source=%s OR id::text=%s) ORDER BY id LIMIT 2""",
-                        (
-                            a["authority"],
-                            room_id,
-                            recipient,
-                            parent["id"],
-                            parent["data"].get("goalReferenceId", parent["data"].get("goalId")),
-                        ),
-                    ).fetchall()
-                    if len(goals) == 1:
-                        data["goalReferenceId"] = str(goals[0]["id"])
-            event = self.event(
-                c,
-                a,
-                room_id,
-                kind,
-                payload["body"],
-                recipient=recipient,
-                audience=audience,
-                source=source,
-                data=data,
-            )
-            if kind == "request":
-                c.execute(
-                    "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
-                    (uid(), a["authority"], event, recipient),
-                )
-            if recipient and kind == "request":
-                from .context_system import ingest
-                ingest(c, recipient, event)
-            result = self.receipt(c, event)
+            ):
+                raise Denied("Recipient cannot access the room")
+        if audience == "direct" and not recipient:
+            raise Conflict("Private message requires an explicit recipient")
+        source = payload.get("sourceEventId")
+        data = {"nativeContext": native_context} if native_context else {}
+        if payload.get("expectsReply"):
+            if kind != "request" or a["kind"] != "agent":
+                raise ValueError("Only an explicit agent request may establish a peer reply obligation")
+            data["expectsReply"] = True
+        if source:
+            parent = self.readable_event(c, a, source)
+            if parent["audience"] == "direct":
+                original = {str(parent["author"]), str(parent["recipient"])}
+                reply = {str(a["id"]), recipient}
+                if str(parent["room"]) != room_id or audience != "direct" or reply != original:
+                    raise Denied("Private source cannot expand its audience")
+            if kind == "request" and str(parent["room"]) == room_id:
+                goals = c.execute(
+                    """SELECT id FROM hb_goal WHERE authority=%s AND room=%s AND owner=%s
+                       AND (source=%s OR id::text=%s) ORDER BY id LIMIT 2""",
+                    (
+                        a["authority"],
+                        room_id,
+                        recipient,
+                        parent["id"],
+                        parent["data"].get("goalReferenceId", parent["data"].get("goalId")),
+                    ),
+                ).fetchall()
+                if len(goals) == 1:
+                    data["goalReferenceId"] = str(goals[0]["id"])
+        event = self.event(
+            c,
+            a,
+            room_id,
+            kind,
+            payload["body"],
+            recipient=recipient,
+            audience=audience,
+            source=source,
+            data=data,
+        )
+        if kind == "request":
             c.execute(
-                """INSERT INTO hb_command(authority,principal,operation,digest,event,wire_request,accepted_result)
-                   VALUES(%s,%s,%s,%s,%s,%s,%s)""",
-                (a["authority"], a["id"], operation, fingerprint, event, Jsonb(wire), Jsonb(result)),
+                "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
+                (uid(), a["authority"], event, recipient),
             )
-            if kind == "request" and a["kind"] == "agent":
-                from .delegation import record
-                record(c, a, result["event"], result["deliveries"][0]["id"], operation, wire)
-            return result
+        if recipient and kind == "request":
+            from .context_system import ingest
+            ingest(c, recipient, event)
+        result = self.receipt(c, event)
+        c.execute(
+            """INSERT INTO hb_command(authority,principal,operation,digest,event,wire_request,accepted_result)
+               VALUES(%s,%s,%s,%s,%s,%s,%s)""",
+            (a["authority"], a["id"], operation, fingerprint, event, Jsonb(wire), Jsonb(result)),
+        )
+        if kind == "request" and a["kind"] == "agent":
+            from .delegation import record
+            record(c, a, result["event"], result["deliveries"][0]["id"], operation, wire)
+        return result
 
     @staticmethod
     def receipt(c, event):

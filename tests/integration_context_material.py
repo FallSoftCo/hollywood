@@ -39,6 +39,8 @@ try:
    value={'reference':ids[0],'offset':offset}
    if revision:value['revision']=revision
    part=read(c,store,actor,'writer',binding,'bounded-test-original-turn',value)
+   binding['reads']=c.execute("SELECT reads FROM hb_purpose_context WHERE agent=%s AND purpose='writer'",
+                             (actor['id'],)).fetchone()['reads']
    assert part['offset']==offset
    peak_chunk=max(peak_chunk,len(wire(part)))
    text.append(part['content']);chunks+=1;revision=part['revision']

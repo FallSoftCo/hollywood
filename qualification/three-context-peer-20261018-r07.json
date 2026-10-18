@@ -1,0 +1,40 @@
+{
+  "status": "Candidate source; actual two-agent native journey in progress, not yet claimed passed.",
+  "candidateVersions": {
+    "lax": "0.1.0.dev66",
+    "hollywood": "0.3.0.dev42"
+  },
+  "scope": [
+    "Responder dispatches immutable peer requests through shared canonical Store.post_in_transaction.",
+    "Peer completion uses existing communication.completion and enters reader without another response obligation.",
+    "Reader applies verified canonical result to original work; external result revision resumes the same writer context.",
+    "Complete current work reads required before contribution; unresolved peer prerequisites block completion."
+  ],
+  "humanOperation": "three-context-peer-deliverable-r07",
+  "humanEvent": "e68f2d4f-9f9d-45eb-a7fd-53c38a954eec",
+  "statusOperation": "three-context-peer-status-r07",
+  "statusEvent": "df4f42ec-0f94-4242-a987-70d4c26201a6",
+  "peerId": "87d85e72-e8eb-44eb-bec5-9205a25916e9",
+  "peerConfig": "/var/lib/lax-three-context-20261018-r01/peer-r07/agent/config.json",
+  "nativeUnit": "lax-three-context-peer-pair-20261018-r07.service",
+  "deterministicPostgresqlProof": {
+    "mode": "Real PostgreSQL, rollback-only synthetic material. Not model behavior proof.",
+    "queuedWasNotAccepted": true,
+    "normalCanonicalRequestAccepted": true,
+    "distinctPeerRecipient": true,
+    "staleWriterContributionDenied": true,
+    "canonicalPeerCompletionMappedOriginalWork": true,
+    "noAcknowledgementObligation": true,
+    "readerResumedOriginalWorkOnce": true,
+    "readerResultAddedRoomMessages": 0,
+    "allSyntheticStateRolledBack": true,
+    "at": "2026-10-18T18:58:49.508392+00:00"
+  },
+  "resourcePolicy": "OZZZ disk-only build through storage-build; finite native unit MemoryMax6G/SwapMax512M/CPUQuota300%; no old sessions/timers resumed.",
+  "remainingPromotionGates": [
+    "Full independently observed native executor/effect and workflow/admin/cooperation parity.",
+    "Fresh-install readiness and complete cancellation/unknown-effect handling; delegated child cancellation is not established by parent cancellation.",
+    "Multi-human/multi-host, physical NextComp and compaction acceptance are separate."
+  ],
+  "productionChanged": false
+}

@@ -121,6 +121,11 @@ def read(c, store, actor, purpose, binding, turn, value):
         material = json_value(row)
         if purpose == "reader" and row["kind"] == "input":
             material["event"] = json_value(event)
+            if event["data"].get("type") == "peerCompletion" and event["source"]:
+                material["peerResult"] = json_value(store.readable_event(c,actor,event["source"]))
+        if row["kind"] == "work":
+            material["scope"] = {"roomId":str(event["room"]),"audience":event["audience"],
+                                 "sourceEventId":str(event["id"])}
         if purpose == "responder":
             material["audience"] = {"roomId": str(event["room"]), "audience": event["audience"]}
     if expected is not None and expected != revision:
@@ -130,11 +135,12 @@ def read(c, store, actor, purpose, binding, turn, value):
         raise ValueError("Material offset outside original content")
     stop = min(offset + CHUNK_CHARS, len(encoded))
     following = stop if stop < len(encoded) else None
-    if purpose == "responder" and reference != "role" and row["state"] == "ready":
+    if reference != "role" and (purpose == "responder" and row["state"] == "ready"
+                                or purpose == "writer" and row["kind"] == "work"):
         reads = dict(binding["reads"])
         prior = reads.get(reference)
         if offset and prior != {"revision": revision, "turn": turn, "nextOffset": offset}:
-            raise Conflict("Read original material sequentially before publication")
+            raise Conflict("Read original material sequentially before contributing")
         reads[reference] = {"revision": revision, "turn": turn,
                             **({"nextOffset": following} if following is not None else {})}
         c.execute("UPDATE hb_purpose_context SET reads=%s WHERE agent=%s AND purpose=%s",

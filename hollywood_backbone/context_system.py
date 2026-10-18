@@ -62,11 +62,13 @@ def ingest(c, agent, event):
     if not c.execute("SELECT 1 FROM hb_context_system WHERE agent=%s AND enabled",(agent,)).fetchone():
         return
     identity = str(event)
-    for kind, state, value in [
-        ("input","pending",{}),
-        ("need","interpreting",{"inputId":identity,"required":True,"prerequisites":[]}),
-    ]:
-        key = identity if kind == "input" else str(uuid5(UUID(identity),"response"))
+    from .context_peers import incoming
+    peer = incoming(c, agent, event)
+    materials = [("input", "pending", peer or {})]
+    if peer is None:
+        materials.append(("need", "interpreting", {"inputId": identity, "required": True, "prerequisites": []}))
+    for kind, state, value in materials:
+        key = identity if kind == "input" else str(uuid5(UUID(identity), "response"))
         c.execute("""INSERT INTO hb_context_material(id,agent,kind,source,state,value)
           VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING""",
           (key,agent,kind,event,state,Jsonb(value)))
@@ -168,7 +170,7 @@ def lifecycle(c, store, actor, purpose, binding, p):
                              (row["source"], actor["id"])).fetchone()
         cancelled = delivery and delivery["cancellation_requested"]
         if row["kind"] == "work" and row["state"] not in ("complete", "cancelled"):
-            change(c, row, "cancelled" if cancelled else "pending",
+            change(c, row, "cancelled" if cancelled else "waiting" if row["state"]=="waiting" else "pending",
                    {**row["value"], "execution": {"nativeThread": p["nativeThread"],
                     "nativeTurn": turn, "status": status}})
         if cancelled:
@@ -191,18 +193,42 @@ def perform(store,c,actor,purpose,binding,p):
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
-      "reader":{"pending","snapshot","read","accept","answer","announce"},
-      "writer":{"pending","snapshot","read","progress","complete","announce"},
+      "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","directory"},
+      "writer":{"pending","snapshot","read","progress","complete","announce","peer_request","wait_peers","directory"},
       "responder":{"pending","snapshot","read","publish","suppress"},
     }
     if action not in permitted[purpose]:
         raise Denied("Tool does not belong to this context purpose")
-    target=v.get("workId") if action in ("progress","complete") else v.get("inputId") if action in ("accept","answer") else v.get("communicationId")
+    target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers") else v.get("inputId") if action in ("accept","answer","peer_result") else v.get("communicationId")
     if target and target not in {str(x) for x in binding["active_material"]}:
         raise Denied("Material does not belong to this captured native turn")
+    if action in ("directory", "peer_request", "wait_peers", "peer_result"):
+        from . import context_peers
+        if action == "directory":
+            return context_peers.directory(c,store,actor,v)
+        function = {"peer_request": context_peers.queue, "wait_peers": context_peers.wait,
+                    "peer_result": context_peers.apply}[action]
+        return function(c,store,actor,binding,p)
     if action=="pending":
+        if purpose=="writer":
+            cancelled=c.execute("""SELECT m.* FROM hb_context_material m JOIN hb_delivery d
+              ON d.event=m.source AND d.agent=m.agent
+              WHERE m.agent=%s AND m.kind='work' AND m.state='waiting' AND d.cancellation_requested
+              AND m.value->'execution'->>'status' IN ('completed','interrupted','failed')
+              AND NOT EXISTS(SELECT 1 FROM hb_purpose_context b WHERE b.agent=m.agent
+                  AND b.active_turn IS NOT NULL AND m.id=ANY(b.active_material)) FOR UPDATE OF m""",
+              (actor["id"],)).fetchall()
+            for work in cancelled:
+                c.execute("""UPDATE hb_context_material SET state='cancelled',revision=revision+1,
+                  updated_at=clock_timestamp() WHERE agent=%s AND source=%s
+                  AND state NOT IN ('handled','published','complete','cancelled')""",
+                  (actor["id"],work["source"]))
+                c.execute("""UPDATE hb_delivery SET state='cancelled',revision=revision+1,
+                  updated_at=clock_timestamp() WHERE agent=%s AND event=%s AND cancellation_requested""",
+                  (actor["id"],work["source"]))
         kind={"reader":"input","writer":"work","responder":"need"}[purpose]
         rows=c.execute("""SELECT m.id,m.kind,m.state,m.revision,
+          coalesce((m.value->>'resumeRevision')::bigint,0) AS resume_revision,
           COALESCE(d.cancellation_requested,false) AS cancelled
           FROM hb_context_material m LEFT JOIN hb_delivery d
           ON d.event=m.source AND d.agent=m.agent WHERE m.agent=%s AND m.kind=%s
@@ -219,6 +245,8 @@ def perform(store,c,actor,purpose,binding,p):
         source=item(c,store,actor,v["inputId"],"input")
         if source["state"]!="pending":
             raise Conflict("Input already interpreted")
+        if source["value"].get("peerCompletion"):
+            raise Conflict("Record the peer result on its original work; no new task or acknowledgement is required")
         need=need_for(c,store,actor,source["source"])
         if action=="accept":
             work_id=str(uuid5(UUID(str(source["id"])),"work"))
@@ -239,6 +267,10 @@ def perform(store,c,actor,purpose,binding,p):
         return result
     if action in ("progress","complete"):
         work=item(c,store,actor,v["workId"],"work")
+        from .context_peers import require_current_read, own_change, requests
+        require_current_read(binding,work,p["nativeTurn"])
+        if action=="complete" and any(not n["value"].get("peerResult") for n in requests(c,actor,work)):
+            raise Conflict("Original peer prerequisites are unresolved; work is not complete")
         event=store.readable_event(c,actor,work["source"])
         delivery=c.execute("SELECT * FROM hb_delivery WHERE event=%s AND agent=%s",
                            (event["id"],actor["id"])).fetchone()
@@ -247,7 +279,7 @@ def perform(store,c,actor,purpose,binding,p):
         progress=(work["value"].get("progress",[])+[v["body"]])[-8:]
         state="complete" if action=="complete" else "running"
         value={**work["value"],"progress":progress,"evidence":v.get("evidence",[])}
-        change(c,work,state,value)
+        own_change(c,actor,binding,work,state,value,p["nativeTurn"])
         if action=="complete":
             need=need_for(c,store,actor,work["source"])
             change(c,need,"ready",{**need["value"],"material":v["body"],
@@ -289,13 +321,20 @@ def perform(store,c,actor,purpose,binding,p):
     provenance={"schema":"lax-purpose-context/v1","contextId":str(binding["context_id"]),
       "purpose":purpose,"nativeThread":p["nativeThread"],"nativeTurn":p["nativeTurn"],
       "communicationId":str(need["id"]),"communicationRevision":need["revision"]}
-    published=store.event(c,actor,event["room"],"message",v["body"],recipient=recipient,
+    if need["value"].get("kind")=="request":
+        from .context_peers import publish
+        return publish(c,store,actor,need,provenance,v.get("body"))
+    published=store.event(c,actor,event["room"],"message",v.get("body",need["value"]["material"]),recipient=recipient,
        audience=event["audience"],source=event["id"],data={"nativeContext":provenance})
     change(c,need,"published",{**need["value"],"publishedEventId":str(published)})
     if need["value"].get("required"):
-        c.execute("""UPDATE hb_delivery SET state='completed',result_event=%s,revision=revision+1,
-           updated_at=clock_timestamp() WHERE event=%s AND agent=%s AND NOT cancellation_requested""",
-           (published,event["id"],actor["id"]))
+        completed=c.execute("""UPDATE hb_delivery SET state='completed',result_event=%s,revision=revision+1,
+           updated_at=clock_timestamp() WHERE event=%s AND agent=%s AND NOT cancellation_requested
+           AND state<>'completed' RETURNING *""",
+           (published,event["id"],actor["id"])).fetchone()
+        if completed:
+            from .communication import completion
+            completion(store,c,actor,event,completed,published,"completed")
     return store.receipt(c,published)
 
 
