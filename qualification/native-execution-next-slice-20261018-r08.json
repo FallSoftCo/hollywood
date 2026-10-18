@@ -33,5 +33,11 @@
     "The current peer was provisioned by the installer/test owner, not autonomously created by Global.",
     "No complete fresh-enterprise readiness, passive broadcast relevance, full cancellation, compaction or multi-human/multi-host/physical-phone acceptance is claimed."
   ],
-  "scope": "LAX/Hollywood core; preserve production services, old sessions/timers and NextComp owner boundaries."
+  "scope": "LAX/Hollywood core; preserve production services, old sessions/timers and NextComp owner boundaries.",
+  "currentProgress": {
+    "capturedPerTurnExecutionOwnership": "Implemented; same work/claim across three writer turns verified, including explicit recovery continuation.",
+    "sharedActivityEncoderAndCanonicalLogDomain": "Implemented; 52 canonical action events, five conversation events, no action-created delivery.",
+    "fullExecutorEffectsAndNativeToolParity": "Still incomplete; this remains the core milestone.",
+    "latestQualification": "native-execution-activity-20261018-r10.json"
+  }
 }

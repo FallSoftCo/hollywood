@@ -1,0 +1,113 @@
+{
+  "schema": "lax-path-selection/v1",
+  "at": "2026-10-18T20:47:56.945895+00:00",
+  "objective": "A user can operate the enterprise through Global in Hollywood, with independent capable agents, attributable cooperation and retained work across communication/recovery.",
+  "comparisonMethod": "Compare concrete user outcome, actual missing source capability, dependencies and earliest meaningful end-state validation; ordinal reasoning, no invented measured scores.",
+  "alternatives": [
+    {
+      "option": "Improve room cards/activity display alone",
+      "value": "Makes actions visible",
+      "dependency": "Correct native execution identity for every action",
+      "decision": "Not the top-level next milestone. Shares required foundation with execution tools."
+    },
+    {
+      "option": "Add Global provisioning/workflow tools directly to reduced purpose tools",
+      "value": "Global can build teams",
+      "dependency": "Executable handlers, source authorization, operation reconciliation and lifecycle must be reusable",
+      "decision": "Reject declaration-only/piecemeal duplication. Restore through the native core."
+    },
+    {
+      "option": "Consolidate native execution ownership and reuse native core capabilities",
+      "value": "Restores tools, permission fencing, lifecycle and separate action visibility across purpose contexts",
+      "dependency": "Accepted purpose turn must capture original work/delivery/role/host. Work can span multiple native turns without new ownership generations.",
+      "decision": "First dependency on the path to a complete Global-created peer deliverable. Implement explicit scope first; do not claim independent process/effect parity merely from metadata."
+    },
+    {
+      "option": "Reader interpretation of corrections and non-obligating room findings",
+      "value": "Agents adapt responsibilities without duplicate work, context flood or raw user steering",
+      "dependency": "Versioned work/role read barriers and accountable native execution boundaries",
+      "decision": "Next semantic milestone after core capability restoration; include in the same useful deliverable, not a separate broad benchmark."
+    },
+    {
+      "option": "Broad restart/compaction/Stop failure campaign",
+      "value": "Daily reliability",
+      "dependency": "Exercise the final common path, not just a reduced prototype",
+      "decision": "Keep existing receipt/unknown controls, qualify these interruptions on the complete deliverable path. No open-ended edge campaign."
+    },
+    {
+      "option": "Installer and phone cutover now",
+      "value": "User begins using the system",
+      "dependency": "Complete capable work loop plus verified host/account/Git/SSH/admin access and faithful native presentation",
+      "decision": "After core end-state acceptance; do not migrate the user into a known reduced runtime."
+    },
+    {
+      "option": "Multi-host/multi-human scale now",
+      "value": "Enterprise reach",
+      "dependency": "Stable ownership, explicit artifact transfer, installation readiness and scoped human input",
+      "decision": "After same workflow is usable on one host; no parallel novel orchestrator or assumed shared filesystem."
+    }
+  ],
+  "selectedPath": [
+    "Capture original execution ownership per native purpose turn as an immutable accepted receipt, preserving one agent/context/work across turns.",
+    "Reuse execution/effect/tool machinery with that scope, including native process facts, administrative/workflow/cooperation tools, original-operation reconciliation, questions and Stop. Do not fabricate Connector.active or grant effects from metadata.",
+    "Actual ordinary human request -> Global creates agent/room through native tools -> useful peer work and cooperative editing -> scoped finding/correction -> reviewed artifact -> responder result. Commands/actions use the separate canonical execution activity domain.",
+    "Continue that same original work through reconnect/restart/compaction and targeted Stop, with unknown external effects retained.",
+    "Complete fresh-host/account/Git/SSH/admin readiness and NextComp phone operation; then two-human/two-host qualification and OZZZ product workflow."
+  ],
+  "currentExecutableSlice": {
+    "scope": "Per-turn execution ownership receipt and shared activity encoder/outbox; prerequisite to full tool restoration. No new semantic service/acceptance ledger.",
+    "why": "The actual peer proof spans two native writer turns for one work. Existing native activity/effect paths treat a delivery as one native turn, and the purpose runtime does not invoke existing full native handlers.",
+    "acceptance": "A finite real native task through human API emits attributable command/artifact activity separately from conversation. Preserve original scope in durable outbox and observe late immutable log receipts after the original turn closes; never replay execution.",
+    "notClaimed": "This slice alone does not restore independent executor attestation, native effects, Global provisioning or full capability parity."
+  },
+  "productionReplacementReady": false,
+  "noRAMBuilds": true,
+  "noStoppedSessionsOrTimersResumed": true,
+  "nextCoreSourceFindings": [
+    {
+      "source": "lax_connector/execution_lifecycle.py; service_observer.py; service_runtime.py; hollywood_backbone/executors.py",
+      "finding": "Existing independent lifecycle capture assumes one delivery/executor and a connector service launcher. Purpose integration must preserve exact native process/service facts and allow original work to span successive native executions; do not fabricate delivery generations or bypass managed-service verification."
+    },
+    {
+      "source": "lax_connector/connector.py:_tool; effects.py; administration.py; workflow.py",
+      "finding": "Tool declarations are insufficient: existing handlers depend on captured execution scope, role context, original-operation journals and partial administrative effect reconciliation. Reuse that complete path."
+    },
+    {
+      "source": "hollywood_backbone/context_system.py:call/configure; lax_connector/context_runtime.py:start",
+      "finding": "Current purpose installation captures a fixed role revision. Coherent role refresh and launcher/provisioning integration must retain identities, objectives and old operation receipts; current prototype is not a complete installation."
+    },
+    {
+      "source": "codex-rs/ext/goal/src/runtime.rs:continue_if_idle; app-server/src/request_processors/turn_processor.rs:turn_start_inner",
+      "finding": "External goal admission suppresses autonomous goal chaining. Explicit turn/start still starts inference; it is not an independent native execution attestation or a prepare/commit API. Reuse pre-inference capture/attestation from the native lifecycle rather than infer authority from a post-start metadata receipt."
+    }
+  ],
+  "integrationApproachesCompared": [
+    {
+      "approach": "Wrap the legacy Connector unchanged with reader and responder",
+      "decision": "Reject as final architecture: legacy turn/final publication, claim ownership and native tools still own competing communication/lifecycle assumptions."
+    },
+    {
+      "approach": "Keep growing a reduced purpose runtime with separately reimplemented admin/workflow handlers",
+      "decision": "Reject: this already demonstrated capability loss and would require maintaining two effect/recovery implementations."
+    },
+    {
+      "approach": "Factor the existing native execution/tool/effect core and replace communication edges with purpose ownership",
+      "decision": "Selected: retain proven native handlers, independent executor facts, questions, cooperation and original-operation reconciliation; use explicit captured scope instead of fabricating Connector.active."
+    },
+    {
+      "approach": "Ship the old single-context path and postpone triple context",
+      "decision": "Does not satisfy the latest authorized architecture; retain as existing production/rollback only, without silently presenting it as the new system."
+    },
+    {
+      "approach": "Rewrite Hollywood storage or add Redis first",
+      "decision": "No observed evidence that storage is the blocker. Actual PG admission, immutable scopes and receipts pass; missing runtime capabilities and semantic input handling are the current gaps."
+    }
+  ],
+  "boundedQualificationUpdate": {
+    "status": "Original run reached deadline after artifact creation; metadata-only reconciliation followed by one explicit original-work continuation completed the task. Not an uninterrupted pass.",
+    "proof": "native-execution-activity-20261018-r10.json",
+    "milestoneUnchanged": true,
+    "scope": "Captured execution ownership and shared log path; full independent executor/effect/tool capability integration remains next."
+  },
+  "updatedAt": "2026-10-18T21:18:22.446278+00:00"
+}

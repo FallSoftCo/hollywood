@@ -1,0 +1,96 @@
+{
+  "schema": "lax-purpose-native-execution-activity-proof/v1",
+  "verifiedAt": "2026-10-18T21:18:54.005218+00:00",
+  "humanOperation": "three-context-execution-deliverable-r09-c01",
+  "humanEventId": "d281f3b7-abd3-4710-bdc4-4913da1e37a7",
+  "acceptedHumanRequests": 1,
+  "knownRejectedBeforeCorrection": 1,
+  "parentWorkId": "dfa8989b-6567-5a09-b065-d7c4815647b0",
+  "peerWorkId": "3878ddeb-a660-5d44-bd51-8ffe3207e5b2",
+  "peerRequestEventId": "ab3cedce-b6f9-42ed-be7e-4bbb253efb7b",
+  "sameOriginalParentWorkAndClaimAcrossThreeWriterTurns": true,
+  "commandsPerScope": {
+    "execution-5d8ae257d860cc55c37ba88d6703ff32468a9cc4c3d583464bf8e2cc4fa7f455": 2,
+    "execution-67df64fe6f0644d738b81880f84401dc8993f4b49d7a98f212e977062f16ceb2": 12,
+    "execution-0b4d06b4caaedf8e53ed8b668662441d07bfddc3b159d49dd1799d480d50b4a4": 7,
+    "execution-115225c66fafc26c57a1e5e8fbf064e2b912c8bddc1dc5f73c31e59c34c47c83": 5
+  },
+  "qualificationInitialRunTimedOut": true,
+  "initialRunWasNotUninterruptedPass": true,
+  "explicitOriginalWorkContinuations": 1,
+  "metadataOnlyReconciliationStartedModels": 0,
+  "canonicalActivityEvents": 52,
+  "conversationEvents": 5,
+  "activityCreatesDeliveries": false,
+  "internalContextTrafficInConversation": false,
+  "pendingAllContexts": 0,
+  "heldContexts": 0,
+  "remainingActivityOutboxes": 0,
+  "quietWakeCounts": {
+    "global:reader": 0,
+    "global:writer": 1,
+    "global:responder": 1
+  },
+  "quietSeconds": 5.281898768618703,
+  "initialRunHeld": {
+    "at": 1792357761.7924197,
+    "startedAt": 1792356861.476223,
+    "reason": "Finite qualification deadline; inspect original operations and turns before continuation.",
+    "wakeCounts": {
+      "global:reader": 2,
+      "global:writer": 2,
+      "global:responder": 2,
+      "review:reader": 1,
+      "review:writer": 1,
+      "review:responder": 2
+    }
+  },
+  "artifact": {
+    "path": "/var/lib/lax-three-context-20261018-r01/agent/work/CAPABILITY-RESTORATION.json",
+    "bytes": 40647,
+    "sha256": "2fa73adf7aeb8301fad3d29089650219f9f8201ddaaada0441f852c60f66bbe5",
+    "topLevelKeys": [
+      "artifact_schema",
+      "schema_origin",
+      "work_id",
+      "source_event_id",
+      "status",
+      "production_readiness_certified",
+      "scope",
+      "source_binding",
+      "source_references",
+      "actual_writer_tool_surface",
+      "existing_implementation_not_to_confuse_with_restoration",
+      "bounded_connector_inventory",
+      "independent_peer_review",
+      "prioritized_missing_capability_groups",
+      "next_executable_dependency",
+      "dependency_path_to_complete_global_created_peer_deliverable",
+      "unresolved_limits",
+      "preservation_and_prohibited_actions"
+    ]
+  },
+  "verifiedSourceDestinationCopies": 6,
+  "previousArtifactHashesUnchanged": 21,
+  "protectedProductionPIDs": {
+    "hollywood-backbone.service": 3268903,
+    "nextcomp-native-core.service": 2583312
+  },
+  "productionChanged": false,
+  "newRAMBuildTrees": 0,
+  "logRecoveryProof": "/var/lib/lax-three-context-20261018-r01/execution-r09/log-recovery-proof.json",
+  "limits": [
+    "Captured metadata is not independent process liveness or full native effect authorization.",
+    "This slice does not yet restore Global provisioning, complete workflow/review/cooperation tool parity, reader room observations/corrections, fresh enterprise installation or production replacement.",
+    "No multi-host, physical NextComp/voice/push or universal semantic stability claim."
+  ],
+  "source": "Actual owned private human API and native LAX writer/reader/responder contexts; source commits before qualification recorded in receipts.",
+  "originalNativeTestHeld": true,
+  "oneExplicitRecoveryContinuation": true,
+  "fullNativeCapabilityParity": false,
+  "actualProofFile": "/var/lib/lax-three-context-20261018-r01/execution-r09/native-verified.json",
+  "originalLogRecoveryProof": "/var/lib/lax-three-context-20261018-r01/execution-r09/log-recovery-proof.json",
+  "newShutdownRaceFixQualification": "Normal settlement helper used in actual final continuation. Initial interrupt reconciled from actual original metadata without models. The new shutdown future-wait branch was not separately fault-injected; broader Stop qualification remains.",
+  "generatedAuditInterpretation": "QA writers intentionally had frozen three-file inputs and a bounded inventory task. Their suggestion to obtain separate authority/contracts is not a new coordinator permission requirement. The coordinator already has user authorization and read actual sources. No new bridge component or manual permission gate is adopted from that suggestion.",
+  "nextAcceptance": "Restore native process/effect/tool core, then actual Global-created peer and room plus cooperative deliverable, reader correction/finding, original-work recovery and complete installation before rollout."
+}
