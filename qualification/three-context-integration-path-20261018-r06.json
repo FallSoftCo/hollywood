@@ -6,7 +6,8 @@
     "Actual writer deliverable plus concurrent status and proactive communication completed in the original three histories.",
     "Original long-turn completion recovered from native metadata with zero new model turns.",
     "Real follow-up delivered after withholding its writer completion notification; one original submission, no replacement writer turn.",
-    "Bounded retrieval passed actual PostgreSQL pagination/Unicode/revision checks and a 57-second native question in original histories. Reader explicitly fetched recorded work across three chunks; responder answered; writer started zero turns."
+    "Bounded retrieval passed actual PostgreSQL pagination/Unicode/revision checks and a 57-second native question in original histories. Reader explicitly fetched recorded work across three chunks; responder answered; writer started zero turns.",
+    "r07 two-agent/six-context peer review completed with actual models, concurrent human status, reader-mediated same-work continuation and zero peer-result acknowledgements; r08 filters technical wake from conversation without deleting history."
   ],
   "sourceFindings": [
     {
@@ -89,5 +90,6 @@
     "unknown": "Observe exact original operations and executions; do not replay uncertain effects.",
     "migration": "Candidate only until parity proof. Preserve durable history, pairings, current controls and stopped schedules. No database rewind or all-live default switch."
   },
-  "validationPolicy": "Prefer the actual end-state native journey. Small PostgreSQL/protocol checks establish bounded reads and fencing only; they do not establish semantic stability, collaboration or autonomous-enterprise readiness."
+  "validationPolicy": "Prefer the actual end-state native journey. Small PostgreSQL/protocol checks establish bounded reads and fencing only; they do not establish semantic stability, collaboration or autonomous-enterprise readiness.",
+  "supersedingExecutionSlice": "native-execution-next-slice-20261018-r08.json"
 }

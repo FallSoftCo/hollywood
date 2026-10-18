@@ -961,6 +961,7 @@ class Store:
         filters = {
             "all": "",
             "conversation": " AND data->>'type' IS DISTINCT FROM 'executionActivity'"
+                " AND data->>'type' IS DISTINCT FROM 'peerCompletion'"
                 " AND data->>'type' IS DISTINCT FROM 'collaborationProtocol'"
                 " AND data->>'type' IS DISTINCT FROM 'reportScopeProtocol'"
                 " AND NOT (kind='progress' AND (data ? 'collaborationReceipt' OR data ? 'editPlanReceipt'))",

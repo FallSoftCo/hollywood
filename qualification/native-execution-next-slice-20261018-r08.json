@@ -1,0 +1,37 @@
+{
+  "schema": "lax-native-execution-integration-slice/v1",
+  "status": "Next core implementation; not yet implemented.",
+  "objective": "Reuse full LAX execution, permissions, activity and cooperation with persistent purpose contexts.",
+  "observedBlocker": {
+    "fact": "The real parent work spans two native writer turns in one delivery. Existing activity.append compares every frame with delivery.native_turn; its single-turn pointer cannot validate all purpose-context executions and late log recovery unchanged.",
+    "sources": [
+      "hollywood_backbone/activity.py:append",
+      "losangelex/connector/lax_connector/activity.py:Activity",
+      "hollywood_backbone/native_effects.py:validate",
+      "losangelex/connector/lax_connector/execution_lifecycle.py:ExecutionLifecycle"
+    ],
+    "forbiddenShortcuts": [
+      "Fabricating a Connector.active delivery or inventing a native generation.",
+      "Resetting context/agent identity per room or request.",
+      "Exposing tool declarations without their actual execution, authorization and recovery paths.",
+      "Treating a native terminal status as verified external-effect settlement."
+    ]
+  },
+  "firstExecutableChange": [
+    "Represent and validate original per-turn purpose execution against actual canonical work/delivery and installed agent/context, preserving claim generation as ownership fencing.",
+    "Reuse existing service/process observation and native effect checks with that execution reference; preserve historical turn identities and late log receipts.",
+    "Factor the existing activity encoder/outbox around an explicit captured execution scope and reuse its canonical activity domain. Commands, edits and plans must appear as executionActivity, not room messages; internal context bookkeeping stays private.",
+    "Exercise an actual command and artifact through the human API; verify conversation/activity separation, attribution, original-work continuation and no effect replay."
+  ],
+  "subsequentAcceptance": [
+    "Restore actual Global provisioning/workflow/review/cooperation/artifact-routing tools through that shared core; independently verify model/account, sudo, Git/SSH and host/workspace readiness.",
+    "Qualify Global creating a peer and room itself, then a real collaboratively edited deliverable.",
+    "Add scoped non-obligating room observations and relevant reader-to-writer amendments without raw human steering or acknowledgement loops.",
+    "Exercise Stop/unknown effects, reconnect/restart and compaction on original work before multi-host/phone cutover."
+  ],
+  "stillNotProven": [
+    "The current peer was provisioned by the installer/test owner, not autonomously created by Global.",
+    "No complete fresh-enterprise readiness, passive broadcast relevance, full cancellation, compaction or multi-human/multi-host/physical-phone acceptance is claimed."
+  ],
+  "scope": "LAX/Hollywood core; preserve production services, old sessions/timers and NextComp owner boundaries."
+}

@@ -1,40 +1,97 @@
 {
-  "status": "Candidate source; actual two-agent native journey in progress, not yet claimed passed.",
-  "candidateVersions": {
+  "schema": "lax-triple-context-peer-native-proof/v1",
+  "verifiedAt": "2026-10-18T19:18:16.642279+00:00",
+  "model": "gpt-6.1-sol",
+  "effort": "xhigh",
+  "humanOperation": "three-context-peer-deliverable-r07",
+  "humanEvent": "e68f2d4f-9f9d-45eb-a7fd-53c38a954eec",
+  "humanSubmissionCount": 1,
+  "statusOperation": "three-context-peer-status-r07",
+  "statusEvent": "df4f42ec-0f94-4242-a987-70d4c26201a6",
+  "statusSubmissionCount": 1,
+  "parentWorkId": "79a01e37-92f1-51f8-9f44-0a1ad3f889f0",
+  "peerWorkId": "183734ba-f45a-58cc-b460-4c2dd2c45f37",
+  "sameWorkResumedFromExternalPeerResult": true,
+  "globalWriterNativeTurns": [
+    "01a15067-5928-7342-8398-3c7de18db172",
+    "01a1506c-6dce-7230-ad4b-d9648ea7318f"
+  ],
+  "peerWriterNativeTurn": "01a15068-35a2-75f2-980f-55ec21f3af8a",
+  "statusAnswerDuringSamePeerWriterTurn": true,
+  "peerResultAcknowledgementMessages": 0,
+  "peerResultExtraWork": 0,
+  "canonicalEventCount": 19,
+  "pendingAllSixContexts": 0,
+  "heldContexts": 0,
+  "quietWakeCountsBefore": {
+    "global:reader": 3,
+    "global:writer": 2,
+    "global:responder": 4,
+    "review:reader": 1,
+    "review:writer": 1,
+    "review:responder": 2
+  },
+  "quietWakeCountsAfter": {
+    "global:reader": 3,
+    "global:writer": 2,
+    "global:responder": 4,
+    "review:reader": 1,
+    "review:writer": 1,
+    "review:responder": 2
+  },
+  "quietSeconds": 5.4630547519773245,
+  "maximumToolResultBytes": 3604,
+  "nativeSeconds": 635.7467579841614,
+  "verifiedTransferPairs": 5,
+  "originalManifestEntriesStillValid": 60,
+  "protectedProductionPIDs": {
+    "hollywood-backbone.service": "3268903",
+    "nextcomp-native-core.service": "2583312"
+  },
+  "productionChanged": false,
+  "residualGaps": [
+    "Full native independent executor/effects/workflow/admin/cooperation and artifact routing parity remains required.",
+    "Fresh enterprise installation, complete cancellation/unknown effects, compaction and multi-human/multi-host/physical NextComp are not established."
+  ],
+  "status": "Actual two-agent/six-context native journey passed; not full production parity.",
+  "peerRequestEvent": "cef4f91a-88bc-415f-93fb-2af84e83c6d5",
+  "peerReplyEvent": "6bdb319c-d1a4-4696-816d-87a1d7ce9f00",
+  "finalReplyEvent": "be3c5a62-43b3-4031-9190-40f48a9cd9f3",
+  "verifiedArtifactCount": 21,
+  "immutableRunVersions": {
     "lax": "0.1.0.dev66",
     "hollywood": "0.3.0.dev42"
   },
-  "scope": [
-    "Responder dispatches immutable peer requests through shared canonical Store.post_in_transaction.",
-    "Peer completion uses existing communication.completion and enters reader without another response obligation.",
-    "Reader applies verified canonical result to original work; external result revision resumes the same writer context.",
-    "Complete current work reads required before contribution; unresolved peer prerequisites block completion."
-  ],
-  "humanOperation": "three-context-peer-deliverable-r07",
-  "humanEvent": "e68f2d4f-9f9d-45eb-a7fd-53c38a954eec",
-  "statusOperation": "three-context-peer-status-r07",
-  "statusEvent": "df4f42ec-0f94-4242-a987-70d4c26201a6",
-  "peerId": "87d85e72-e8eb-44eb-bec5-9205a25916e9",
-  "peerConfig": "/var/lib/lax-three-context-20261018-r01/peer-r07/agent/config.json",
-  "nativeUnit": "lax-three-context-peer-pair-20261018-r07.service",
-  "deterministicPostgresqlProof": {
-    "mode": "Real PostgreSQL, rollback-only synthetic material. Not model behavior proof.",
-    "queuedWasNotAccepted": true,
-    "normalCanonicalRequestAccepted": true,
-    "distinctPeerRecipient": true,
-    "staleWriterContributionDenied": true,
-    "canonicalPeerCompletionMappedOriginalWork": true,
-    "noAcknowledgementObligation": true,
-    "readerResumedOriginalWorkOnce": true,
-    "readerResultAddedRoomMessages": 0,
-    "allSyntheticStateRolledBack": true,
-    "at": "2026-10-18T18:58:49.508392+00:00"
+  "readProjectionFollowup": {
+    "schema": "hollywood-conversation-projection-proof/v1",
+    "at": "2026-10-18T19:28:05.289021+00:00",
+    "version": "0.3.0.dev43",
+    "canonicalEventCountBefore": 19,
+    "canonicalEventCountAfter": 19,
+    "conversationCountBefore": 19,
+    "conversationCountAfter": 18,
+    "internalWakeEventId": "8eb5e7f2-629f-41ee-aadf-50b79204730b",
+    "auditIdentityRetained": true,
+    "canonicalDeliveryAndResultStillReadable": true,
+    "beforePaginationSkipsWake": true,
+    "afterPaginationSkipsWake": true,
+    "allOriginalEventIDsAndOrderRetained": true,
+    "modelsStarted": 0,
+    "messagesResubmitted": 0,
+    "protectedProductionPIDsBefore": {
+      "hollywood-backbone.service": "3268903",
+      "nextcomp-native-core.service": "2583312"
+    },
+    "protectedProductionPIDsAfter": {
+      "hollywood-backbone.service": "3268903",
+      "nextcomp-native-core.service": "2583312"
+    },
+    "rollbackDropin": "/var/lib/lax-three-context-20261018-r01/peer-r07/projection-r08-previous-dropin.conf",
+    "productionChanged": false
   },
-  "resourcePolicy": "OZZZ disk-only build through storage-build; finite native unit MemoryMax6G/SwapMax512M/CPUQuota300%; no old sessions/timers resumed.",
-  "remainingPromotionGates": [
-    "Full independently observed native executor/effect and workflow/admin/cooperation parity.",
-    "Fresh-install readiness and complete cancellation/unknown-effect handling; delegated child cancellation is not established by parent cancellation.",
-    "Multi-human/multi-host, physical NextComp and compaction acceptance are separate."
-  ],
-  "productionChanged": false
+  "currentCandidateVersions": {
+    "lax": "0.1.0.dev66",
+    "hollywood": "0.3.0.dev43"
+  },
+  "privateEvidence": "/var/lib/lax-three-context-20261018-r01/peer-r07/native-verified.json"
 }

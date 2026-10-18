@@ -1,0 +1,27 @@
+{
+  "schema": "hollywood-conversation-projection-proof/v1",
+  "at": "2026-10-18T19:28:05.289021+00:00",
+  "version": "0.3.0.dev43",
+  "canonicalEventCountBefore": 19,
+  "canonicalEventCountAfter": 19,
+  "conversationCountBefore": 19,
+  "conversationCountAfter": 18,
+  "internalWakeEventId": "8eb5e7f2-629f-41ee-aadf-50b79204730b",
+  "auditIdentityRetained": true,
+  "canonicalDeliveryAndResultStillReadable": true,
+  "beforePaginationSkipsWake": true,
+  "afterPaginationSkipsWake": true,
+  "allOriginalEventIDsAndOrderRetained": true,
+  "modelsStarted": 0,
+  "messagesResubmitted": 0,
+  "protectedProductionPIDsBefore": {
+    "hollywood-backbone.service": "3268903",
+    "nextcomp-native-core.service": "2583312"
+  },
+  "protectedProductionPIDsAfter": {
+    "hollywood-backbone.service": "3268903",
+    "nextcomp-native-core.service": "2583312"
+  },
+  "rollbackDropin": "/var/lib/lax-three-context-20261018-r01/peer-r07/projection-r08-previous-dropin.conf",
+  "productionChanged": false
+}
