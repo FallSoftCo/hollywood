@@ -17,7 +17,7 @@ from .store import Conflict, Denied, digest, json_value
 HEADER = "X-Hollywood-Native-Source"
 _request = contextvars.ContextVar("hollywood_native_request", default=None)
 
-BUSINESS = {
+BUSINESS = {"context_configure",
     "delivery_recover",
     "delivery_edit_reconcile",
     "report_scope_read",
@@ -27,7 +27,7 @@ BUSINESS = {
     "cancel", "native_control_create", "communication_set",
     "collaboration_bridge",
 }
-METADATA = {
+METADATA = {"context_call",
     "executor_begin", "executor_reserve", "executor_attach", "executor_observe",
     "host_sample", "connector_observe", "claim", "transition",
     "native_control_pending", "native_control_update", "native_goal_binding",
@@ -37,7 +37,7 @@ METADATA = {
     "collaboration_call",
     "edit_plan_call", "mutation_observe", "delivery_edit_call",
 }
-EXCLUSIVE = {
+EXCLUSIVE = {"context_configure", "context_call",
     "delivery_recover",
     "delivery_edit_reconcile",
     "report_scope_read",

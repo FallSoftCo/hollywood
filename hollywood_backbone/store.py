@@ -395,10 +395,29 @@ class Store:
     def close(self):
         self.pool.close()
 
+    def context_configure(self, actor_id, agent, payload):
+        from .context_system import configure
+        return configure(self, actor_id, agent, payload)
+
+    def context_call(self, actor_id, token_digest, agent, purpose, payload):
+        from .context_system import call
+        return call(self, actor_id, token_digest, agent, purpose, payload)
+
+    def context_receipt(self, actor_id, token_digest, agent, purpose, operation):
+        from .context_system import receipt
+        return receipt(self, actor_id, token_digest, agent, purpose, operation)
+
+    def context_token_scope(self, token_digest):
+        with self.pool.connection() as c:
+            row = c.execute("SELECT agent,purpose FROM hb_purpose_context WHERE token_digest=%s", (token_digest,)).fetchone()
+            return json_value(row)
+
     def migrate(self):
         with self.pool.connection() as c:
             c.execute("SELECT pg_advisory_xact_lock(1742014101)")
             c.execute(Path(__file__).with_name("schema.sql").read_text())
+            from .context_system import SCHEMA
+            c.execute(SCHEMA)
 
     def bootstrap(self, authority, name, plan):
         """Local installer operation; never exposed through an anonymous HTTP route."""
@@ -876,6 +895,9 @@ class Store:
                     "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
                     (uid(), a["authority"], event, recipient),
                 )
+            if recipient and kind == "request":
+                from .context_system import ingest
+                ingest(c, recipient, event)
             result = self.receipt(c, event)
             c.execute(
                 """INSERT INTO hb_command(authority,principal,operation,digest,event,wire_request,accepted_result)
@@ -1032,6 +1054,9 @@ class Store:
 
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
+            if c.execute("SELECT 1 FROM hb_context_system WHERE agent=%s AND enabled", (a["id"],)).fetchone():
+                raise Conflict("Purpose-context agent uses its native context runtime")
+
             if a["kind"] != "agent":
                 raise Denied("Only an execution connector may claim work")
             c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (str(a["id"]),))

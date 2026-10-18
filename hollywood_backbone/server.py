@@ -39,6 +39,27 @@ class Message(Input):
     expectsReply: bool = False
 
 
+class ContextBinding(Input):
+    purpose: Literal["reader", "writer", "responder"]
+    contextId: UUID
+    credentialDigest: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
+class ContextSystemConfiguration(Input):
+    hostId: UUID
+    workspaceId: str = Field(min_length=1, max_length=256)
+    bindings: list[ContextBinding] = Field(min_length=3, max_length=3)
+
+
+class ContextCall(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    action: Literal["bind", "pending", "snapshot", "accept", "answer", "announce",
+                    "progress", "complete", "publish", "suppress"]
+    nativeThread: str = Field(min_length=1, max_length=128)
+    nativeTurn: str = Field(min_length=1, max_length=128)
+    value: dict = Field(default_factory=dict)
+
+
 class NativeControlScope(Input):
     authorityId: UUID
     deliveryId: UUID
@@ -489,6 +510,9 @@ async def boundary(request, handler):
             actor = await asyncio.to_thread(request.app[STORE].authenticate, authorization[7:])
             request["actor"] = actor["id"]
             request["tokenDigest"] = digest(authorization[7:])
+            scope = await asyncio.to_thread(request.app[STORE].context_token_scope, request["tokenDigest"])
+            if scope and not (request.path == f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}" or request.method == "GET" and request.path.startswith(f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}/operations/")):
+                raise Denied("Purpose credential has no general transport authority")
         return await handler(request)
     except Denied:
         return web.json_response({"error": "Access denied"}, status=403)
@@ -1365,12 +1389,36 @@ async def supervision_ack(request):
     return await invoke(request, "supervision_ack", p.sequence, p.revision)
 
 
+async def context_configuration(request):
+    p = await body(request, ContextSystemConfiguration)
+    return await invoke(request, "context_configure", str(UUID(request.match_info["agent"])),
+                        p.model_dump(mode="json"))
+
+
+async def context_receipt(request):
+    return await invoke(request, "context_receipt", request["tokenDigest"],
+                        str(UUID(request.match_info["agent"])), request.match_info["purpose"],
+                        request.match_info["operation"])
+
+
+async def context_call(request):
+    p = await body(request, ContextCall)
+    if len(json.dumps(p.value).encode()) > 12000:
+        raise ValueError("Context material exceeds bound")
+    return await invoke(request, "context_call", request["tokenDigest"],
+                        str(UUID(request.match_info["agent"])), request.match_info["purpose"],
+                        p.model_dump(mode="json"))
+
+
 def application(store):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
     app.add_routes(
         [
             web.get("/health", health),
+            web.put("/hollywood/v3/agents/{agent}/context-system", context_configuration),
+            web.post("/hollywood/v3/agents/{agent}/contexts/{purpose}", context_call),
+            web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/operations/{operation}", context_receipt),
             web.put("/hollywood/v3/hosts/{host}/collaboration-bridge", collaboration_bridge),
             web.get("/hollywood/v3/hosts/{host}/collaboration-bridge", collaboration_bridge_read),
             web.post("/hollywood/v3/collaboration/path-claims", collaboration_call),
