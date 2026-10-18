@@ -1,0 +1,46 @@
+{
+  "schema": "lax-three-context-lifecycle-proof/v1",
+  "verifiedAt": "2026-10-18T17:00:16.227851+00:00",
+  "originalHumanOperation": "three-context-live-export-r05",
+  "originalHumanEvent": "4e4d391d-f585-49b9-9433-a8766b49ff4e",
+  "submissionCount": 1,
+  "nativeWriterThread": "01a14f53-7c6c-7273-a36a-2f88cac249e0",
+  "nativeWriterTurn": "01a14feb-b6f2-78c1-87b1-d201229aa8a1",
+  "writerWakeCount": 1,
+  "originalTurnObservedCompleted": true,
+  "modelsStartedToRecoverMissingNotification": 0,
+  "productionTouched": false,
+  "model": "gpt-6.1-sol",
+  "reasoningEffort": "xhigh",
+  "limits": [
+    "One agent with three native contexts, not multi-agent production acceptance.",
+    "Actual utility inspects frozen state; not live work completion certification.",
+    "Full native cooperation/workflow/executor-attestation integration remains required.",
+    "Bounded material retrieval and multi-room observation are not yet candidate-complete.",
+    "No phone/push/provider/multi-host outcome is claimed."
+  ],
+  "result": "Actual-model follow-up completed; one withheld writer completion notification recovered from original native turn metadata.",
+  "canonicalHistory": {
+    "eventCount": 8,
+    "originalFiveRetainedExactlyOnce": true,
+    "followupHumanEventCount": 1
+  },
+  "responseEventIDs": [
+    "ba938306-c134-463d-8ec7-a66d8752ea4b",
+    "852fd0ef-7add-472f-8933-98584e24db77"
+  ],
+  "durableEvidence": "/var/lib/lax-three-context-20261018-r01/lifecycle-r05/followup-verified.json",
+  "protocolChecks": {
+    "cases": 4,
+    "passed": 4,
+    "durationSeconds": 0.015,
+    "test": "test_context_observation.py",
+    "meaning": "Protocol invariants only; actual-model behavior is independently evidenced above."
+  },
+  "buildSourceFiles": {
+    "lax/losangelex/connector/lax_connector/context_runtime.py": "fb3a2f9716a0bd46a66532a7070ae7f60bbb3c69474db75cadc70fa9d0177f8a",
+    "lax/losangelex/connector/lax_connector/context_observation.py": "9869787b194ea021c623de0b70b2fa08a4bb8d2bd7f2e1c2f6207bbfc7d0e385",
+    "hollywood/hollywood_backbone/context_system.py": "aa75e9c0785020798d9d1e064b9c2fa6216db0309bb2dfefbb1cd13d27d9178f",
+    "hollywood/hollywood_backbone/server.py": "58d626803e8f3b2309223e76fb35c92fab65137eaf4f2991f7b51e0b7f54f686"
+  }
+}

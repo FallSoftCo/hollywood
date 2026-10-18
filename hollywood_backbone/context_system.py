@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS hb_purpose_context(
  context_id uuid NOT NULL UNIQUE, token_digest text NOT NULL UNIQUE,
  native_thread text, reads jsonb NOT NULL DEFAULT '{}', PRIMARY KEY(agent,purpose),
  CHECK(purpose IN ('reader','writer','responder')));
+ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS active_turn text;
+ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS active_material uuid[] NOT NULL DEFAULT '{}';
+ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS accepting boolean NOT NULL DEFAULT false;
 CREATE TABLE IF NOT EXISTS hb_context_material(
  id uuid PRIMARY KEY, agent uuid NOT NULL REFERENCES hb_context_system(agent),
  kind text NOT NULL, source uuid NOT NULL REFERENCES hb_event(id),
@@ -85,8 +88,10 @@ def need_for(c, store, actor, source):
 
 def snapshot(c, store, actor, purpose, binding, turn):
     rows = c.execute("""SELECT * FROM hb_context_material WHERE agent=%s
-      AND (state NOT IN ('published','handled') OR kind='need')
-      ORDER BY created_at DESC,id LIMIT 40""",(actor["id"],)).fetchall()
+      AND (id=ANY(%s::uuid[]) OR (%s='reader' AND kind='work')
+           OR (%s='responder' AND kind='need' AND state='published'))
+      ORDER BY CASE WHEN id=ANY(%s::uuid[]) THEN 0 ELSE 1 END,created_at,id LIMIT 40""",
+      (actor["id"],binding["active_material"],purpose,purpose,binding["active_material"])).fetchall()
     result={"inputs":[],"work":[],"communications":[]}
     reads={}
     for row in rows:
@@ -158,8 +163,67 @@ def call(store, actor_id, token_digest, agent, purpose, p):
                   (agent,purpose,op,fingerprint,Jsonb(result)))
         return result
 
+def lifecycle(c, store, actor, purpose, binding, p):
+    action, turn = p["action"], p["nativeTurn"]
+    if action == "begin":
+        if binding["active_turn"] not in (None, turn):
+            raise Conflict("Original native turn is unsettled")
+        ids = p["value"].get("materialIds", [])
+        if not ids or len(ids) > 100 or len(set(ids)) != len(ids):
+            raise ValueError("A bounded original material set is required")
+        kind = {"reader": "input", "writer": "work", "responder": "need"}[purpose]
+        for identity in ids:
+            row = item(c, store, actor, identity, kind)
+            if row["state"] not in (("pending", "running") if purpose == "writer" else
+                                    ("pending",) if purpose == "reader" else ("ready",)):
+                raise Conflict("Original material is no longer runnable")
+            delivery = c.execute("SELECT cancellation_requested FROM hb_delivery WHERE event=%s AND agent=%s",
+                                 (row["source"], actor["id"])).fetchone()
+            if delivery and delivery["cancellation_requested"]:
+                raise Conflict("Original request cancelled before admission")
+            if purpose == "writer":
+                change(c, row, "running", {**row["value"], "execution": {
+                    "nativeThread": p["nativeThread"], "nativeTurn": turn, "status": "inProgress"}})
+        c.execute("UPDATE hb_purpose_context SET active_turn=%s,active_material=%s::uuid[],accepting=true WHERE agent=%s AND purpose=%s",
+                  (turn, ids, actor["id"], purpose))
+        return {"nativeTurn": turn, "state": "running", "materialIds": ids}
+    if binding["active_turn"] not in (None, turn):
+        raise Conflict("Another native turn owns this context")
+    if action == "close":
+        c.execute("UPDATE hb_purpose_context SET accepting=false WHERE agent=%s AND purpose=%s",
+                  (actor["id"], purpose))
+        return {"nativeTurn": turn, "state": "callbacks_closed"}
+    status = p["value"].get("status")
+    if status not in ("completed", "interrupted", "failed"):
+        raise ValueError("A confirmed terminal native status is required")
+    for identity in binding["active_material"]:
+        row = item(c, store, actor, str(identity))
+        delivery = c.execute("SELECT cancellation_requested FROM hb_delivery WHERE event=%s AND agent=%s",
+                             (row["source"], actor["id"])).fetchone()
+        cancelled = delivery and delivery["cancellation_requested"]
+        if row["kind"] == "work" and row["state"] not in ("complete", "cancelled"):
+            change(c, row, "cancelled" if cancelled else "pending",
+                   {**row["value"], "execution": {"nativeThread": p["nativeThread"],
+                    "nativeTurn": turn, "status": status}})
+        if cancelled:
+            c.execute("""UPDATE hb_context_material SET state='cancelled',revision=revision+1,
+              updated_at=clock_timestamp() WHERE agent=%s AND source=%s
+              AND state NOT IN ('published','complete','cancelled','handled')""",
+                      (actor["id"], row["source"]))
+            c.execute("""UPDATE hb_delivery SET state='cancelled',revision=revision+1,
+              updated_at=clock_timestamp() WHERE agent=%s AND event=%s AND cancellation_requested
+              AND state NOT IN ('completed','cancelled')""", (actor["id"], row["source"]))
+    c.execute("UPDATE hb_purpose_context SET active_turn=NULL,active_material='{}',accepting=false WHERE agent=%s AND purpose=%s",
+              (actor["id"], purpose))
+    return {"nativeTurn": turn, "state": status}
+
+
 def perform(store,c,actor,purpose,binding,p):
     action,v=p["action"],p["value"]
+    if action in ("begin", "close", "end"):
+        return lifecycle(c, store, actor, purpose, binding, p)
+    if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
+        raise Conflict("Original native turn no longer admits callbacks")
     permitted={
       "reader":{"pending","snapshot","accept","answer","announce"},
       "writer":{"pending","snapshot","progress","complete","announce"},
@@ -167,17 +231,20 @@ def perform(store,c,actor,purpose,binding,p):
     }
     if action not in permitted[purpose]:
         raise Denied("Tool does not belong to this context purpose")
+    target=v.get("workId") if action in ("progress","complete") else v.get("inputId") if action in ("accept","answer") else v.get("communicationId")
+    if target and target not in {str(x) for x in binding["active_material"]}:
+        raise Denied("Material does not belong to this captured native turn")
     if action=="pending":
+        kind={"reader":"input","writer":"work","responder":"need"}[purpose]
         rows=c.execute("""SELECT m.id,m.kind,m.state,m.revision,
           COALESCE(d.cancellation_requested,false) AS cancelled
           FROM hb_context_material m LEFT JOIN hb_delivery d
-          ON d.event=m.source AND d.agent=m.agent WHERE m.agent=%s
+          ON d.event=m.source AND d.agent=m.agent WHERE m.agent=%s AND m.kind=%s
           AND ((m.kind='input' AND m.state='pending')
             OR (m.kind='work' AND m.state IN ('pending','running'))
             OR (m.kind='need' AND m.state='ready')) ORDER BY m.created_at,m.id LIMIT 100""",
-          (actor["id"],)).fetchall()
-        kind={"reader":"input","writer":"work","responder":"need"}[purpose]
-        return {"pending":json_value([r for r in rows if r["kind"]==kind])}
+          (actor["id"],kind)).fetchall()
+        return {"pending":json_value(rows)}
     if action=="snapshot":
         return snapshot(c,store,actor,purpose,binding,p["nativeTurn"])
     if action in ("accept","answer"):
