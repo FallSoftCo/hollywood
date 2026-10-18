@@ -137,6 +137,8 @@ def lifecycle(c, store, actor, purpose, binding, p):
         if binding["active_turn"] not in (None, turn):
             raise Conflict("Original native turn is unsettled")
         ids = p["value"].get("materialIds", [])
+        if purpose == "writer" and len(ids) != 1:
+            raise ValueError("One original work owns a writer turn")
         if not ids or len(ids) > 100 or len(set(ids)) != len(ids):
             raise ValueError("A bounded original material set is required")
         kind = {"reader": "input", "writer": "work", "responder": "need"}[purpose]
@@ -154,7 +156,10 @@ def lifecycle(c, store, actor, purpose, binding, p):
                     "nativeThread": p["nativeThread"], "nativeTurn": turn, "status": "inProgress"}})
         c.execute("UPDATE hb_purpose_context SET active_turn=%s,active_material=%s::uuid[],accepting=true WHERE agent=%s AND purpose=%s",
                   (turn, ids, actor["id"], purpose))
-        return {"nativeTurn": turn, "state": "running", "materialIds": ids}
+        from .context_execution import capture
+        scopes = capture(c, store, actor, purpose, binding, p, ids)
+        return {"nativeTurn": turn, "state": "running", "materialIds": ids,
+                "executionScopes": scopes}
     if binding["active_turn"] not in (None, turn):
         raise Conflict("Another native turn owns this context")
     if action == "close":
@@ -190,6 +195,11 @@ def perform(store,c,actor,purpose,binding,p):
     action,v=p["action"],p["value"]
     if action in ("begin", "close", "end"):
         return lifecycle(c, store, actor, purpose, binding, p)
+    if action == "activity":
+        # Recovery may append this immutable log after the original turn closes.
+        # It neither admits callbacks nor changes execution/work settlement.
+        from .context_execution import append_activity
+        return append_activity(c, store, actor, purpose, binding, p)
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={

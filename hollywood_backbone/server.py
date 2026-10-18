@@ -23,6 +23,7 @@ from .resource_models import ResourceDefault
 from .report_scope_models import ReportScopeRead, ReportScopeProof
 from .report_scope import ScopeError
 from .artifact_roots import ArtifactRoot
+from .activity_models import Activity, normalize as normalize_activity
 
 
 class Input(BaseModel):
@@ -54,7 +55,7 @@ class ContextSystemConfiguration(Input):
 class ContextCall(Input):
     operationId: str = Field(min_length=1, max_length=128)
     action: Literal["bind", "begin", "close", "end", "pending", "snapshot", "read", "accept", "answer", "announce",
-                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "peer_result"]
+                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "peer_result", "activity"]
     nativeThread: str = Field(min_length=1, max_length=128)
     nativeTurn: str = Field(min_length=1, max_length=128)
     value: dict = Field(default_factory=dict)
@@ -315,19 +316,6 @@ class AttentionAcknowledgement(Input):
     state: Literal["native_submitted", "closed", "expired", "unknown"]
 
 
-class NativePlanStep(Input):
-    step: str = Field(min_length=1, max_length=2000)
-    status: Literal["pending", "inProgress", "completed"]
-
-
-class NativeGoalProgress(Input):
-    goalId: str = Field(min_length=1, max_length=128)
-    status: Literal["active", "paused", "blocked", "usageLimited", "budgetLimited", "complete"]
-    tokensUsed: int = Field(ge=0)
-    timeUsedSeconds: int = Field(ge=0)
-    tokenBudget: int | None = Field(default=None, ge=0)
-
-
 class NativeGoalBinding(Input):
     bindingKind: Literal["role", "work", "coordination"] | None = None
     roleRevision: int | None = Field(default=None, ge=1)
@@ -355,33 +343,6 @@ class CommunicationGrant(Input):
     operationId: str = Field(min_length=1, max_length=128)
     credentialDigest: str = Field(pattern=r"^[0-9a-f]{64}$")
     allowRequests: bool = False
-
-
-class ActivityItem(Input):
-    nativeType: str = Field(min_length=1, max_length=80)
-    plan: list[NativePlanStep] | None = Field(default=None, max_length=50)
-    nativeGoal: NativeGoalProgress | None = None
-    title: str = Field(min_length=1, max_length=1000)
-    status: Literal["inProgress", "completed", "failed", "declined", "unknown"]
-    command: str | None = Field(default=None, max_length=4000)
-    cwd: str | None = Field(default=None, max_length=2048)
-    output: str | None = Field(default=None, max_length=6000)
-    outputTruncated: bool = False
-    detailsTruncated: bool = False
-    exitCode: int | None = None
-    durationMs: int | None = Field(default=None, ge=0)
-    changes: list[dict] | None = Field(default=None, max_length=50)
-
-
-class Activity(Input):
-    claimId: str = Field(min_length=1, max_length=128)
-    generation: int = Field(ge=1)
-    nativeThread: str = Field(min_length=1, max_length=128)
-    nativeTurn: str = Field(min_length=1, max_length=128)
-    itemId: str = Field(min_length=1, max_length=256)
-    phase: Literal["started", "completed"]
-    nativeItemDigest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    item: ActivityItem
 
 
 class GoalCreate(Input):
@@ -1083,14 +1044,7 @@ async def native_goal_binding(request):
 
 async def activity(request):
     p = await body(request, Activity)
-    payload = p.model_dump(mode="json")
-    for key in ("plan", "nativeGoal"):
-        if payload["item"].get(key) is None:
-            payload["item"].pop(key, None)
-    if len(json.dumps(payload).encode()) > 14000:
-        raise ValueError("Native activity exceeds limit")
-    if (p.phase == "started") != (p.item.status == "inProgress"):
-        raise ValueError("Native activity phase and status disagree")
+    payload = normalize_activity(p.model_dump(mode="json"))
     return await invoke(
         request, "activity_append", str(UUID(request.match_info["delivery"])), payload
     )
