@@ -86,40 +86,6 @@ def change(c, row, state, value):
 def need_for(c, store, actor, source):
     return item(c,store,actor,str(uuid5(UUID(str(source)),"response")),"need")
 
-def snapshot(c, store, actor, purpose, binding, turn):
-    rows = c.execute("""SELECT * FROM hb_context_material WHERE agent=%s
-      AND (id=ANY(%s::uuid[]) OR (%s='reader' AND kind='work')
-           OR (%s='responder' AND kind='need' AND state='published'))
-      ORDER BY CASE WHEN id=ANY(%s::uuid[]) THEN 0 ELSE 1 END,created_at,id LIMIT 40""",
-      (actor["id"],binding["active_material"],purpose,purpose,binding["active_material"])).fetchall()
-    result={"inputs":[],"work":[],"communications":[]}
-    reads={}
-    for row in rows:
-        try:
-            event=store.readable_event(c,actor,row["source"])
-        except Denied:
-            continue
-        value=json_value(row)
-        if purpose=="reader" and row["kind"]=="input" and row["state"]=="pending":
-            value["event"]=json_value(event)
-            result["inputs"].append(value)
-        if purpose in ("reader","writer") and row["kind"]=="work":
-            if purpose=="writer" and row["state"]=="cancelled":
-                continue
-            result["work"].append(value)
-        if purpose=="responder" and row["kind"]=="need" and row["state"] in ("ready","published"):
-            # No automatic original-conversation feed to responder.
-            value["audience"]={"roomId":str(event["room"]),"audience":event["audience"]}
-            result["communications"].append(value)
-            if row["state"]=="ready":
-                reads[str(row["id"]) ]={"revision":row["revision"],"turn":turn}
-    if purpose=="responder":
-        c.execute("UPDATE hb_purpose_context SET reads=%s WHERE agent=%s AND purpose=%s",
-                  (Jsonb(reads),actor["id"],purpose))
-    role=c.execute("SELECT primary_role,purpose,revision FROM hb_agent_role WHERE principal=%s",
-                   (actor["id"],)).fetchone()
-    return {"agentId":str(actor["id"]),"contextPurpose":purpose,"role":json_value(role),**result}
-
 def call(store, actor_id, token_digest, agent, purpose, p):
     with store.pool.connection() as c:
         actor=store.actor(c,actor_id)
@@ -225,9 +191,9 @@ def perform(store,c,actor,purpose,binding,p):
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
-      "reader":{"pending","snapshot","accept","answer","announce"},
-      "writer":{"pending","snapshot","progress","complete","announce"},
-      "responder":{"pending","snapshot","publish","suppress"},
+      "reader":{"pending","snapshot","read","accept","answer","announce"},
+      "writer":{"pending","snapshot","read","progress","complete","announce"},
+      "responder":{"pending","snapshot","read","publish","suppress"},
     }
     if action not in permitted[purpose]:
         raise Denied("Tool does not belong to this context purpose")
@@ -245,8 +211,10 @@ def perform(store,c,actor,purpose,binding,p):
             OR (m.kind='need' AND m.state='ready')) ORDER BY m.created_at,m.id LIMIT 100""",
           (actor["id"],kind)).fetchall()
         return {"pending":json_value(rows)}
-    if action=="snapshot":
-        return snapshot(c,store,actor,purpose,binding,p["nativeTurn"])
+    if action in ("snapshot", "read"):
+        from .context_material import index, read
+        retrieve = index if action == "snapshot" else read
+        return retrieve(c,store,actor,purpose,binding,p["nativeTurn"],v)
     if action in ("accept","answer"):
         source=item(c,store,actor,v["inputId"],"input")
         if source["state"]!="pending":

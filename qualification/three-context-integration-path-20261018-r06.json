@@ -1,0 +1,93 @@
+{
+  "schema": "lax-three-context-integration-path/v1",
+  "status": "Source-grounded next implementation path; not a production readiness claim.",
+  "objective": "One LAX agent identity with independent reader, writer and responder histories; Hollywood is primary human/agent communication; retain native execution, administration and cooperation.",
+  "currentEvidence": [
+    "Actual writer deliverable plus concurrent status and proactive communication completed in the original three histories.",
+    "Original long-turn completion recovered from native metadata with zero new model turns.",
+    "Real follow-up delivered after withholding its writer completion notification; one original submission, no replacement writer turn.",
+    "Bounded retrieval passed actual PostgreSQL pagination/Unicode/revision checks and a 57-second native question in original histories. Reader explicitly fetched recorded work across three chunks; responder answered; writer started zero turns."
+  ],
+  "sourceFindings": [
+    {
+      "source": "losangelex/connector/lax_connector/agent_context.py:AgentContext.select/bind",
+      "fact": "Existing durable agent context is independent of rooms and work; retain this identity and explicit adoption mechanism."
+    },
+    {
+      "source": "losangelex/connector/lax_connector/connector.py:Connector.tool/once; effects.py; execution_lifecycle.py",
+      "fact": "Mature tools and native effect provenance depend on captured delivery, role, persistent context and independently observed executor. Importing its tool declarations alone is insufficient."
+    },
+    {
+      "source": "hollywood_backbone/agent_context.py; native_effects.py:validate",
+      "fact": "Current native source v2 validates one bound execution per delivery. Purpose contexts require coherent source/ownership integration, not permission bypasses."
+    },
+    {
+      "source": "hollywood_backbone/context_system.py; store.py:claim",
+      "fact": "Candidate blocks legacy claim for purpose agents and uses internal work material. Existing goal/work/admin/cooperation paths are absent from its model tool surface."
+    },
+    {
+      "source": "hollywood_backbone/schema.sql:hb_delivery/hb_work/hb_agent_execution/hb_agent_context",
+      "fact": "Delivery obligation, reviewed product work and native execution are separate existing records. Internal material must reference these authorities, not become a second work acceptance ledger."
+    },
+    {
+      "source": "losangelex/connector/lax_connector/connector.py:once; terminal_output.py",
+      "fact": "Current terminal path couples finished inference, terminal text and delivery response. Three-context integration must split execution evidence from responder publication."
+    },
+    {
+      "source": "codex-rs/app-server-protocol/src/protocol/v2/thread.rs:ThreadResumeParams",
+      "fact": "The fork already supports cold-resume dynamic tools and an immutable tool ceiling. Preserve original histories at an idle boundary when changing declarations."
+    }
+  ],
+  "implementationOrder": [
+    {
+      "id": "I1",
+      "outcome": "One native execution and effect core reused by the purpose runtime.",
+      "changes": [
+        "Extract/reuse existing authenticated tool/effect, executor-attestation, activity and cancellation machinery from Connector; do not fabricate a fake active delivery or independently reimplement all handlers.",
+        "Retain the existing writer context as its persistent execution identity; add purpose bindings without changing agent identity on room, responsibility or goal changes.",
+        "Define and validate explicit purpose/native-turn/source-material ownership against live placement/executor state. Installation/controller metadata attests process facts; model text grants no authority."
+      ]
+    },
+    {
+      "id": "I2",
+      "outcome": "Existing Global and peer capabilities remain usable with one outward communicator.",
+      "changes": [
+        "Writer retains native execution/editing, administration, provisioning, goals/work, reviews and collaboration tools through the shared core.",
+        "Outbound message and delegation tools create durable communication intents with original operation and authorized audience/recipient. Responder publishes them and exposes actual accepted receipt; queued intent is not accepted peer work.",
+        "Reader receives attributable human/peer obligations and scoped observations, updates existing commitments and communicates relevant new findings to the writer through versioned material rather than raw user steering.",
+        "Peer completion, human question and correction must not replace or falsely complete the original objective. Room membership alone does not assign every task or require acknowledgements."
+      ]
+    },
+    {
+      "id": "I3",
+      "outcome": "Execution settlement, work review and communication settlement remain distinct.",
+      "changes": [
+        "Link internal handoff material to original delivery and optional canonical goal/work/attempt. Reviewed work acceptance remains hb_work authority.",
+        "Native turn completion records execution facts. Verified work contribution may make response material ready. Only accepted responder publication resolves its communication obligation.",
+        "Implement targeted Stop and recovery across affected purposes, explicit authority/role revision refresh and retained unknown external effects without automatic replacement execution.",
+        "Do not reserve scarce execution capacity solely for pending peer/human communication, and do not impose a fixed two-slot enterprise architecture."
+      ]
+    },
+    {
+      "id": "I4",
+      "outcome": "A real Global-to-peer deliverable proves the complete path before rollout.",
+      "changes": [
+        "Use a disposable installation with actual account/auth, administrative, Git/SSH, workspace, controller and artifact readiness; verify, do not infer from a health endpoint.",
+        "Ordinary human request -> Global creates peer and room through native tools -> peer executes real artifact work and collaborates -> Global verifies/reviews -> responder reports to original audience.",
+        "During that same work, ask a human status question, send a relevant peer finding and exercise reconnect/Stop on original operation identities. Inspect actual model tools, roles, event attribution and separate activity.",
+        "Only then progress to two humans/two hosts and NextComp phone qualification; preserve previous services and every deliberate stop."
+      ]
+    }
+  ],
+  "boundaries": {
+    "noAdditionalSemanticOrchestrator": true,
+    "contextMaterial": "Internal semantic handoff/read material; not independent business work acceptance.",
+    "role": "Canonical role data is tool-read; immutable purpose instructions and executable tool ceilings agree. Business responsibility changes preserve context identity.",
+    "delivery": "Attributable original request/reply obligation with durable receipts.",
+    "work": "Existing optional goal/work/review structure; completion of inference is not acceptance.",
+    "activity": "Native actions form a separate stream from intentional room communication.",
+    "unknown": "Observe exact original operations and executions; do not replay uncertain effects.",
+    "migration": "Candidate only until parity proof. Preserve durable history, pairings, current controls and stopped schedules. No database rewind or all-live default switch."
+  },
+  "validationPolicy": "Prefer the actual end-state native journey. Small PostgreSQL/protocol checks establish bounded reads and fencing only; they do not establish semantic stability, collaboration or autonomous-enterprise readiness."
+}

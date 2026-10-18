@@ -1,0 +1,85 @@
+{
+  "schema": "lax-three-context-bounded-live-proof/v1",
+  "verifiedAt": "2026-10-18T17:15:59.564131+00:00",
+  "humanOperation": "three-context-bounded-history-r06",
+  "humanEvent": "0adbe702-61b2-47f1-b0ab-e601286ae7d6",
+  "humanEventCount": 1,
+  "writerTurnsStarted": 0,
+  "boundedMaterialReadCalls": 7,
+  "originalFollowupWorkReadCompletelyByReader": true,
+  "maximumToolResultBytes": 3552,
+  "finiteRuntime": {
+    "seconds": 57.285,
+    "cpuSeconds": 33.454,
+    "memoryPeak": "625.8MiB",
+    "swapPeak": 0,
+    "exitCode": 0
+  },
+  "nativeBinaryUnchanged": true,
+  "productionReplacementReady": false,
+  "limits": [
+    "One existing agent, three purpose histories. No new writer execution was requested.",
+    "The PostgreSQL page/Unicode/large-material check uses synthetic temporary rows and rollback; this separate journey uses actual recorded work and real model calls.",
+    "Existing workflow/admin/cooperation/executor parity and scoped observations still require integration before production cutover."
+  ],
+  "nativeThreads": {
+    "reader": {
+      "nativeThread": "01a14f4a-f1e1-7a63-b6bf-36218d37ad78",
+      "nativeTurn": "01a15000-9768-7c83-bebe-f55f049178af",
+      "held": false
+    },
+    "writer": {
+      "nativeThread": "01a14f53-7c6c-7273-a36a-2f88cac249e0",
+      "nativeTurn": null,
+      "held": false
+    },
+    "responder": {
+      "nativeThread": "01a14f54-3c64-7380-ad4d-151d747ec7af",
+      "nativeTurn": "01a15001-0b13-73f0-acc5-e664790a076d",
+      "held": false
+    }
+  },
+  "responseEventId": "318256d3-1f1b-47dd-961e-ca12dae679ce",
+  "repeatedHumanSubmissions": 0,
+  "postgresqlCheck": {
+    "mode": "Actual PostgreSQL transaction, synthetic temporary material, all rolled back; not model-behavior evidence.",
+    "indexPages": 3,
+    "materialIDsOnce": 45,
+    "peakIndexBytes": 4489,
+    "detailChunks": 24,
+    "detailContentExact": true,
+    "peakDetailBytes": 4316,
+    "wrongPurposeDenied": true,
+    "changedRevisionRejected": true,
+    "publicationReadOnlyCompleteAfterFinalSequentialChunk": true,
+    "allTemporaryMaterialRolledBack": true,
+    "verifiedAt": "2026-10-18T17:08:59.681314+00:00"
+  },
+  "build": {
+    "sources": {
+      "lax/losangelex/connector/lax_connector/context_contract.py": "bb362a61e18636c7a577f353be614b39fcd72ce3173d74551736b96bb38f44de",
+      "hollywood/hollywood_backbone/context_system.py": "88df80b448297287dc86471d8317078aee50e36538fcf89f152463276baa5c3d",
+      "hollywood/hollywood_backbone/context_material.py": "2d72a04a7d4f28833c315fd3c2e0e790c2323e4146556c5d010127fa52b7b172",
+      "hollywood/hollywood_backbone/server.py": "411419bb2a08b9c1b3d6218ba2cb43726c93c1bce9de90b63a983e6cc9e222bc"
+    },
+    "wheels": [
+      {
+        "file": "/opt/lax-three-context-20261018-r01/wheels-r06/lax_hollywood_connector-0.1.0.dev65-py3-none-any.whl",
+        "sha256": "e5c57fe8e72d7f495c8c7b008274eda81dfc43871603cf4eea0b36628b050b51",
+        "bytes": 208244
+      },
+      {
+        "file": "/opt/lax-three-context-20261018-r01/wheels-r06/hollywood_cli-0.3.0.dev41-py3-none-any.whl",
+        "sha256": "f450f34a787c6159afa2102645f8994e31e0e8340abb9b3aea399a7585459104",
+        "bytes": 245084
+      }
+    ],
+    "targets": [
+      "/opt/lax-three-context-20261018-r01/python-r06",
+      "/opt/lax-three-context-20261018-r01/hollywood-python-r03"
+    ],
+    "productionChanged": false
+  },
+  "privateLiveEvidence": "/var/lib/lax-three-context-20261018-r01/lifecycle-r06/native-question-verified.json",
+  "scope": "Bounded material retrieval and read-only native continuation; not full platform parity."
+}
