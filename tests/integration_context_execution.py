@@ -4,7 +4,8 @@ from pathlib import Path
 from uuid import uuid4
 from psycopg.types.json import Jsonb
 from hollywood_backbone.store import Store, Conflict, Denied, digest
-from hollywood_backbone.context_system import lifecycle
+from hollywood_backbone.context_system import SCHEMA
+from fixture_context_capacity import lifecycle
 from hollywood_backbone.context_execution import append_activity
 from hollywood_backbone.activity import append_in_transaction
 
@@ -18,6 +19,7 @@ store=Store(json.loads(args.database_config.read_text()))
 proof={'schema':'lax-purpose-execution-pg-proof/v1','mode':'Actual PostgreSQL, rollback-only synthetic turn/material lifecycle; no model execution or production effects.'}
 try:
  with store.pool.connection() as c:
+  c.execute(SCHEMA)
   a=store.actor(c,args.agent_id)
   before=c.execute('SELECT count(*) AS n FROM hb_event').fetchone()['n']
   original=c.execute('SELECT * FROM hb_context_material WHERE id=%s AND agent=%s',(args.work_id,a['id'])).fetchone()

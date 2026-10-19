@@ -14,7 +14,8 @@ from psycopg.types.json import Jsonb
 from hollywood_backbone import admission
 from hollywood_backbone.claims import claim
 from hollywood_backbone.context_admission import admit, ready
-from hollywood_backbone.context_system import lifecycle, perform
+from hollywood_backbone.context_system import SCHEMA, perform
+from fixture_context_capacity import lifecycle
 from hollywood_backbone.store import Store, Conflict, Denied
 
 
@@ -24,6 +25,7 @@ def main(args):
              "mode": "Real PostgreSQL, rollback-only synthetic capacity and native turn facts"}
     try:
         with store.pool.connection() as c:
+            c.execute(SCHEMA)
             actor = store.actor(c, args.agent_id)
             before = counts(c, actor)
             system = c.execute("SELECT * FROM hb_context_system WHERE agent=%s",

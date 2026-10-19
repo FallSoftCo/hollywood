@@ -3,6 +3,7 @@ import json
 from uuid import UUID, uuid5
 from psycopg.types.json import Jsonb
 from .store import Conflict, Denied, digest, json_value
+from . import context_capacity
 
 PURPOSES = {"reader", "writer", "responder"}
 
@@ -29,7 +30,7 @@ CREATE INDEX IF NOT EXISTS hb_context_material_agent ON hb_context_material(agen
 CREATE TABLE IF NOT EXISTS hb_context_operation(
  agent uuid NOT NULL, purpose text NOT NULL, operation text NOT NULL,
  digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(agent,purpose,operation));
-"""
+""" + context_capacity.SCHEMA
 
 def configure(store, actor_id, agent, payload):
     with store.pool.connection() as c:
@@ -117,15 +118,20 @@ def call(store, actor_id, token_digest, agent, purpose, p):
                 raise Conflict("Original context operation changed")
             return old["result"]
         if p["action"]=="bind":
+            if p["value"] != {"runtimeProtocol":"lax-purpose-runtime/v2"}:
+                raise Conflict("Native work and inference admission runtime required")
             if binding["native_thread"] and binding["native_thread"]!=p["nativeThread"]:
                 raise Conflict("Original context thread changed")
             c.execute("UPDATE hb_purpose_context SET native_thread=%s WHERE agent=%s AND purpose=%s",
                       (p["nativeThread"],agent,purpose))
-            result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose}
+            result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose,
+                    "runtimeProtocol":"lax-purpose-runtime/v2"}
         elif p["nativeThread"]!=binding["native_thread"]:
             raise Conflict("Native context binding changed")
         else:
             result=perform(store,c,actor,purpose,binding,p)
+        if p["action"] == "reserve" and result["permit"]["state"] == "queued":
+            return json_value(result)
         if p["action"] == "admit" and result.get("delivery") is None:
             return json_value(result)  # No execution accepted; safe confirmed deferral.
         result=json_value(result)
@@ -143,6 +149,7 @@ def lifecycle(c, store, actor, purpose, binding, p):
             raise ValueError("One original work owns a writer turn")
         if not ids or len(ids) > 100 or len(set(ids)) != len(ids):
             raise ValueError("A bounded original material set is required")
+        context_capacity.begin(c,actor,purpose,binding,p,ids)
         kind = {"reader": "input", "writer": "work", "responder": "need"}[purpose]
         for identity in ids:
             row = item(c, store, actor, identity, kind)
@@ -171,6 +178,7 @@ def lifecycle(c, store, actor, purpose, binding, p):
     status = p["value"].get("status")
     if status not in ("completed", "interrupted", "failed"):
         raise ValueError("A confirmed terminal native status is required")
+    context_capacity.end(c,actor,purpose,binding,p)
     for identity in binding["active_material"]:
         row = item(c, store, actor, str(identity))
         delivery = c.execute("SELECT cancellation_requested FROM hb_delivery WHERE event=%s AND agent=%s",
@@ -195,6 +203,8 @@ def lifecycle(c, store, actor, purpose, binding, p):
 
 def perform(store,c,actor,purpose,binding,p):
     action,v=p["action"],p["value"]
+    if action == "reserve":
+        return context_capacity.reserve(store,c,actor,purpose,binding,p)
     if action in ("admit", "ready"):
         if purpose != "writer":
             raise Denied("Only the writer may claim accepted work")
@@ -227,6 +237,8 @@ def perform(store,c,actor,purpose,binding,p):
                     "peer_result": context_peers.apply}[action]
         return function(c,store,actor,binding,p)
     if action=="pending":
+        c.execute("UPDATE hb_purpose_context SET observed_at=clock_timestamp() WHERE agent=%s AND purpose=%s",
+                  (actor["id"],purpose))
         if purpose=="writer":
             cancelled=c.execute("""SELECT m.* FROM hb_context_material m JOIN hb_delivery d
               ON d.event=m.source AND d.agent=m.agent
@@ -365,5 +377,9 @@ def receipt(store, actor_id, token_digest, agent, purpose, operation):
         row=c.execute("SELECT result FROM hb_context_operation WHERE agent=%s AND purpose=%s AND operation=%s",
                       (agent,purpose,operation)).fetchone()
         if not row:
+            permit=c.execute("SELECT * FROM hb_context_permit WHERE agent=%s AND purpose=%s AND operation=%s",
+                             (agent,purpose,operation)).fetchone()
+            if permit:
+                return {"permit":json_value(permit),"admission":{"reason":"original_permit_observation"}}
             raise Denied("Original operation receipt unavailable")
         return row["result"]

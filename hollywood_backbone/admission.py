@@ -251,19 +251,8 @@ def diagnose(store, c, actor, host, capabilities, record=False):
     ):
         reason = "host_capacity_stale"
     else:
-        counts = c.execute(
-            """SELECT count(*) AS total,
-               count(*) FILTER (WHERE COALESCE(t.queue_class,'worker')='worker') AS workers
-               FROM (
-                 SELECT x.delivery FROM hb_executor x WHERE x.host=%s AND x.state<>'stopped'
-                 UNION ALL
-                 SELECT d.id FROM hb_delivery d WHERE d.host=%s
-                   AND d.state IN ('claimed','running','unknown','cancel_requested')
-                   AND NOT EXISTS(SELECT 1 FROM hb_executor x WHERE x.delivery=d.id AND x.generation=d.generation)
-               ) resources
-               LEFT JOIN hb_admission_trace t ON t.delivery=resources.delivery""",
-            (host, host),
-        ).fetchone()
+        from .context_capacity import resources
+        counts = resources(c, host)
         free = max(
             0,
             (observation["available_memory"] - policy["memory_reserve"])

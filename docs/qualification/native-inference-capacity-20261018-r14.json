@@ -1,0 +1,33 @@
+{
+  "schema": "lax-one-slot-purpose-capacity-pg/v1",
+  "modelsStarted": 0,
+  "mode": "Real PostgreSQL, frozen native terminal/communication facts, all rolled back",
+  "configuredSlots": 1,
+  "purposePermitsExercised": [
+    "reader",
+    "writer",
+    "responder"
+  ],
+  "parentWaitRetainedOriginalWorkClaim": true,
+  "peerProgressedWithoutExtraSlot": true,
+  "closeRequestDidNotReleaseInference": true,
+  "exactTerminalTurnReleasedInference": true,
+  "queuedOriginalPermitIdentityPreserved": true,
+  "unconfirmedOriginalStayedHeldDespiteAge": true,
+  "parentGeneration": 1,
+  "modelsOrProcessesStarted": 0,
+  "installedExecutorOrSemanticCooperationProven": false,
+  "oldRuntimeDeniedBeforeModelAdmission": true,
+  "authenticatedHttpCalls": 22,
+  "allSyntheticRecordsRolledBack": true,
+  "at": "2026-10-19T03:39:52.667421+00:00",
+  "scope": "Native turn admission substrate using actual authenticated Hollywood API; model terminal statuses are frozen test facts.",
+  "protocol": "lax-purpose-runtime/v2",
+  "operationFingerprints": "Transport version excluded from immutable semantic operation fingerprint; original activity/effect receipts retained.",
+  "nativeBinaryChanged": false,
+  "nativeMutationTransportEnabled": false,
+  "productionChanged": false,
+  "physicalPhoneChanged": false,
+  "remaining": "Genuine matching-authority installation and approved purpose services, independently observed resident native executor ownership, canonical execution binding and full native tools, then actual Global-created peer useful work.",
+  "productionReplacementReady": false
+}

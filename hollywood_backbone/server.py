@@ -53,8 +53,9 @@ class ContextSystemConfiguration(Input):
 
 
 class ContextCall(Input):
+    runtimeProtocol: Literal["lax-purpose-runtime/v2"]
     operationId: str = Field(min_length=1, max_length=128)
-    action: Literal["bind", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "accept", "answer", "announce",
+    action: Literal["bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "accept", "answer", "announce",
                     "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "peer_result", "activity"]
     nativeThread: str = Field(min_length=1, max_length=128)
     nativeTurn: str = Field(min_length=1, max_length=128)
@@ -1365,7 +1366,7 @@ async def context_call(request):
         raise ValueError("Context material exceeds bound")
     return await invoke(request, "context_call", request["tokenDigest"],
                         str(UUID(request.match_info["agent"])), request.match_info["purpose"],
-                        p.model_dump(mode="json"))
+                        p.model_dump(mode="json", exclude={"runtimeProtocol"}))
 
 
 def application(store):
