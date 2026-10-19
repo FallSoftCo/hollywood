@@ -20,3 +20,17 @@ grant fixtures rolled back; this is not evidence of model-created consent or
 accepted team delivery. The active original canonical-team-r36 journey supplies
 that separate end-state qualification. Its registered disposable root required
 real Git metadata; an empty baseline commit staged no existing artifacts.
+
+## Physical-target discovery
+
+The original automatic native capture first reads the canonical Work's physical
+targets, then derives a missing scoped Work grant from the installed resource
+policy. Purpose agents must resolve through their actual writer enrollment at
+both the registry read and grant step. A disabled purpose enrollment cannot
+fall back to an older context. No synthetic hb_agent_context row is created.
+
+The existing per-Work physical grant, explicit revocation, Work revision,
+resource identity, bridge and native execution fences remain in force.
+The r46 HTTP/PostgreSQL receipt qualifies the real purpose-only metadata path,
+derived grant visibility, revocation and cross-authority denial with rolled-back
+fixtures. Actual native claim/consent/application remains a separate model proof.

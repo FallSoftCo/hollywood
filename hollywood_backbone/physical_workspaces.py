@@ -49,12 +49,8 @@ def grant(c, actor, workspace, work_id, payload):
         raise Denied('Canonical workspace and work required')
     if root['revision'] != payload['workspaceRevision'] or work['revision'] != payload['workRevision']:
         raise Conflict('Workspace/work revision changed')
-    context = c.execute('SELECT * FROM hb_agent_context WHERE principal=%s', (work['owner'],)).fetchone()
-    purpose = c.execute("""SELECT b.context_id,s.host FROM hb_purpose_context b
-        JOIN hb_context_system s ON s.agent=b.agent WHERE b.agent=%s AND b.purpose='writer' AND s.enabled""",
-        (work['owner'],)).fetchone()
-    if purpose:
-        context = purpose
+    from .agent_context import owner
+    context = owner(c, work['owner'])
     if not context:
         raise Denied('Captured persistent owner context required')
     old = c.execute('SELECT * FROM hb_physical_grant WHERE workspace=%s AND work=%s FOR UPDATE', (workspace, work_id)).fetchone()
@@ -170,7 +166,8 @@ def read(store, actor_id, work_id):
     with store.pool.connection() as c:
         relay = store.actor(c, actor_id)
         work = c.execute('SELECT * FROM hb_work WHERE id=%s AND authority=%s', (work_id, relay['authority'])).fetchone()
-        context = c.execute('SELECT * FROM hb_agent_context WHERE principal=%s', (work['owner'],)).fetchone() if work else None
+        from .agent_context import owner
+        context = owner(c, work['owner']) if work else None
         if not context:
             raise Denied('Canonical owner context unavailable')
         bridge(c, relay, str(context['host']))

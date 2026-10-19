@@ -12,6 +12,22 @@ def execution(c, delivery, generation):
     ).fetchone()
 
 
+
+def owner(c, agent):
+    """Current metadata identity; a purpose enrollment never falls back to legacy."""
+    system = c.execute("SELECT * FROM hb_context_system WHERE agent=%s", (agent,)).fetchone()
+    if system:
+        writer = c.execute("SELECT context_id,native_thread FROM hb_purpose_context WHERE agent=%s AND purpose='writer'",
+                           (agent,)).fetchone()
+        if not system["enabled"] or not writer:
+            return None
+        return {"principal": system["agent"], "authority": system["authority"],
+                "context_id": str(writer["context_id"]), "native_thread": writer["native_thread"],
+                "host": system["host"], "workspace_id": system["workspace"],
+                "role_revision": system["role_revision"], "bindingKind": "purpose"}
+    legacy = c.execute("SELECT * FROM hb_agent_context WHERE principal=%s", (agent,)).fetchone()
+    return {**legacy, "bindingKind": "legacy"} if legacy else None
+
 def read(store, actor_id, agent):
     with store.pool.connection() as c:
         a = store.actor(c, actor_id)

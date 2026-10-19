@@ -1,0 +1,12 @@
+{
+  "schema": "purpose-target-registry-http/v1",
+  "at": 1792411110.9845712,
+  "mode": "Real accepted purpose identity and original Work; authenticated controller read/admin grant HTTP and PostgreSQL. Temporary per-Work grant rolls back. No model, native process, executor, claim or consent facts inserted. Existing automatic scoped grant protocol retained.",
+  "modelsStarted": 0,
+  "purposeOnlyOwnerRegistryAvailableBeforeAutomaticWorkGrant": true,
+  "sameExistingScopedGrantAppearsWithExactPurposeIdentityAndRevision": true,
+  "explicitWorkGrantRevocationStillFencesMutation": true,
+  "disabledPurposeEnrollmentCannotFallBackToLegacy": true,
+  "otherAuthorityAdministratorCannotReadOriginalWorkTarget": true,
+  "allFixturesRolledBack": true
+}
