@@ -165,186 +165,195 @@ def material(c, actor, policy):
     )
 
 
-def dispatch(store, actor_id, host, capabilities):
-    with store.pool.connection() as c:
-        actor = store.actor(c, actor_id)
-        if actor["kind"] != "agent":
-            raise Denied("Execution participant required")
-        policy = c.execute(
-            "SELECT * FROM hb_portfolio_policy WHERE principal=%s FOR UPDATE", (actor_id,)
+def dispatch(store, actor_id, host, capabilities, *, connection=None):
+    if connection is None:
+        with store.pool.connection() as c:
+            return dispatch(store, actor_id, host, capabilities, connection=c)
+    c = connection
+    actor = store.actor(c, actor_id)
+    if actor["kind"] != "agent":
+        raise Denied("Execution participant required")
+    policy = c.execute(
+        "SELECT * FROM hb_portfolio_policy WHERE principal=%s FOR UPDATE", (actor_id,)
+    ).fetchone()
+    if not policy or not policy["enabled"]:
+        return {"admitted": [], "modelsStarted": 0, "reason": "supervision_disabled"}
+    if (
+        not actor["administrator"]
+        or not c.execute(
+            "SELECT 1 FROM hb_placement WHERE agent=%s AND host=%s AND enabled",
+            (actor_id, host),
         ).fetchone()
-        if not policy or not policy["enabled"]:
-            return {"admitted": [], "modelsStarted": 0, "reason": "supervision_disabled"}
-        if (
-            not actor["administrator"]
-            or not c.execute(
-                "SELECT 1 FROM hb_placement WHERE agent=%s AND host=%s AND enabled",
-                (actor_id, host),
+    ):
+        raise Denied("Installed enrolled Global required")
+    if "portfolio-supervision/v1" not in capabilities:
+        raise Conflict("Portfolio-aware connector required")
+    store.native_role_capability(c, actor, capabilities)
+    material(c, actor, policy)
+    # One pending or active review across all goals. New material is retained
+    # while Global is busy; no duplicate context or model admission is made.
+    if c.execute(
+        """SELECT 1 FROM hb_delivery d JOIN hb_event e ON e.id=d.event
+           WHERE d.agent=%s AND e.data->>'portfolioReview'='true'
+           AND d.state IN ('pending','claimed','running','unknown','cancel_requested') LIMIT 1""",
+        (actor_id,),
+    ).fetchone():
+        return {"admitted": [], "modelsStarted": 0, "reason": "original_review_unsettled"}
+    c.execute(
+        """UPDATE hb_portfolio_policy SET window_started=clock_timestamp(),reviews_used=0
+           WHERE principal=%s AND window_started+window_seconds*interval '1 second'<=clock_timestamp()""",
+        (actor_id,),
+    )
+    policy = c.execute(
+        "SELECT * FROM hb_portfolio_policy WHERE principal=%s", (actor_id,)
+    ).fetchone()
+    if policy["reviews_used"] >= policy["reviews_per_window"]:
+        return {"admitted": [], "modelsStarted": 0, "reason": "supervision_budget_held"}
+    items = c.execute(
+        """SELECT i.* FROM hb_portfolio_item i
+           LEFT JOIN hb_goal g ON g.id=i.goal
+           LEFT JOIN hb_goal_cooperation team ON team.goal=g.id
+           LEFT JOIN hb_delivery incident ON incident.id=i.delivery
+           WHERE i.principal=%s AND i.latest_seq>i.dispatched_seq AND i.latest_seq>%s
+           AND ((i.scope='delivery' AND incident.state IN ('failed','unknown','completed','cancelled'))
+             OR (i.scope='goal' AND (
+               g.state IN ('accepted','cancelled','cancel_requested')
+               OR EXISTS(SELECT 1 FROM hb_work w LEFT JOIN hb_delivery d ON d.id=w.delivery
+                 WHERE w.goal=g.id AND (w.state IN ('blocked','rejected')
+                   OR d.state IN ('failed','unknown','cancelled')
+                   OR (w.state='assigned' AND d.state='completed'
+                     AND EXISTS(SELECT 1 FROM hb_event original WHERE original.id=w.request_event
+                       AND original.data->>'workCompletionPolicy'='report-required/v1'))
+                   OR (COALESCE(team.reviewer,g.owner)=%s AND w.state='submitted' AND d.state='completed')))
+               OR (g.state='active' AND EXISTS(SELECT 1 FROM hb_work w WHERE w.goal=g.id)
+                 AND NOT EXISTS(SELECT 1 FROM hb_work w WHERE w.goal=g.id AND w.state<>'accepted')
+                 AND NOT EXISTS(SELECT 1 FROM hb_delivery d WHERE d.event=g.review_request
+                   AND d.state IN ('pending','claimed','running','unknown','cancel_requested')))
+             )))
+           ORDER BY i.latest_seq LIMIT 64""",
+        (actor_id, policy["activation_seq"], actor_id),
+    ).fetchall()
+    for item in items:
+        if item["scope"] == "goal":
+            goal = c.execute(
+                "SELECT * FROM hb_goal WHERE id=%s", (item["reference"],)
             ).fetchone()
-        ):
-            raise Denied("Installed enrolled Global required")
-        if "portfolio-supervision/v1" not in capabilities:
-            raise Conflict("Portfolio-aware connector required")
-        store.native_role_capability(c, actor, capabilities)
-        material(c, actor, policy)
-        # One pending or active review across all goals. New material is retained
-        # while Global is busy; no duplicate context or model admission is made.
-        if c.execute(
-            """SELECT 1 FROM hb_delivery d JOIN hb_event e ON e.id=d.event
-               WHERE d.agent=%s AND e.data->>'portfolioReview'='true'
-               AND d.state IN ('pending','claimed','running','unknown','cancel_requested') LIMIT 1""",
-            (actor_id,),
-        ).fetchone():
-            return {"admitted": [], "modelsStarted": 0, "reason": "original_review_unsettled"}
+            works = c.execute(
+                """SELECT w.id,w.state,w.specification,w.acceptance,w.evidence,
+                  CASE WHEN w.state IN ('blocked','rejected') THEN w.note ELSE '' END AS blocker,
+                  d.state AS execution_state,w.room,
+                  EXISTS(SELECT 1 FROM hb_event original WHERE original.id=w.request_event
+                    AND original.data->>'workCompletionPolicy'='report-required/v1') AS report_required
+                  FROM hb_work w LEFT JOIN hb_delivery d ON d.id=w.delivery
+                  WHERE w.goal=%s ORDER BY w.id""",
+                (item["reference"],),
+            ).fetchall()
+            team = c.execute(
+                "SELECT reviewer FROM hb_goal_cooperation WHERE goal=%s", (goal["id"],)
+            ).fetchone()
+            reviewer = team["reviewer"] if team and team["reviewer"] else goal["owner"]
+            ready = goal["state"] in ("accepted", "cancelled", "cancel_requested") or any(
+                w["state"] in ("blocked", "rejected")
+                or w["execution_state"] in ("failed", "unknown", "cancelled")
+                or (w["state"] == "assigned" and w["execution_state"] == "completed"
+                    and w["report_required"])
+                or reviewer == actor["id"]
+                and w["state"] == "submitted"
+                and w["execution_state"] == "completed"
+                for w in works
+            )
+            decisions = c.execute(
+                """SELECT id,revision FROM hb_decision WHERE
+                   room=ANY(%s::uuid[]) AND (goal IS NULL OR goal=%s) ORDER BY id""",
+                (list({goal["room"], *(w["room"] for w in works)}), goal["id"]),
+            ).fetchall()
+            snapshot = {"state": goal["state"], "work": works, "decisionRevisions": decisions}
+        else:
+            incident = c.execute(
+                """SELECT id,state,agent,host,generation,native_thread,native_turn,
+                   cancellation_requested FROM hb_delivery WHERE id=%s""",
+                (item["reference"],),
+            ).fetchone()
+            ready = incident["state"] in ("failed", "unknown", "completed", "cancelled")
+            snapshot = {"executionIncident": incident}
+        if not ready and item["scope"] == "goal":
+            # SQL eligibility also admits an active all-accepted plan once
+            # its designated reviewer is no longer executing.
+            ready = bool(works) and all(w["state"] == "accepted" for w in works)
+        if not ready:
+            continue
+        key = digest(json_value(snapshot))
+        if key == item["dispatched_digest"]:
+            c.execute(
+                "UPDATE hb_portfolio_item SET dispatched_seq=latest_seq WHERE principal=%s AND scope=%s AND reference=%s",
+                (actor_id, item["scope"], item["reference"]),
+            )
+            continue
+        if item["scope"]=="goal" and goal["state"] in ("accepted","cancelled"):
+            from .portfolio_purpose import cover_terminal_goal
+            if cover_terminal_goal(c,actor,item,goal,key):
+                continue
+        source = store.readable_event(c, actor, item["source_event"])
+        store.room(c, actor, policy["room"], "can_request")
+        event = store.event(
+            c,
+            actor,
+            policy["room"],
+            "request",
+            "Review the current portfolio obligation for "
+            + item["scope"]
+            + " "
+            + str(item["reference"])
+            + ". Read the current goal/plan and sourced decisions, or hollywood_execution_read for an incident. Inspect original receipts and actual evidence where needed, "
+            "and take only its authorized next action or report its material result/blocker. "
+            "Completed execution with assigned but unreported work is an unfinished obligation, "
+            "not accepted work. Preserve and inspect its original execution/effects and report the "
+            "specific missing evidence or authorized reconciliation. "
+            "Unknown execution is not permission to retry. Publish an attributable concise result. "
+            "This is one bounded review; do not poll, self-request or start unrelated work.",
+            audience="direct",
+            recipient=actor_id,
+            source=source["id"],
+            data={
+                "portfolioReview": True,
+                "goalReferenceId": str(item["reference"]) if item["scope"] == "goal" else None,
+                "deliveryReferenceId": str(item["reference"])
+                if item["scope"] == "delivery"
+                else None,
+                "materialSequence": item["latest_seq"],
+                "triggerDigest": key,
+            },
+        )
+        delivery = uid()
         c.execute(
-            """UPDATE hb_portfolio_policy SET window_started=clock_timestamp(),reviews_used=0
-               WHERE principal=%s AND window_started+window_seconds*interval '1 second'<=clock_timestamp()""",
+            "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
+            (delivery, actor["authority"], event, actor_id),
+        )
+        c.execute(
+            """UPDATE hb_portfolio_item SET dispatched_seq=latest_seq,
+               dispatched_digest=%s,request_event=%s WHERE principal=%s AND scope=%s AND reference=%s""",
+            (key, event, actor_id, item["scope"], item["reference"]),
+        )
+        from .context_system import ingest
+        ingest(c, actor_id, event)
+        c.execute(
+            "UPDATE hb_portfolio_policy SET reviews_used=reviews_used+1 WHERE principal=%s",
             (actor_id,),
         )
-        policy = c.execute(
-            "SELECT * FROM hb_portfolio_policy WHERE principal=%s", (actor_id,)
-        ).fetchone()
-        if policy["reviews_used"] >= policy["reviews_per_window"]:
-            return {"admitted": [], "modelsStarted": 0, "reason": "supervision_budget_held"}
-        items = c.execute(
-            """SELECT i.* FROM hb_portfolio_item i
-               LEFT JOIN hb_goal g ON g.id=i.goal
-               LEFT JOIN hb_goal_cooperation team ON team.goal=g.id
-               LEFT JOIN hb_delivery incident ON incident.id=i.delivery
-               WHERE i.principal=%s AND i.latest_seq>i.dispatched_seq AND i.latest_seq>%s
-               AND ((i.scope='delivery' AND incident.state IN ('failed','unknown','completed','cancelled'))
-                 OR (i.scope='goal' AND (
-                   g.state IN ('accepted','cancelled','cancel_requested')
-                   OR EXISTS(SELECT 1 FROM hb_work w LEFT JOIN hb_delivery d ON d.id=w.delivery
-                     WHERE w.goal=g.id AND (w.state IN ('blocked','rejected')
-                       OR d.state IN ('failed','unknown','cancelled')
-                       OR (w.state='assigned' AND d.state='completed'
-                         AND EXISTS(SELECT 1 FROM hb_event original WHERE original.id=w.request_event
-                           AND original.data->>'workCompletionPolicy'='report-required/v1'))
-                       OR (COALESCE(team.reviewer,g.owner)=%s AND w.state='submitted' AND d.state='completed')))
-                   OR (g.state='active' AND EXISTS(SELECT 1 FROM hb_work w WHERE w.goal=g.id)
-                     AND NOT EXISTS(SELECT 1 FROM hb_work w WHERE w.goal=g.id AND w.state<>'accepted')
-                     AND NOT EXISTS(SELECT 1 FROM hb_delivery d WHERE d.event=g.review_request
-                       AND d.state IN ('pending','claimed','running','unknown','cancel_requested')))
-                 )))
-               ORDER BY i.latest_seq LIMIT 64""",
-            (actor_id, policy["activation_seq"], actor_id),
-        ).fetchall()
-        for item in items:
-            if item["scope"] == "goal":
-                goal = c.execute(
-                    "SELECT * FROM hb_goal WHERE id=%s", (item["reference"],)
-                ).fetchone()
-                works = c.execute(
-                    """SELECT w.id,w.state,w.specification,w.acceptance,w.evidence,
-                      CASE WHEN w.state IN ('blocked','rejected') THEN w.note ELSE '' END AS blocker,
-                      d.state AS execution_state,w.room,
-                      EXISTS(SELECT 1 FROM hb_event original WHERE original.id=w.request_event
-                        AND original.data->>'workCompletionPolicy'='report-required/v1') AS report_required
-                      FROM hb_work w LEFT JOIN hb_delivery d ON d.id=w.delivery
-                      WHERE w.goal=%s ORDER BY w.id""",
-                    (item["reference"],),
-                ).fetchall()
-                team = c.execute(
-                    "SELECT reviewer FROM hb_goal_cooperation WHERE goal=%s", (goal["id"],)
-                ).fetchone()
-                reviewer = team["reviewer"] if team and team["reviewer"] else goal["owner"]
-                ready = goal["state"] in ("accepted", "cancelled", "cancel_requested") or any(
-                    w["state"] in ("blocked", "rejected")
-                    or w["execution_state"] in ("failed", "unknown", "cancelled")
-                    or (w["state"] == "assigned" and w["execution_state"] == "completed"
-                        and w["report_required"])
-                    or reviewer == actor["id"]
-                    and w["state"] == "submitted"
-                    and w["execution_state"] == "completed"
-                    for w in works
-                )
-                decisions = c.execute(
-                    """SELECT id,revision FROM hb_decision WHERE
-                       room=ANY(%s::uuid[]) AND (goal IS NULL OR goal=%s) ORDER BY id""",
-                    (list({goal["room"], *(w["room"] for w in works)}), goal["id"]),
-                ).fetchall()
-                snapshot = {"state": goal["state"], "work": works, "decisionRevisions": decisions}
-            else:
-                incident = c.execute(
-                    """SELECT id,state,agent,host,generation,native_thread,native_turn,
-                       cancellation_requested FROM hb_delivery WHERE id=%s""",
-                    (item["reference"],),
-                ).fetchone()
-                ready = incident["state"] in ("failed", "unknown", "completed", "cancelled")
-                snapshot = {"executionIncident": incident}
-            if not ready and item["scope"] == "goal":
-                # SQL eligibility also admits an active all-accepted plan once
-                # its designated reviewer is no longer executing.
-                ready = bool(works) and all(w["state"] == "accepted" for w in works)
-            if not ready:
-                continue
-            key = digest(json_value(snapshot))
-            if key == item["dispatched_digest"]:
-                c.execute(
-                    "UPDATE hb_portfolio_item SET dispatched_seq=latest_seq WHERE principal=%s AND scope=%s AND reference=%s",
-                    (actor_id, item["scope"], item["reference"]),
-                )
-                continue
-            source = store.readable_event(c, actor, item["source_event"])
-            store.room(c, actor, policy["room"], "can_request")
-            event = store.event(
-                c,
-                actor,
-                policy["room"],
-                "request",
-                "Review the current portfolio obligation for "
-                + item["scope"]
-                + " "
-                + str(item["reference"])
-                + ". Read the current goal/plan and sourced decisions, or hollywood_execution_read for an incident. Inspect original receipts and actual evidence where needed, "
-                "and take only its authorized next action or report its material result/blocker. "
-                "Completed execution with assigned but unreported work is an unfinished obligation, "
-                "not accepted work. Preserve and inspect its original execution/effects and report the "
-                "specific missing evidence or authorized reconciliation. "
-                "Unknown execution is not permission to retry. Publish an attributable concise result. "
-                "This is one bounded review; do not poll, self-request or start unrelated work.",
-                audience="direct",
-                recipient=actor_id,
-                source=source["id"],
-                data={
-                    "portfolioReview": True,
-                    "goalReferenceId": str(item["reference"]) if item["scope"] == "goal" else None,
-                    "deliveryReferenceId": str(item["reference"])
-                    if item["scope"] == "delivery"
-                    else None,
-                    "materialSequence": item["latest_seq"],
-                    "triggerDigest": key,
-                },
-            )
-            delivery = uid()
-            c.execute(
-                "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
-                (delivery, actor["authority"], event, actor_id),
-            )
-            c.execute(
-                """UPDATE hb_portfolio_item SET dispatched_seq=latest_seq,
-                   dispatched_digest=%s,request_event=%s WHERE principal=%s AND scope=%s AND reference=%s""",
-                (key, event, actor_id, item["scope"], item["reference"]),
-            )
-            c.execute(
-                "UPDATE hb_portfolio_policy SET reviews_used=reviews_used+1 WHERE principal=%s",
-                (actor_id,),
-            )
-            return json_value(
-                {
-                    "admitted": [
-                        {
-                            "scope": item["scope"],
-                            "reference": item["reference"],
-                            "requestEventId": event,
-                            "deliveryId": delivery,
-                        }
-                    ],
-                    "modelsStarted": 0,
-                }
-            )
-        return {"admitted": [], "modelsStarted": 0, "reason": "no_new_actionable_material"}
+        return json_value(
+            {
+                "admitted": [
+                    {
+                        "scope": item["scope"],
+                        "reference": item["reference"],
+                        "requestEventId": event,
+                        "deliveryId": delivery,
+                    }
+                ],
+                "modelsStarted": 0,
+            }
+        )
+    return {"admitted": [], "modelsStarted": 0, "reason": "no_new_actionable_material"}
 
 
 def read(store, actor_id, agent_id, after=None, limit=100):

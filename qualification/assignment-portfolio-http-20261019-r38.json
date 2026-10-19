@@ -1,0 +1,16 @@
+{
+  "schema": "lax-assignment-portfolio-http/v1",
+  "at": 1792406861.793246,
+  "mode": "Actual authenticated HTTP and PostgreSQL. Rollback-only Goal/delivery/material metadata fixtures; no native executor, launch, permit or process facts inserted. No model proof claimed.",
+  "modelsStarted": 0,
+  "databaseConnection": "One authorized local maintenance login, SET ROLE to actual QA application role; PostgreSQL role limit unchanged; no production services/pools changed.",
+  "canonicalAssignmentAtomicallyIngestsOriginalRequest": true,
+  "exactOriginalPendingRepairIsIdempotentAndAdmitsNoExecution": true,
+  "CancelledOriginalCannotBeRepairedOrRestarted": true,
+  "terminalCausalGoalReusesOriginalResponsibilityWithoutDuplicateSelfReview": true,
+  "newActionablePortfolioObligationCreatesTypedAgentInputInSameTransaction": true,
+  "unchangedOrUnsettledReviewCreatesNoSecondRequestOrAcknowledgement": true,
+  "disabledSupervisionRemainsDisabled": true,
+  "allFixturesRolledBack": true,
+  "liveNativeWriterBindingPreserved": true
+}

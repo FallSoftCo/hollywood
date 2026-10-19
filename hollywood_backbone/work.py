@@ -375,6 +375,8 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                     "UPDATE hb_work SET state='assigned',request_event=%s,delivery=%s,revision=revision+1 WHERE id=%s",
                     (request, delivery, identity),
                 )
+                from .context_system import ingest
+                ingest(c, str(work["owner"]), request)
             elif action == "work.recover":
                 from .recovery import prepare
                 recovery = prepare(store, c, a, work, payload)

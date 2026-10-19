@@ -54,8 +54,13 @@ def configure_transaction(store,c,actor,agent,payload):
         actual = {b["purpose"]: (b["contextId"], b["credentialDigest"]) for b in existing["bindings"]}
         if (old["host"] == UUID(payload["hostId"]) and old["workspace"] == payload["workspaceId"]
                 and old["enabled"] and actual == expected and len(payload["bindings"]) == 3):
-            return {"agentId":agent,"purposes":sorted(PURPOSES),"configured":True,"reconciled":True}
+            from .context_input_reconciliation import reconcile
+            reconciled=reconcile(c,store,actor,agent,payload.get("reconcilePendingDeliveryIds",[]))
+            return {"agentId":agent,"purposes":sorted(PURPOSES),"configured":True,"reconciled":True,
+                    "pendingInputReconciliation":reconciled}
         raise Conflict("Existing context system requires explicit migration")
+    if payload.get("reconcilePendingDeliveryIds"):
+        raise Conflict("Exact pending-input reconciliation requires an existing enrollment")
     bindings = payload["bindings"]
     if {b["purpose"] for b in bindings} != PURPOSES or len(bindings) != 3:
         raise ValueError("Exactly three purpose bindings required")
@@ -299,6 +304,8 @@ def perform(store,c,actor,purpose,binding,p):
                 from .work import dispatch_reviews
                 system=c.execute("SELECT host FROM hb_context_system WHERE agent=%s",(actor["id"],)).fetchone()
                 dispatch_reviews(store,str(actor["id"]),str(system["host"]),v["capabilities"],connection=c)
+                from .portfolio import dispatch
+                dispatch(store,str(actor["id"]),str(system["host"]),v["capabilities"],connection=c)
             from .context_peer_updates import refresh
             refresh(c,store,actor)
             from .context_room_observations import refresh as observations
