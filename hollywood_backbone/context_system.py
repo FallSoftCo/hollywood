@@ -239,6 +239,15 @@ def lifecycle(c, store, actor, purpose, binding, p):
               AND state NOT IN ('completed','cancelled')""", (actor["id"], row["source"]))
     c.execute("UPDATE hb_purpose_context SET active_turn=NULL,active_material='{}',accepting=false WHERE agent=%s AND purpose=%s",
               (actor["id"], purpose))
+    if purpose == "writer":
+        from .purpose_terminal_recovery import reconcile
+        for identity in binding["active_material"]:
+            material = item(c, store, actor, str(identity))
+            if material["kind"] == "work":
+                original = c.execute("SELECT id FROM hb_delivery WHERE event=%s AND agent=%s",
+                                     (material["source"], actor["id"])).fetchone()
+                if original:
+                    reconcile(store, c, original["id"])
     return {"nativeTurn": turn, "state": status,"admission":admission}
 
 

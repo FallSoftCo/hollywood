@@ -34,3 +34,19 @@ resource identity, bridge and native execution fences remain in force.
 The r46 HTTP/PostgreSQL receipt qualifies the real purpose-only metadata path,
 derived grant visibility, revocation and cross-authority denial with rolled-back
 fixtures. Actual native claim/consent/application remains a separate model proof.
+
+OS-stop and native-end observations can arrive in either order. Purpose
+readiness reconciles a delivery held only by the independently observed stop
+when its exact native terminal permit is subsequently released. The original
+claim/generation and all independent SDK/tool-effect evidence are retained;
+this is not effect clearance or a new execution. Explicit legacy unknown
+transitions, cancellation, missing stop/terminal evidence, unresolved mutations
+and native controls remain fenced. Before a first writer inference, the same
+admitted claim can recover only with no writer permit ever reserved and no
+native effect/activity for that Work. No native turn is fabricated.
+
+Private r60 integration exercised actual stopped residents and both actual
+recovery classes. The original three writers then obtained independently
+observed live incarnations through their existing contexts and gen1 claims.
+Canonical reports, independent review and Goal acceptance remain separate
+deliverable-end-state checks.

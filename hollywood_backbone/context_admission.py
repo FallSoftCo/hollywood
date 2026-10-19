@@ -22,6 +22,9 @@ def current(store, c, actor, binding, p):
     store.room(c, actor, event["room"], "can_post")
     # Continuation observes the same native claim; it never creates a replacement
     # ownership generation for a subsequent writer turn.
+    if delivery["state"] == "unknown":
+        from .purpose_terminal_recovery import reconcile
+        delivery = reconcile(store, c, delivery["id"])
     prior = c.execute("SELECT * FROM hb_claim WHERE agent=%s AND delivery=%s",
                       (actor["id"], delivery["id"])).fetchone()
     if prior and (delivery["state"] not in ("claimed", "running")
