@@ -1,0 +1,108 @@
+{
+  "schema": "lax-native-independent-responsibility-outcome/v1",
+  "at": 1792405266.5135627,
+  "state": "passed-bounded-original-continuation",
+  "deliveries": [
+    {
+      "id": "4545461c-bbd0-40c8-9088-7f241b66beca",
+      "event": "9b64109f-1ebd-42dd-be1d-7db5084dae19",
+      "state": "cancelled",
+      "generation": 1,
+      "claim_id": "context-admit:d121b19c-cbf0-53d5-8036-804bd636bab9",
+      "native_turn": "01a15395-ccec-73d0-b8dd-470b60f22977",
+      "result_event": null,
+      "cancellation_requested": true
+    },
+    {
+      "id": "a4ee9182-29db-4f92-8d01-0e741b95d564",
+      "event": "06c1e890-21a2-40f8-9125-6af3dc08f1f0",
+      "state": "completed",
+      "generation": 1,
+      "claim_id": "context-admit:e3b1fb93-fcbc-5d49-8230-84354e08d4ab",
+      "native_turn": "01a153a7-db9c-7d81-9810-2d02c5ee67ef",
+      "result_event": "2190a313-9f77-4800-8607-07dcac0c7bce",
+      "cancellation_requested": false
+    }
+  ],
+  "finalResponderEvent": {
+    "id": "2190a313-9f77-4800-8607-07dcac0c7bce",
+    "author": "f2363d21-e7da-4dc5-8749-6736d01d4f68",
+    "kind": "message",
+    "source": "06c1e890-21a2-40f8-9125-6af3dc08f1f0",
+    "body": "Saved and verified `/var/lib/lax-three-context-20261018-r01/agent/work/WORKSTATION-CAPABILITIES-r33.json`. **All 14 checks passed.** The earlier save blocker was resolved through the supported native path, not bypassed.\n\nVerified observations:\n- Host `ozzz-aosp`, execution UID/EUID `886`.\n- Configured GitHub login `aiyer-commits` matches authenticated `GET /user`.\n- Exact remote ref `refs/heads/harness/three-context-20261018-r01` points to `11c24f95c3793e515c57ed5676e300750bce344b`, matching read-only Git and authenticated Git-ref API results.\n- The single 20-second read-only wait completed once; all 213 prior files\u2019 bytes/sizes were preserved.\n\n**Important limits:** `FallSoftCo/codex` reports `private=false`. This does not certify private-repository access or per-request public-Git HTTP credential use. Local checkout access was denied without override; credential values are omitted. This is bounded integration evidence, not production readiness or general authorization. The separate preview decision was not advanced or resolved.\n\n**Artifact SHA-256:**\n```text\n8440650bf0be4469861004df947ddb0af48a439c2f2e14205844ace8b12e802d\n```"
+  },
+  "artifact": {
+    "path": "/var/lib/lax-three-context-20261018-r01/agent/work/WORKSTATION-CAPABILITIES-r33.json",
+    "sha256": "8440650bf0be4469861004df947ddb0af48a439c2f2e14205844ace8b12e802d",
+    "size": 8005
+  },
+  "sameSixHistories": [
+    {
+      "agent": "3df5ce3f-334d-5942-b99b-84fe7436bd19",
+      "purpose": "reader",
+      "context_id": "ace66fa5-32e8-412e-b2b8-be22c3ec749f",
+      "native_thread": "01a152d8-7480-79c1-accd-7f73e4f2ccf7"
+    },
+    {
+      "agent": "3df5ce3f-334d-5942-b99b-84fe7436bd19",
+      "purpose": "responder",
+      "context_id": "3ead1d30-8949-4e18-bf00-d85c2ce08b67",
+      "native_thread": "01a152d8-7610-71f0-b122-4f34d4ed4f3b"
+    },
+    {
+      "agent": "3df5ce3f-334d-5942-b99b-84fe7436bd19",
+      "purpose": "writer",
+      "context_id": "4d92133e-f013-4318-a93b-6e70e347b87d",
+      "native_thread": "01a152d8-779d-7d02-aaee-1cdd3fb02443"
+    },
+    {
+      "agent": "f2363d21-e7da-4dc5-8749-6736d01d4f68",
+      "purpose": "reader",
+      "context_id": "6539cb87-58cf-4d7d-a21d-d89ae86c0d67",
+      "native_thread": "01a14f4a-f1e1-7a63-b6bf-36218d37ad78"
+    },
+    {
+      "agent": "f2363d21-e7da-4dc5-8749-6736d01d4f68",
+      "purpose": "responder",
+      "context_id": "d9b55d01-76e1-4e8c-994a-a84da3924073",
+      "native_thread": "01a14f54-3c64-7380-ad4d-151d747ec7af"
+    },
+    {
+      "agent": "f2363d21-e7da-4dc5-8749-6736d01d4f68",
+      "purpose": "writer",
+      "context_id": "fd36bf3e-c19e-4964-8af9-3651451f067b",
+      "native_thread": "01a14f53-7c6c-7273-a36a-2f88cac249e0"
+    }
+  ],
+  "allOriginalGenerationsOne": true,
+  "targetedCancellationInsideSecondNativeTurn": true,
+  "secondTurnInterrupted": false,
+  "singleOriginal20SecondWait": true,
+  "originalInputsReposted": false,
+  "runtimeRepairWasServiceMetadataNotHumanOrPeerMessage": true,
+  "protectedNativeEdits": [
+    {
+      "id": "6d88035c-9935-5cb7-acb0-5e4c510ffeef",
+      "state": "settled"
+    },
+    {
+      "id": "d67dbd92-cd97-50e0-b41e-7c4e0bb90be9",
+      "state": "settled"
+    }
+  ],
+  "priorFilesHashAndSizeVerified": 213,
+  "allInferencePermitsReleased": true,
+  "allNativeEditPermitsSettled": true,
+  "questionExpiredWithoutHumanAnswer": true,
+  "productionPidsUnchanged": {
+    "hollywood-backbone.service": "3268903",
+    "nextcomp-native-core.service": "2583312"
+  },
+  "phoneChanged": false,
+  "limits": [
+    "Specific bounded native two-responsibility journey, not universal semantic/task concurrency proof",
+    "Original second turn hit a real bridge bug; continued same logical claim after source-corrected private upgrade",
+    "Old mode preservation for two preview files is not inferred from a missing original mode snapshot",
+    "No production cutover/fresh enterprise bootstrap/canonical multiagent Goal report acceptance implied"
+  ]
+}

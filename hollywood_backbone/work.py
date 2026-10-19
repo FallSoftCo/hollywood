@@ -675,103 +675,108 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
         return receipt
 
 
-def dispatch_reviews(store, actor_id, host, capabilities=()):
-    """Desired-state reconciliation keyed by material worker reports; no timed goals."""
-    with store.pool.connection() as c:
-        a = store.actor(c, actor_id)
+def dispatch_reviews(store, actor_id, host, capabilities=(), *, connection=None):
+    """Use the existing bounded material-review policy in the caller transaction."""
+    if connection is None:
+        with store.pool.connection() as c:
+            return dispatch_reviews(store, actor_id, host, capabilities, connection=c)
+    c = connection
+    a = store.actor(c, actor_id)
+    if (
+        a["kind"] != "agent"
+        or not c.execute(
+            "SELECT 1 FROM hb_placement WHERE agent=%s AND host=%s AND enabled",
+            (actor_id, host),
+        ).fetchone()
+    ):
+        raise Denied("Enrolled execution owner required")
+    store.native_role_capability(c, a, capabilities)
+    if c.execute(
+        "SELECT 1 FROM hb_portfolio_policy WHERE principal=%s AND enabled", (actor_id,)
+    ).fetchone():
+        return {
+            "admitted": [],
+            "modelsStarted": 0,
+            "reason": "portfolio_policy_owns_global_review",
+        }
+    goals = c.execute(
+        """SELECT g.* FROM hb_goal g LEFT JOIN hb_goal_cooperation t ON t.goal=g.id
+           WHERE COALESCE(t.reviewer,g.owner)=%s AND g.state='active' AND g.review_remaining>0
+           ORDER BY g.id LIMIT 16 FOR UPDATE OF g SKIP LOCKED""",
+        (actor_id,),
+    ).fetchall()
+    admitted = []
+    for goal in goals:
+        from .cooperation import CAPABILITY
+        from .cooperation import row as cooperation_row
+
+        policy = cooperation_row(c, goal["id"])
+        if policy and CAPABILITY not in capabilities:
+            raise Conflict("Cooperation-aware reviewer required")
+        store.room(c, a, goal["room"], "can_request")
         if (
-            a["kind"] != "agent"
-            or not c.execute(
-                "SELECT 1 FROM hb_placement WHERE agent=%s AND host=%s AND enabled",
-                (actor_id, host),
+            goal["review_request"]
+            and c.execute(
+                "SELECT 1 FROM hb_delivery WHERE event=%s AND state NOT IN ('completed','failed','cancelled')",
+                (goal["review_request"],),
             ).fetchone()
         ):
-            raise Denied("Enrolled execution owner required")
-        store.native_role_capability(c, a, capabilities)
-        if c.execute(
-            "SELECT 1 FROM hb_portfolio_policy WHERE principal=%s AND enabled", (actor_id,)
-        ).fetchone():
-            return {
-                "admitted": [],
-                "modelsStarted": 0,
-                "reason": "portfolio_policy_owns_global_review",
-            }
-        goals = c.execute(
-            """SELECT g.* FROM hb_goal g LEFT JOIN hb_goal_cooperation t ON t.goal=g.id
-               WHERE COALESCE(t.reviewer,g.owner)=%s AND g.state='active' AND g.review_remaining>0
-               ORDER BY g.id LIMIT 16 FOR UPDATE OF g SKIP LOCKED""",
-            (actor_id,),
+            continue
+        material = c.execute(
+            """SELECT w.id,COALESCE(w.report_event,d.result_event,w.request_event) AS report_event,
+                      w.owner,d.state,d.revision,e.seq
+               FROM hb_work w JOIN hb_delivery d ON d.id=w.delivery
+               JOIN hb_event e ON e.id=COALESCE(w.report_event,d.result_event,w.request_event)
+               WHERE w.goal=%s AND w.owner<>%s
+               AND w.state NOT IN ('accepted','cancelled','cancel_requested')
+               AND (w.state IN ('submitted','blocked') OR d.state IN ('failed','unknown')
+                 OR (w.state='assigned' AND d.state='completed'
+                   AND EXISTS(SELECT 1 FROM hb_event original WHERE original.id=w.request_event
+                     AND original.data->>'workCompletionPolicy'='report-required/v1')))
+               AND d.state IN ('completed','failed','cancelled','unknown') ORDER BY w.id""",
+            (goal["id"], actor_id),
         ).fetchall()
-        admitted = []
-        for goal in goals:
-            from .cooperation import CAPABILITY
-            from .cooperation import row as cooperation_row
-
-            policy = cooperation_row(c, goal["id"])
-            if policy and CAPABILITY not in capabilities:
-                raise Conflict("Cooperation-aware reviewer required")
-            store.room(c, a, goal["room"], "can_request")
-            if (
-                goal["review_request"]
-                and c.execute(
-                    "SELECT 1 FROM hb_delivery WHERE event=%s AND state NOT IN ('completed','failed','cancelled')",
-                    (goal["review_request"],),
-                ).fetchone()
-            ):
-                continue
-            material = c.execute(
-                """SELECT w.id,COALESCE(w.report_event,d.result_event,w.request_event) AS report_event,
-                          w.owner,d.state,d.revision,e.seq
-                   FROM hb_work w JOIN hb_delivery d ON d.id=w.delivery
-                   JOIN hb_event e ON e.id=COALESCE(w.report_event,d.result_event,w.request_event)
-                   WHERE w.goal=%s AND w.owner<>%s
-                   AND w.state NOT IN ('accepted','cancelled','cancel_requested')
-                   AND (w.state IN ('submitted','blocked') OR d.state IN ('failed','unknown')
-                     OR (w.state='assigned' AND d.state='completed'
-                       AND EXISTS(SELECT 1 FROM hb_event original WHERE original.id=w.request_event
-                         AND original.data->>'workCompletionPolicy'='report-required/v1')))
-                   AND d.state IN ('completed','failed','cancelled','unknown') ORDER BY w.id""",
-                (goal["id"], actor_id),
-            ).fetchall()
-            if not material:
-                continue
-            key = digest(json_value(material))
-            if c.execute(
-                "SELECT 1 FROM hb_goal_review WHERE goal=%s AND trigger_digest=%s",
-                (goal["id"], key),
-            ).fetchone():
-                continue
-            source = max(material, key=lambda x: x["seq"])["report_event"]
-            store.readable_event(c, a, source)
-            request = store.event(
-                c,
-                a,
-                goal["room"],
-                "request",
-                "Review material worker reports, missing reports or execution failure/uncertainty for goal "
-                + str(goal["id"])
-                + ". Read its current plan, inspect original execution receipts and artifact evidence, then explicitly accept, reject or report a blocker. Completed execution with assigned but unreported work is unfinished: inspect its original effects and identify the missing report. Unknown effects must be reconciled before any retry; this review does not authorize replay or unrelated work.",
-                recipient=actor_id,
-                source=source,
-                data={
-                    "goalId": str(goal["id"]),
-                    "goalReview": True,
-                    "policy": "bounded-worker-report",
-                    "cooperationRevision": policy["revision"] if policy else None,
-                    "triggerDigest": key,
-                },
-            )
-            c.execute(
-                "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
-                (uid(), a["authority"], request, actor_id),
-            )
-            c.execute("INSERT INTO hb_goal_review VALUES(%s,%s,%s)", (goal["id"], key, request))
-            c.execute(
-                "UPDATE hb_goal SET review_remaining=review_remaining-1,review_digest=%s,review_request=%s,revision=revision+1 WHERE id=%s",
-                (key, request, goal["id"]),
-            )
-            admitted.append({"goalId": str(goal["id"]), "requestEventId": request})
-        return {"admitted": admitted, "modelsStarted": 0}
+        if not material:
+            continue
+        key = digest(json_value(material))
+        if c.execute(
+            "SELECT 1 FROM hb_goal_review WHERE goal=%s AND trigger_digest=%s",
+            (goal["id"], key),
+        ).fetchone():
+            continue
+        source = max(material, key=lambda x: x["seq"])["report_event"]
+        store.readable_event(c, a, source)
+        request = store.event(
+            c,
+            a,
+            goal["room"],
+            "request",
+            "Review material worker reports, missing reports or execution failure/uncertainty for goal "
+            + str(goal["id"])
+            + ". Read its current plan, inspect original execution receipts and artifact evidence, then explicitly accept, reject or report a blocker. Completed execution with assigned but unreported work is unfinished: inspect its original effects and identify the missing report. Unknown effects must be reconciled before any retry; this review does not authorize replay or unrelated work.",
+            recipient=actor_id,
+            source=source,
+            data={
+                "goalId": str(goal["id"]),
+                "goalReview": True,
+                "policy": "bounded-worker-report",
+                "cooperationRevision": policy["revision"] if policy else None,
+                "triggerDigest": key,
+            },
+        )
+        c.execute(
+            "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
+            (uid(), a["authority"], request, actor_id),
+        )
+        c.execute("INSERT INTO hb_goal_review VALUES(%s,%s,%s)", (goal["id"], key, request))
+        c.execute(
+            "UPDATE hb_goal SET review_remaining=review_remaining-1,review_digest=%s,review_request=%s,revision=revision+1 WHERE id=%s",
+            (key, request, goal["id"]),
+        )
+        from .context_system import ingest
+        ingest(c, actor_id, request)
+        admitted.append({"goalId": str(goal["id"]), "requestEventId": request})
+    return {"admitted": admitted, "modelsStarted": 0}
 
 
 def supervision(store, actor_id, after, limit):

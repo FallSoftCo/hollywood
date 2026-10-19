@@ -257,7 +257,7 @@ def perform(store,c,actor,purpose,binding,p):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
       "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","amend","directory","observe","room_list","room_history"},
-      "writer":{"pending","snapshot","read","progress","complete","announce","peer_request","wait_peers","directory","response_material"},
+      "writer":{"pending","snapshot","read","progress","complete","announce","peer_request","wait_peers","wait_goals","directory","response_material"},
       "responder":{"pending","snapshot","read","publish","suppress"},
     }
     if action not in permitted[purpose]:
@@ -270,9 +270,12 @@ def perform(store,c,actor,purpose,binding,p):
             raise Denied("Observation does not belong to this native turn")
         from .context_room_observations import record
         return record(c,store,actor,binding,p)
-    target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers","response_material") else v.get("inputId") if action in ("accept","answer","peer_result","amend") else v.get("communicationId")
+    target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers","wait_goals","response_material") else v.get("inputId") if action in ("accept","answer","peer_result","amend") else v.get("communicationId")
     if target and target not in {str(x) for x in binding["active_material"]}:
         raise Denied("Material does not belong to this captured native turn")
+    if action=="wait_goals":
+        from .context_goal_dependencies import wait
+        return wait(c,store,actor,binding,p)
     if action=="response_material":
         from .context_peer_updates import response_material
         return response_material(c,store,actor,binding,p)
@@ -292,11 +295,17 @@ def perform(store,c,actor,purpose,binding,p):
         c.execute("UPDATE hb_purpose_context SET observed_at=clock_timestamp() WHERE agent=%s AND purpose=%s",
                   (actor["id"],purpose))
         if purpose=="reader":
+            if v.get("capabilities") is not None:
+                from .work import dispatch_reviews
+                system=c.execute("SELECT host FROM hb_context_system WHERE agent=%s",(actor["id"],)).fetchone()
+                dispatch_reviews(store,str(actor["id"]),str(system["host"]),v["capabilities"],connection=c)
             from .context_peer_updates import refresh
             refresh(c,store,actor)
             from .context_room_observations import refresh as observations
             observations(c,store,actor)
         if purpose=="writer":
+            from .context_goal_dependencies import refresh
+            refresh(c,store,actor)
             from .context_cancellations import settle_idle
             settle_idle(c,store,actor)
             if binding["work_scheduling"]==2:
@@ -366,6 +375,8 @@ def perform(store,c,actor,purpose,binding,p):
         if work["state"] in ("complete","cancelled") or delivery and delivery["cancellation_requested"]:
             raise Conflict("Work no longer admits execution contributions")
         if action=="complete":
+            from .context_goal_dependencies import require_resolved
+            require_resolved(c,store,actor,work)
             if delivery["state"] not in ("claimed","running"):
                 raise Conflict("Unsettled or closed original execution cannot complete work")
             if c.execute("SELECT 1 FROM hb_edit_permit WHERE authority=%s AND source->>'deliveryId'=%s AND state<>'settled' LIMIT 1",
