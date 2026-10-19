@@ -1,0 +1,17 @@
+{
+  "schema": "lax-room-observations-http/v1",
+  "at": 1792399232.6364717,
+  "mode": "Actual HTTP/real PostgreSQL, frozen native binding and disposable semantic fixture; all changes rolled back",
+  "modelsStarted": 0,
+  "initialHeadOnlyAndPassiveNoDeliveryOrNeed": true,
+  "administratorVisibilityPreservedAndPeerPrivateAudienceFiltered": true,
+  "readOnlyRoomMembershipCanAdmitReaderWithoutExecution": true,
+  "observationCannotBecomeAddressedAssignmentOrRequiredAcknowledgement": true,
+  "canonicalRoomHistoryBoundedRetrievalAndPrivateAccessChecks": true,
+  "multibyteHistoryBoundAndBackwardPaginationWithoutSkippedEvents": true,
+  "readOnlyObservationCannotQueueOutwardCommunication": true,
+  "semanticInterpretationUpdatesOriginalWorkWithoutReplyOrSteer": true,
+  "durableCursorDeduplicatesWithoutRewakeOfHandledObservation": true,
+  "offlineOriginalEventRecoveryAndRevocationWithoutPermissionResurrection": true,
+  "allFixtureWritesRolledBack": true
+}

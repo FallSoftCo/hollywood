@@ -969,6 +969,10 @@ class Store:
             return receipt
 
     def history(self, actor_id, room, after, limit, before=None, view="all"):
+        with self.pool.connection() as c:
+            return self.history_in_transaction(c,self.actor(c,actor_id),room,after,limit,before,view)
+
+    def history_in_transaction(self, c, a, room, after, limit, before=None, view="all"):
         from .activity import project
 
         # Both projections read the same canonical records with their original IDs,
@@ -986,42 +990,40 @@ class Store:
         if view not in filters:
             raise ValueError("Choose all, conversation or activity")
         selected = filters[view]
-        with self.pool.connection() as c:
-            a = self.actor(c, actor_id)
-            self.room(c, a, room)
-            ceiling = c.execute(
-                "SELECT next_seq FROM hb_authority WHERE id=%s", (a["authority"],)
-            ).fetchone()["next_seq"]
-            if before is not None:
-                rows = c.execute(
-                    "SELECT * FROM hb_event WHERE room=%s AND seq<%s AND seq<=%s "
-                    "AND (%s OR audience='room' OR author=%s OR recipient=%s)"
-                    + selected + " ORDER BY seq DESC LIMIT %s",
-                    (room, before, ceiling, a["administrator"], a["id"], a["id"], limit + 1),
-                ).fetchall()
-                more = len(rows) > limit
-                rows = list(reversed(rows[:limit]))
-                return {
-                    "authorityId": str(a["authority"]),
-                    "roomId": room,
-                    "view": view,
-                    "events": json_value([project(row, c, a) for row in rows]),
-                    "nextCursor": ceiling,
-                    "olderCursor": rows[0]["seq"] if more else None,
-                }
+        self.room(c, a, room)
+        ceiling = c.execute(
+            "SELECT next_seq FROM hb_authority WHERE id=%s", (a["authority"],)
+        ).fetchone()["next_seq"]
+        if before is not None:
             rows = c.execute(
-                "SELECT * FROM hb_event WHERE room=%s AND seq>%s AND seq<=%s "
+                "SELECT * FROM hb_event WHERE room=%s AND seq<%s AND seq<=%s "
                 "AND (%s OR audience='room' OR author=%s OR recipient=%s)"
-                + selected + " ORDER BY seq LIMIT %s",
-                (room, after, ceiling, a["administrator"], a["id"], a["id"], limit),
+                + selected + " ORDER BY seq DESC LIMIT %s",
+                (room, before, ceiling, a["administrator"], a["id"], a["id"], limit + 1),
             ).fetchall()
+            more = len(rows) > limit
+            rows = list(reversed(rows[:limit]))
             return {
                 "authorityId": str(a["authority"]),
                 "roomId": room,
                 "view": view,
                 "events": json_value([project(row, c, a) for row in rows]),
-                "nextCursor": rows[-1]["seq"] if len(rows) == limit else ceiling,
+                "nextCursor": ceiling,
+                "olderCursor": rows[0]["seq"] if more else None,
             }
+        rows = c.execute(
+            "SELECT * FROM hb_event WHERE room=%s AND seq>%s AND seq<=%s "
+            "AND (%s OR audience='room' OR author=%s OR recipient=%s)"
+            + selected + " ORDER BY seq LIMIT %s",
+            (room, after, ceiling, a["administrator"], a["id"], a["id"], limit),
+        ).fetchall()
+        return {
+            "authorityId": str(a["authority"]),
+            "roomId": room,
+            "view": view,
+            "events": json_value([project(row, c, a) for row in rows]),
+            "nextCursor": rows[-1]["seq"] if len(rows) == limit else ceiling,
+        }
 
     def placement(self, actor_id, host, name, fingerprint, capabilities, agent, *, command=None):
         from .administrative import mutate

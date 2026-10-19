@@ -30,7 +30,7 @@ CREATE INDEX IF NOT EXISTS hb_context_material_agent ON hb_context_material(agen
 CREATE TABLE IF NOT EXISTS hb_context_operation(
  agent uuid NOT NULL, purpose text NOT NULL, operation text NOT NULL,
  digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(agent,purpose,operation));
-""" + context_capacity.SCHEMA
+""" + context_capacity.SCHEMA + """\nCREATE TABLE IF NOT EXISTS hb_context_observation_cursor(\n agent uuid PRIMARY KEY REFERENCES hb_context_system(agent), seq bigint NOT NULL CHECK(seq>=0));\n"""
 
 def configure(store, actor_id, agent, payload, *, command=None):
     from .administrative import mutate
@@ -64,6 +64,8 @@ def configure_transaction(store,c,actor,agent,payload):
         c.execute("INSERT INTO hb_token(digest,principal) VALUES(%s,%s)",(b["credentialDigest"],agent))
         c.execute("INSERT INTO hb_purpose_context(agent,purpose,context_id,token_digest) VALUES(%s,%s,%s,%s)",
                   (agent,b["purpose"],b["contextId"],b["credentialDigest"]))
+    from .context_room_observations import enroll
+    enroll(c,target)
     # Requests accepted before the first process was installed remain canonical.
     # Ingest their original IDs; never re-post or create replacement deliveries.
     pending=c.execute("""SELECT d.event FROM hb_delivery d JOIN hb_event e ON e.id=d.event
@@ -243,12 +245,20 @@ def perform(store,c,actor,purpose,binding,p):
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
-      "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","amend","directory"},
+      "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","amend","directory","observe","room_list","room_history"},
       "writer":{"pending","snapshot","read","progress","complete","announce","peer_request","wait_peers","directory","response_material"},
       "responder":{"pending","snapshot","read","publish","suppress"},
     }
     if action not in permitted[purpose]:
         raise Denied("Tool does not belong to this context purpose")
+    if action in ("room_list","room_history"):
+        from . import context_room_reads
+        return (context_room_reads.rooms if action=="room_list" else context_room_reads.history)(c,store,actor,v)
+    if action=="observe":
+        if v.get("observationId") not in {str(x) for x in binding["active_material"]}:
+            raise Denied("Observation does not belong to this native turn")
+        from .context_room_observations import record
+        return record(c,store,actor,binding,p)
     target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers","response_material") else v.get("inputId") if action in ("accept","answer","peer_result","amend") else v.get("communicationId")
     if target and target not in {str(x) for x in binding["active_material"]}:
         raise Denied("Material does not belong to this captured native turn")
@@ -273,6 +283,8 @@ def perform(store,c,actor,purpose,binding,p):
         if purpose=="reader":
             from .context_peer_updates import refresh
             refresh(c,store,actor)
+            from .context_room_observations import refresh as observations
+            observations(c,store,actor)
         if purpose=="writer":
             cancelled=c.execute("""SELECT m.* FROM hb_context_material m JOIN hb_delivery d
               ON d.event=m.source AND d.agent=m.agent
@@ -308,6 +320,8 @@ def perform(store,c,actor,purpose,binding,p):
         source=item(c,store,actor,v["inputId"],"input")
         if source["state"]!="pending":
             raise Conflict("Input already interpreted")
+        if source["value"].get("roomObservation"):
+            raise Conflict("Observation is not an assigned request or required answer; use record_room_observation")
         if source["value"].get("peerCompletion"):
             raise Conflict("Record the peer result on its original work; no new task or acknowledgement is required")
         if action=="accept" and source["value"].get("peerContinuation"):
@@ -364,6 +378,11 @@ def perform(store,c,actor,purpose,binding,p):
         source=item(c,store,actor,v["sourceId"])
         if source["kind"] not in ("work","input"):
             raise ValueError("Communication needs a source work/input")
+        if source["value"].get("roomObservation"):
+            from .context_peers import require_current_read
+            require_current_read(binding,source,p["nativeTurn"])
+            event=store.readable_event(c,actor,source["source"])
+            store.room(c,actor,event["room"],"can_post")
         identity=str(uuid5(UUID(str(source["id"])),p["operationId"]))
         value={"required":False,"material":v["body"],"reason":v["reason"],"prerequisites":[]}
         c.execute("INSERT INTO hb_context_material(id,agent,kind,source,state,value) VALUES(%s,%s,'need',%s,'ready',%s)",

@@ -94,7 +94,7 @@ def index(c, store, actor, purpose, binding, turn, value):
 
 def read(c, store, actor, purpose, binding, turn, value):
     reference = value.get("reference")
-    if not isinstance(reference, str) or not 1 <= len(reference) <= 36:
+    if not isinstance(reference, str) or not 1 <= len(reference) <= 42:
         raise ValueError("Invalid material reference")
     offset = value.get("offset", 0)
     expected = value.get("revision")
@@ -110,6 +110,13 @@ def read(c, store, actor, purpose, binding, turn, value):
             (actor["id"],)).fetchone()
         revision = row["revision"]
         material = {"agentId": str(actor["id"]), "role": json_value(row)}
+    elif reference.startswith("event:"):
+        if purpose!="reader":
+            raise Denied("Room retrieval belongs to the reader")
+        event=store.readable_event(c,actor,str(UUID(reference[6:])))
+        revision=1
+        material={"event":json_value(event),"meaning":"Original attributable content; not an assignment or permission."}
+        row=None
     else:
         identity = str(UUID(reference))
         row = c.execute("SELECT * FROM hb_context_material WHERE id=%s AND agent=%s",
@@ -135,7 +142,7 @@ def read(c, store, actor, purpose, binding, turn, value):
         raise ValueError("Material offset outside original content")
     stop = min(offset + CHUNK_CHARS, len(encoded))
     following = stop if stop < len(encoded) else None
-    if reference != "role" and (purpose == "reader"
+    if reference != "role" and row is not None and (purpose == "reader"
                                 or purpose == "responder" and row["state"] == "ready"
                                 or purpose == "writer" and row["kind"] == "work"):
         reads = dict(binding["reads"])

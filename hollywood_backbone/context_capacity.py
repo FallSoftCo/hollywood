@@ -61,10 +61,11 @@ def reserve(store,c,actor,purpose,binding,p):
         if not m or m["kind"]!=kind or m["state"] not in states:
             raise Conflict("Original material no longer runnable")
         e=store.readable_event(c,actor,m["source"])
-        store.room(c,actor,e["room"],"can_post")
+        observation=purpose=="reader" and m["kind"]=="input" and m["value"].get("roomObservation") is True
+        store.room(c,actor,e["room"],"can_read" if observation else "can_post")
         d=c.execute("SELECT * FROM hb_delivery WHERE event=%s AND agent=%s",
                     (m["source"],actor["id"])).fetchone()
-        if not d or d["cancellation_requested"]:
+        if (not d and not observation) or d and d["cancellation_requested"]:
             raise Conflict("Original request cancelled")
         if purpose=="writer" and (d["state"] not in ("claimed","running") or not c.execute(
                 "SELECT 1 FROM hb_claim WHERE agent=%s AND delivery=%s AND operation=%s",
@@ -129,12 +130,16 @@ def reserve(store,c,actor,purpose,binding,p):
                 LEFT JOIN hb_context_material m ON m.id=v.id AND m.agent=q.agent
                 LEFT JOIN hb_delivery d ON d.event=m.source AND d.agent=q.agent
                 LEFT JOIN hb_event e ON e.id=m.source
-                WHERE m.id IS NULL OR d.id IS NULL OR d.cancellation_requested
+                WHERE m.id IS NULL OR (d.id IS NULL AND NOT
+                    (q.purpose='reader' AND m.value->>'roomObservation'='true'))
+                  OR d.cancellation_requested
                   OR m.kind<>CASE q.purpose WHEN 'reader' THEN 'input' WHEN 'writer' THEN 'work' ELSE 'need' END
                   OR NOT (m.state=ANY(CASE q.purpose WHEN 'reader' THEN ARRAY['pending']
                     WHEN 'writer' THEN ARRAY['pending','running'] ELSE ARRAY['ready'] END))
                   OR (NOT a.administrator AND NOT EXISTS(SELECT 1 FROM hb_membership z
-                    WHERE z.room=e.room AND z.principal=q.agent AND z.can_read AND z.can_post)))
+                    WHERE z.room=e.room AND z.principal=q.agent AND z.can_read
+                      AND (z.can_post OR q.purpose='reader' AND m.value->>'roomObservation'='true')))
+                  OR (NOT a.administrator AND e.audience='direct' AND e.author<>q.agent AND e.recipient<>q.agent))
             ORDER BY q.ticket LIMIT 1""",(host,cls,policy["connector_max_age"])).fetchone()
         if counts["total"]>=total:
             reason="host_capacity_exhausted"
