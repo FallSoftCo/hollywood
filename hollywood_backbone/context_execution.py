@@ -88,7 +88,19 @@ def append_activity(c, store, actor, purpose, binding, p):
     if any(payload[k] != scope[k] for k in ("claimId", "generation", "nativeThread", "nativeTurn")):
         raise Conflict("Activity belongs to another captured execution")
     # Internal purpose bookkeeping and model text are not outward communication.
-    if payload["item"]["nativeType"] not in ("commandExecution", "fileChange", "planUpdate"):
+    if payload["item"]["nativeType"] not in ("commandExecution", "fileChange", "planUpdate", "mcpToolCall"):
         raise Denied("Internal context material is not public execution activity")
+    if payload["item"]["nativeType"] == "mcpToolCall":
+        # Provider payloads can contain private room data and capabilities.
+        # Public execution cards retain lifecycle metadata, never tool arguments
+        # or results. Enforce this at the communication authority as well.
+        import re
+        item = payload["item"]
+        title = item.get("title") or ""
+        item.update(
+            title=title if re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", title) else "MCP tool",
+            output="Native tool payload retained in the protected execution journal.",
+            command=None, cwd=None, changes=None, plan=None, nativeGoal=None,
+        )
     from .activity import append_in_transaction
     return append_in_transaction(store, c, actor, scope["deliveryId"], payload, execution_scope=scope)

@@ -1,0 +1,125 @@
+{
+  "schema": "hollywood-lax-native-core-delivered/v1",
+  "at": 1792431134.3338754,
+  "gateway": "http://127.0.0.1:18896",
+  "privateUrl": "https://lledit-worker.tailb77f2a.ts.net:18896",
+  "gatewayNativeRoomsAndActionFeedReadback": true,
+  "rooms": [
+    {
+      "id": "8548a956-180b-5c23-a20f-2bad0d0af04d",
+      "name": "8bar",
+      "purpose": "8bar product discussion and coordination."
+    },
+    {
+      "id": "499c593c-fd89-5007-95e6-844c5a4b397b",
+      "name": "fallsoftco",
+      "purpose": "fallsoftco company coordination and grants work."
+    },
+    {
+      "id": "1ed8ffd1-5b8f-4e08-9222-8bf6aa5cecac",
+      "name": "Global",
+      "purpose": "Enterprise coordination and administration"
+    },
+    {
+      "id": "690c3f7f-f8f9-54c8-8648-3ecda5458369",
+      "name": "Hollywood",
+      "purpose": "Hollywood, the authoritative rooms and communication backbone."
+    },
+    {
+      "id": "98473e5b-969a-5e5c-9d8f-7c56ebfd4509",
+      "name": "l33",
+      "purpose": "l33 product discussion and coordination."
+    },
+    {
+      "id": "170374a4-76f4-5d52-b587-bb8d86d46a95",
+      "name": "lax",
+      "purpose": "lax, the native agent harness; architecture and product coordination."
+    },
+    {
+      "id": "b8ed2c2b-d456-5c8b-b63d-5097eed06755",
+      "name": "NextComp",
+      "purpose": "NextComp, the human client; product discussion and coordination."
+    },
+    {
+      "id": "87fb7955-9d10-5a42-a7e7-76d197c12e68",
+      "name": "ozzz",
+      "purpose": "Enterprise language learning, not translation; product direction and coordination."
+    },
+    {
+      "id": "c777b697-b10a-559d-8b89-dda61c5a4240",
+      "name": "ozzz engineering",
+      "purpose": "ozzz product implementation and maintenance."
+    },
+    {
+      "id": "27ae85a4-d9d6-598a-8483-c9f5dc07976b",
+      "name": "ozzz marketing",
+      "purpose": "ozzz positioning, demonstrations and customer acquisition; no requirement for message parity."
+    },
+    {
+      "id": "7b64e769-7c43-57f8-a42c-87b0937759ad",
+      "name": "PirateBae",
+      "purpose": "PirateBae product discussion and coordination."
+    },
+    {
+      "id": "99de12ea-da26-5ba3-aec6-69fa3e7ef350",
+      "name": "virtue",
+      "purpose": "virtue product discussion and coordination."
+    }
+  ],
+  "explicitOwnerAndGlobalMemberships": 23,
+  "ownerAndGlobalEffectiveAccessAllRooms": true,
+  "globalHomeAccess": "Existing room-owner authority; no redundant membership invented",
+  "agents": 1,
+  "nativeHistories": {
+    "reader": "01a154cf-43c5-7302-81ec-20921e99d2d6",
+    "responder": "01a154cf-4495-73e3-8992-dfab72ac56d8",
+    "writer": "01a154cf-4119-7720-84e3-127ed80defb9"
+  },
+  "globalRole": {
+    "revision": 2,
+    "primary_role": "global",
+    "home_room": "1ed8ffd1-5b8f-4e08-9222-8bf6aa5cecac"
+  },
+  "nativeInferencePermitStates": [
+    {
+      "state": "released",
+      "n": 12
+    }
+  ],
+  "originalProviderRequest": "989e9e35-13d0-4e97-bf3c-c3605af68c96",
+  "providerDelivery": "6ac4f04e-88c1-47dc-b8d0-5158edfb02ce",
+  "providerFinal": "e2e60a56-f16d-4339-beec-f29f5c76d0bb",
+  "actualMcpCalls": 2,
+  "originalJobId": "native-global-provider-r109",
+  "originalBrokerResultIndependentlyMatched": true,
+  "safeResultSha256": "a24508c31ddae888a6d875cdd90da3d8c760738ce05b104425db97c3de9ac94d",
+  "receiptQualification": "completed_unverified / executor_lost retained; read-only metadata returned",
+  "mcpFeed": {
+    "events": 4,
+    "actions": 2,
+    "notConversationMessages": true,
+    "argumentsResultsPrivate": true,
+    "originalOutboxRecoveredWithoutProviderReplay": true,
+    "eventIds": [
+      "0450f3b2-2ae7-4bd2-a2c8-9e7a512aaacd",
+      "eb63713a-1012-4b23-8192-0a142b9e61fe",
+      "86495dc3-5957-4a03-9277-6a911bdb0af6",
+      "d8be0393-cf8a-493f-843d-c3630ee1b980"
+    ]
+  },
+  "artifact": {
+    "path": "/var/lib/harness/483b0ac5-072a-43e1-ab50-36405f83de31/purpose-agents/cccfd79e-e934-460a-886e-df51c3ded886/home/work/work/native-global-tools-r109.json",
+    "bytes": 10100,
+    "sha256": "f8b805d68fc9b48b1f72f13b87b8881762e8b4603a7b087c558a832fca9033cd"
+  },
+  "roomSetup": {
+    "request": "f46aafe0-33a0-4399-aa46-56e36491f8d2",
+    "delivery": "daa7f72e-3571-489b-855e-73cc2042526c",
+    "final": "8add4e7e-7a26-4ddf-8bce-b5e0a4a64d7a",
+    "createdRooms": 11,
+    "newWorkersOrBusinessWorkStarted": 0
+  },
+  "physicalPhoneProfileDelivered": false,
+  "physicalPushVoiceQualified": false,
+  "productionReplacementReady": false
+}

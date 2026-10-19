@@ -328,3 +328,20 @@ Optional:
 ## License
 
 Apache-2.0. See [LICENSE](./LICENSE).
+
+### Native writer execution cards
+
+Purpose-native MCP lifecycle records use the same original captured execution
+scope as command/file/plan activity. Hollywood validates the owner, original
+generation/claim/thread/turn and room audience. They are progress/action records,
+not conversation messages and not model wakeups. Public cards contain lifecycle
+metadata and tool names; provider arguments and results remain in private native
+journals. Late recovery of an original log cannot execute its provider call.
+
+Actual private-native qualification is retained in
+tests/native-mcp-feed-20261019.json: an existing Global used its newly approved
+provider on the same writer history; the original four outbox records recovered
+after the server upgrade. The existing NextComp gateway returned both action
+identities and the twelve-room catalog. The provider's completed_unverified
+qualification remains explicit. Physical Android, voice and push are separate
+acceptance work.
