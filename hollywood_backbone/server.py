@@ -506,6 +506,8 @@ async def boundary(request, handler):
             if scope and not (own_context or own_receipt or native_read or executor_metadata or native_effect):
                 raise Denied("Purpose credential has no general mutation authority")
         return await handler(request)
+    except web.HTTPRequestEntityTooLarge:
+        return web.json_response({"error": "Request body exceeds limit; nothing admitted"}, status=413)
     except Denied:
         return web.json_response({"error": "Access denied"}, status=403)
     except (Conflict, pg_errors.UniqueViolation):

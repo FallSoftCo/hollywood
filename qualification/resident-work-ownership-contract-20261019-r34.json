@@ -1,0 +1,14 @@
+{
+  "schema": "lax-resident-work-ownership-contract/v1",
+  "at": 1792404784.938353,
+  "modelsStarted": 0,
+  "filesystemEffectsRequested": 0,
+  "actualInstalledResidentProcessAuthenticated": true,
+  "ambiguousProcessDoesNotSelectEffectScope": true,
+  "exactOriginalSecondTurnSelectsOnlyItsExecutor": true,
+  "cancelledFirstTurnCannotSelectExecution": true,
+  "preframeIsProcessEvidenceNotEffectAdmission": true,
+  "localOversizedContributionRejectedBeforeDispatch": true,
+  "realHttpOversizeReturnsKnown413WithNoContextOperation": true,
+  "allDatabaseChecksRolledBack": true
+}

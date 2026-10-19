@@ -353,6 +353,8 @@ def perform(store,c,actor,purpose,binding,p):
         change(c,source,"handled",source["value"])
         return result
     if action in ("progress","complete"):
+        if not isinstance(v.get("body"),str) or not 1<=len(v["body"])<=4000:
+            raise ValueError("Execution contribution must be a concise 1-4000 character summary")
         work=item(c,store,actor,v["workId"],"work")
         from .context_peers import require_current_read, own_change, requests
         require_current_read(binding,work,p["nativeTurn"])
