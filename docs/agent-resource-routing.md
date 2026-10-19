@@ -69,3 +69,24 @@ python tests/canonical_collaboration_harness.py --scenario resource-routing
 It creates one fresh RAM PostgreSQL instance and local authenticated HTTP server,
 then stops the exact owned instance. Source/executor bindings in this scenario
 are explicitly synthetic; passing it is not native runtime or model proof.
+
+## Explicit Work resource selection
+
+Purpose agents keep their own durable contexts and private default resources.
+A canonical assigned Work may instead select an existing authorized local root
+through GET/PUT `/hollywood/v3/work/{work}/resource`. The pointer captures exact
+Work, placement, context, root and agent-grant revisions. Selection is routing
+metadata, never file permission, execution admission or acceptance.
+
+The protected native bridge must explicitly enroll
+`canonical-work-resource-routing/v1`. It resolves Work selection before agent
+defaults; absent retains existing default behavior, while cleared or stale
+selection holds rather than silently changing roots. Existing per-Work physical
+grants, native scopes, claims, content-bound consent and mutation settlement
+still apply. Rerouting away from active claims/consents or unsettled mutations
+is rejected. A bridge downgrade cannot silently discard unfinished selected Work.
+
+Native tools are `hollywood_work_resource` and administrator-only
+`hollywood_select_work_resource`. Original administrative operation receipts
+recover accepted effects without resubmitting them. No private workspace,
+agent identity or TUI binding is changed by selection.

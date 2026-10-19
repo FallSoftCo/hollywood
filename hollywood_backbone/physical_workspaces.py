@@ -138,6 +138,15 @@ def attest(c, relay, source, binding, payload, work_id=None, cleanup=False, ordi
         if c.execute("SELECT 1 FROM hb_path_claim WHERE authority=%s AND state<>'released' AND target IS NULL LIMIT 1",
                      (relay['authority'],)).fetchone():
             raise Conflict('Legacy unregistered ownership remains held for explicit reviewed cleanup')
+    if not cleanup:
+        selected_work = work_id or (payload.get("command") or {}).get("workId")
+        if not selected_work and source.get("requestId"):
+            event = c.execute("SELECT data FROM hb_event WHERE id=%s AND authority=%s",
+                              (source["requestId"], relay["authority"])).fetchone()
+            selected_work = event["data"].get("workId") if event else None
+        if selected_work:
+            from .work_resources import check_target
+            check_target(c, relay["authority"], selected_work, target)
     expected = set(paths_for(c, payload))
     paths = target['paths']
     if len(paths) != len(expected) or {p['relativePath'] for p in paths} != expected:

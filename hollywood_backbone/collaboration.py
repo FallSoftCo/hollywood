@@ -40,13 +40,18 @@ def configure(c, actor, host, payload):
     old = c.execute("SELECT * FROM hb_collaboration_bridge WHERE host=%s FOR UPDATE", (host,)).fetchone()
     if (old["revision"] if old else 0) != payload["revision"]:
         raise Conflict("Bridge enrollment revision changed")
+    features = payload.get("features", [])
+    if old and "canonical-work-resource-routing/v1" in old["features"] and "canonical-work-resource-routing/v1" not in features:
+        if c.execute("""SELECT 1 FROM hb_work_resource r JOIN hb_work w ON w.id=r.work
+            WHERE r.execution_host=%s AND r.state='selected' AND w.state IN ('planned','assigned','blocked','submitted','rejected','cancel_requested') LIMIT 1""", (host,)).fetchone():
+            raise Conflict("Settle selected Work routing before bridge capability downgrade")
     row = c.execute("""INSERT INTO hb_collaboration_bridge
-        (authority,host,controller,state,adapter_sha256,enrollment_sha256,protocol)
-        VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(host) DO UPDATE SET
+        (authority,host,controller,state,adapter_sha256,enrollment_sha256,protocol,features)
+        VALUES(%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(host) DO UPDATE SET
         controller=EXCLUDED.controller,state=EXCLUDED.state,adapter_sha256=EXCLUDED.adapter_sha256,
-        enrollment_sha256=EXCLUDED.enrollment_sha256,protocol=EXCLUDED.protocol,revision=hb_collaboration_bridge.revision+1
+        enrollment_sha256=EXCLUDED.enrollment_sha256,protocol=EXCLUDED.protocol,features=EXCLUDED.features,revision=hb_collaboration_bridge.revision+1
         RETURNING *""", (actor["authority"], host, payload["controllerId"], payload["state"],
-                          payload["adapterSha256"], payload["enrollmentSha256"], payload["protocol"])).fetchone()
+                          payload["adapterSha256"], payload["enrollmentSha256"], payload["protocol"], Jsonb(features))).fetchone()
     return json_value({"schema": CAPABILITY, "bridge": row,
                        "meaning": "Administrator attests protected bridge installation; not native proof"})
 
@@ -76,6 +81,7 @@ def read_bridge(store, actor_id, host):
             "physicalTargets": enabled, "targetSchema": "hollywood-physical-target/v1",
             "deliveryEdits": enabled, "deliveryEditSchema": "canonical-delivery-edits/v1",
             "workDeliveryEdits": enabled, "workDeliveryEditPolicy": "canonical-work-delivery-edits/v1",
+            "workResourceRouting": enabled and "canonical-work-resource-routing/v1" in (row["features"] if row else []),
             "agentResourceGrants": True,
             "resourceRouting": "canonical-agent-resources/v1", "resourceDefaults": True, "resourceMetadata": True, "readOnlyResourceDefaults": True, "agentOriginGoals": True, "deliveryEditReconciliation": True, "scopedGoalOrigins": True,
             "artifactResourceEvidence": True, "artifactRootPolicy": "hollywood-artifact-root/v1",

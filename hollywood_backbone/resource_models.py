@@ -25,3 +25,7 @@ class ResourceDefault(Input):
         if self.state == 'cleared' and any(value is not None for value in values):
             raise ValueError('Cleared routing has no implicit replacement')
         return self
+
+
+class WorkResource(ResourceDefault):
+    workRevision: int = Field(ge=1, strict=True)

@@ -80,6 +80,18 @@ class Store:
         from .resource_directory import delivery_default
         return delivery_default(self, actor_id, delivery)
 
+    def work_resource_read(self, actor_id, work):
+        from .work_resources import read
+        return read(self, actor_id, work)
+
+    def work_resource(self, actor_id, work, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "work_resource", [work, payload], command)
+
+    def _admin_work_resource(self, c, actor, work, payload):
+        from .work_resources import select
+        return select(c, actor, work, payload)
+
     def physical_agent_grant(self, actor_id, workspace, principal, payload, *, command=None):
         from .administrative import mutate
         return mutate(self, actor_id, "physical_agent_grant", [workspace, principal, payload], command)
@@ -434,6 +446,8 @@ class Store:
             c.execute(Path(__file__).with_name("schema.sql").read_text())
             from .context_system import SCHEMA
             c.execute(SCHEMA)
+            from .work_resources import SCHEMA as WORK_RESOURCE_SCHEMA
+            c.execute(WORK_RESOURCE_SCHEMA)
 
     def bootstrap(self, authority, name, plan):
         """Local installer operation; never exposed through an anonymous HTTP route."""

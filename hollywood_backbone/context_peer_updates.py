@@ -53,7 +53,7 @@ def response_material(c,store,actor,binding,p):
     source=item(c,store,actor,v["inputId"],"input")
     if source["state"]!="handled" or source["value"].get("appliedToWorkId")!=str(work["id"]):
         raise Denied("Reader-interpreted input on this original work required")
-    if not any(u["inputId"]==str(source["id"]) for u in work["value"].get("updates",[])):
+    if not any(u.get("inputId")==str(source["id"]) for u in work["value"].get("updates",[])):
         raise Denied("Original work has no such interpreted contribution")
     need=need_for(c,store,actor,source["source"])
     linked=need["value"].get("materialWorkId") or need["value"].get("workId")
@@ -86,6 +86,6 @@ def validate_answer_provenance(c,store,actor,need):
             or source["value"].get("appliedToWorkId")!=str(work["id"])
             or source["state"]!="handled"):
         raise Conflict("Original interpreted answer provenance or parent cancellation changed")
-    if not any(u["inputId"]==str(source["id"]) for u in work["value"].get("updates",[])):
+    if not any(u.get("inputId")==str(source["id"]) for u in work["value"].get("updates",[])):
         raise Denied("Response material is not linked to this original work")
     return work

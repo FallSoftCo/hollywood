@@ -941,3 +941,5 @@ INSERT INTO hb_schema VALUES (33) ON CONFLICT DO NOTHING;
 ALTER TABLE hb_executor DROP CONSTRAINT IF EXISTS hb_executor_delivery_generation_key;
 CREATE UNIQUE INDEX IF NOT EXISTS hb_executor_one_active_attempt
  ON hb_executor(delivery,generation) WHERE state<>'stopped';
+
+ALTER TABLE hb_collaboration_bridge ADD COLUMN IF NOT EXISTS features jsonb NOT NULL DEFAULT '[]';

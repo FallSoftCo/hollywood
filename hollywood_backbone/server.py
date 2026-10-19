@@ -19,7 +19,7 @@ from .edit_plan_scope import EditError
 from .physical_models import WorkspaceConfiguration, WorkspaceGrant
 from .delivery_edit_models import AgentWorkspaceGrant, DeliveryEditCall, DeliveryReconcile
 from .placement_models import PlacementState
-from .resource_models import ResourceDefault
+from .resource_models import ResourceDefault, WorkResource
 from .report_scope_models import ReportScopeRead, ReportScopeProof
 from .report_scope import ScopeError
 from .artifact_roots import ArtifactRoot
@@ -529,7 +529,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("context_configure", "delivery_recover", "delivery_edit_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state"):
+    if method in ("context_configure", "delivery_recover", "delivery_edit_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "work_resource", "placement_state"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -615,6 +615,16 @@ async def delivery_resource_default_read(request):
     if request.query:
         raise ValueError("Unknown delivery-resource-default query")
     return await invoke(request, "delivery_resource_default_read", str(UUID(request.match_info["delivery"])))
+
+
+async def work_resource(request):
+    work = str(UUID(request.match_info["work"]))
+    if request.method == "GET":
+        if request.query:
+            raise ValueError("Unknown Work resource query")
+        return await invoke(request, "work_resource_read", work)
+    p = await body(request, WorkResource)
+    return await invoke(request, "work_resource", work, p.model_dump(mode="json"))
 
 
 async def physical_workspace(request):
@@ -1520,6 +1530,8 @@ def application(store):
             web.get("/hollywood/v3/agents/{agent}/context", agent_context),
             web.put("/hollywood/v3/agents/{agent}/communication", communication_set),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/agent-binding", agent_execution_binding),
+            web.get("/hollywood/v3/work/{work}/resource", work_resource),
+            web.put("/hollywood/v3/work/{work}/resource", work_resource),
             web.get("/hollywood/v3/connector/deliveries/{delivery}/context", context),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/activity", activity),
             web.post(

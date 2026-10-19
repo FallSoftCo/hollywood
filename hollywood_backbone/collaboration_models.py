@@ -17,6 +17,7 @@ class BridgeConfiguration(Input):
     controllerId: UUID
     state: Literal["active", "revoked"]
     protocol: Literal["canonical-physical-claims/v1", "canonical-edit-plans/v1", "canonical-edit-plans/v2"]
+    features: list[Literal["canonical-work-resource-routing/v1"]] = Field(default_factory=list, max_length=1)
     adapterSha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     enrollmentSha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
