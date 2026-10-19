@@ -20,9 +20,18 @@ def capture(c, store, actor, purpose, binding, p, material_ids):
             raise Denied("Original work unavailable")
         d = c.execute("SELECT * FROM hb_delivery WHERE event=%s AND agent=%s FOR UPDATE",
                       (work["source"], actor["id"])).fetchone()
-        if (not d or d["state"] != "running" or d["cancellation_requested"]
+        if (not d or d["state"] not in ("claimed", "running") or d["cancellation_requested"]
                 or d["generation"] < 1 or not d["claim_id"] or d["host"] != system["host"]):
             raise Conflict("Original delivery no longer owns this execution")
+        if not c.execute("""SELECT 1 FROM hb_claim WHERE agent=%s AND delivery=%s
+                AND operation=%s AND host=%s""",
+                (actor["id"], d["id"], d["claim_id"], d["host"])).fetchone():
+            raise Conflict("Original native admission receipt required")
+        # This binds turn attribution only. It does not attest executor liveness
+        # or grant business mutation authority.
+        c.execute("""UPDATE hb_delivery SET state='running',native_thread=%s,native_turn=%s,
+            revision=revision+1,updated_at=clock_timestamp() WHERE id=%s""",
+            (p["nativeThread"], p["nativeTurn"], d["id"]))
         request = store.readable_event(c, actor, d["event"])
         store.room(c, actor, request["room"], "can_post")
         value = json_value({

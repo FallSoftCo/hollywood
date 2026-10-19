@@ -22,6 +22,10 @@ try:
   before=c.execute('SELECT count(*) AS n FROM hb_event').fetchone()['n']
   original=c.execute('SELECT * FROM hb_context_material WHERE id=%s AND agent=%s',(args.work_id,a['id'])).fetchone()
   assert original
+  delivery=c.execute("SELECT * FROM hb_delivery WHERE event=%s AND agent=%s",
+                     (original['source'],a['id'])).fetchone()
+  c.execute("INSERT INTO hb_claim VALUES(%s,%s,%s,%s) ON CONFLICT DO NOTHING",
+            (a['id'],delivery['claim_id'],delivery['host'],delivery['id']))
   c.execute("UPDATE hb_context_material SET state='pending' WHERE id=%s",(args.work_id,))
   c.execute("UPDATE hb_delivery SET state='running',cancellation_requested=false WHERE event=%s AND agent=%s",(original['source'],a['id']))
   turns=['rollback-scope-'+str(uuid4()),'rollback-scope-'+str(uuid4())]

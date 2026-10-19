@@ -104,7 +104,7 @@ def call(store, actor_id, token_digest, agent, purpose, p):
           (agent,purpose,token_digest)).fetchone()
         if not system or not binding:
             raise Denied("Purpose credential or installed placement unavailable")
-        if p["action"]=="pending":
+        if p["action"] in ("pending", "ready"):
             if p["nativeThread"]!=binding["native_thread"]:
                 raise Conflict("Native context binding changed")
             return json_value(perform(store,c,actor,purpose,binding,p))
@@ -126,6 +126,8 @@ def call(store, actor_id, token_digest, agent, purpose, p):
             raise Conflict("Native context binding changed")
         else:
             result=perform(store,c,actor,purpose,binding,p)
+        if p["action"] == "admit" and result.get("delivery") is None:
+            return json_value(result)  # No execution accepted; safe confirmed deferral.
         result=json_value(result)
         c.execute("INSERT INTO hb_context_operation VALUES(%s,%s,%s,%s,%s)",
                   (agent,purpose,op,fingerprint,Jsonb(result)))
@@ -193,6 +195,11 @@ def lifecycle(c, store, actor, purpose, binding, p):
 
 def perform(store,c,actor,purpose,binding,p):
     action,v=p["action"],p["value"]
+    if action in ("admit", "ready"):
+        if purpose != "writer":
+            raise Denied("Only the writer may claim accepted work")
+        from .context_admission import admit, ready
+        return (admit if action == "admit" else ready)(store, c, actor, binding, p)
     if action in ("begin", "close", "end"):
         return lifecycle(c, store, actor, purpose, binding, p)
     if action == "activity":
@@ -257,6 +264,10 @@ def perform(store,c,actor,purpose,binding,p):
             raise Conflict("Input already interpreted")
         if source["value"].get("peerCompletion"):
             raise Conflict("Record the peer result on its original work; no new task or acknowledgement is required")
+        delivery=c.execute("SELECT state,cancellation_requested FROM hb_delivery WHERE event=%s AND agent=%s",
+                           (source["source"],actor["id"])).fetchone()
+        if not delivery or delivery["cancellation_requested"] or delivery["state"] != "pending":
+            raise Conflict("Original input no longer admits interpretation")
         need=need_for(c,store,actor,source["source"])
         if action=="accept":
             work_id=str(uuid5(UUID(str(source["id"])),"work"))
@@ -265,10 +276,6 @@ def perform(store,c,actor,purpose,binding,p):
             c.execute("INSERT INTO hb_context_material(id,agent,kind,source,state,value) VALUES(%s,%s,'work',%s,'pending',%s)",
                       (work_id,actor["id"],source["source"],Jsonb(value)))
             change(c,need,"waiting",{**need["value"],"workId":work_id,"prerequisites":["result:"+work_id]})
-            c.execute("""UPDATE hb_delivery SET state='running',host=(SELECT host FROM hb_context_system WHERE agent=%s),
-              claim_id=%s,generation=1,revision=revision+1,updated_at=clock_timestamp()
-              WHERE event=%s AND agent=%s AND state='pending'""",
-              (actor["id"],"context-work:"+work_id,source["source"],actor["id"]))
             result={"workId":work_id,"communicationId":str(need["id"]),"workState":"pending"}
         else:
             change(c,need,"ready",{**need["value"],"material":v["body"],"prerequisites":[]})

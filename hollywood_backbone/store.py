@@ -1063,71 +1063,13 @@ class Store:
             raise Conflict("Native role lifecycle connector capability required")
 
     def claim(self, actor_id, operation, host, capabilities=()):
-        from . import admission
+        from .claims import claim
 
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             if c.execute("SELECT 1 FROM hb_context_system WHERE agent=%s AND enabled", (a["id"],)).fetchone():
                 raise Conflict("Purpose-context agent uses its native context runtime")
-
-            if a["kind"] != "agent":
-                raise Denied("Only an execution connector may claim work")
-            c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (str(a["id"]),))
-            placement = c.execute(
-                "SELECT * FROM hb_placement WHERE agent=%s AND host=%s AND enabled FOR SHARE",
-                (a["id"], host),
-            ).fetchone()
-            if not placement:
-                raise Denied("Connector host not enrolled for this agent")
-            self.native_role_capability(c, a, capabilities)
-            if not admission.CAPABILITIES <= set(capabilities):
-                raise Conflict("Connector upgrade required for host admission")
-            previous = c.execute(
-                "SELECT * FROM hb_claim WHERE agent=%s AND operation=%s", (a["id"], operation)
-            ).fetchone()
-            if previous:
-                if str(previous["host"]) != host:
-                    raise Conflict("Claim host changed")
-                if previous["delivery"]:
-                    row = c.execute(
-                        "SELECT e.room FROM hb_delivery d JOIN hb_event e ON e.id=d.event WHERE d.id=%s",
-                        (previous["delivery"],),
-                    ).fetchone()
-                    self.room(c, a, row["room"])
-                return self.claim_receipt(c, previous["delivery"])
-            admission.presence(self, c, a, host, capabilities)
-            admission.lock(c, host)
-            observed = admission.diagnose(self, c, a, host, capabilities, record=False)
-            from .work import claim_candidate
-
-            row = (
-                claim_candidate(self, c, a, observed["eligibleDeliveryId"])
-                if observed["eligibleDeliveryId"]
-                else None
-            )
-            identity = row["id"] if row else None
-            # Lock the selected delivery before its trace, matching cancellation
-            # triggers. Observations never lock a delivery after updating a trace.
-            admission.record_observation(c, host, observed)
-            if row:
-                from .cooperation import verify_admission
-                from .memory import verify_admission as verify_briefing
-
-                event = self.readable_event(c, a, row["event"])
-                verify_briefing(c, event, capabilities)
-                verify_admission(self, c, a, event, capabilities)
-                self.room(c, a, event["room"])
-                admission.reserve(c, host, identity, observed["queueClass"])
-                c.execute(
-                    "UPDATE hb_delivery SET state='claimed',host=%s,claim_id=%s,generation=generation+1,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
-                    (host, operation, identity),
-                )
-            c.execute(
-                "INSERT INTO hb_claim VALUES(%s,%s,%s,%s)", (a["id"], operation, host, identity)
-            )
-            receipt = self.claim_receipt(c, identity)
-            receipt["admission"] = json_value(observed)
-            return receipt
+            return claim(self, c, a, operation, host, capabilities)
 
     def connector_pending(self, actor_id, host):
         """Read-only queue projection. Polling it creates no claim or model work."""

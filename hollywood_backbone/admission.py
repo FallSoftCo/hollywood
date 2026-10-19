@@ -200,6 +200,9 @@ def diagnose(store, c, actor, host, capabilities, record=False):
     own = c.execute(
         """SELECT d.id,e.created_at FROM hb_delivery d JOIN hb_event e ON e.id=d.event
            WHERE d.agent=%s AND d.state='pending'
+             AND (NOT EXISTS(SELECT 1 FROM hb_context_system s WHERE s.agent=d.agent AND s.enabled)
+               OR EXISTS(SELECT 1 FROM hb_context_material m WHERE m.agent=d.agent
+                 AND m.source=d.event AND m.kind='work' AND m.state IN ('pending','running')))
              AND (%s OR EXISTS(SELECT 1 FROM hb_membership m
                WHERE m.room=e.room AND m.principal=%s AND m.can_read))
            ORDER BY e.seq LIMIT 1""",
@@ -292,6 +295,9 @@ def diagnose(store, c, actor, host, capabilities, record=False):
                 LEFT JOIN hb_host_control_agent h ON h.host=l.host AND h.agent=d.agent
                 LEFT JOIN hb_work w ON w.delivery=d.id LEFT JOIN hb_goal g ON g.id=w.goal
                 WHERE d.state='pending' AND (g.id IS NULL OR g.state='active')
+                  AND (NOT EXISTS(SELECT 1 FROM hb_context_system s WHERE s.agent=d.agent AND s.enabled)
+                    OR EXISTS(SELECT 1 FROM hb_context_material m WHERE m.agent=d.agent
+                      AND m.source=d.event AND m.kind='work' AND m.state IN ('pending','running')))
                   AND o.observed_at>clock_timestamp()-(%s * interval '1 second')
                   AND o.capabilities @> %s
                   AND (p.administrator OR EXISTS(SELECT 1 FROM hb_membership m
