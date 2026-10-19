@@ -51,7 +51,7 @@ async def run(c):
       json=body if method=="POST" else None,headers={"Authorization":"Bearer "+cfg["tokens"]["reader"]}) as r:
      return r.status,await r.json()
    status,pending=await call("pending");assert status==200,(status,pending)
-   observed=c.execute("SELECT * FROM hb_context_material WHERE agent=%s AND value->>'roomObservation'='true'",(a,)).fetchall()
+   observed=c.execute("SELECT * FROM hb_context_material WHERE agent=%s AND state='pending' AND value->>'roomObservation'='true'",(a,)).fetchall()
    assert len(observed)==1 and str(observed[0]["source"])==event
    source=observed[0];identity=str(source["id"])
    assert c.execute("SELECT count(*) AS n FROM hb_delivery").fetchone()["n"]==before
@@ -105,6 +105,16 @@ async def run(c):
    status,value=await call("announce",{"sourceId":identity,"body":"Unpermitted acknowledgement","reason":"Fixture negative"},turn)
    assert status==403,(status,value)
    proof["readOnlyObservationCannotQueueOutwardCommunication"]=True
+   with c.transaction(force_rollback=True):
+    c.execute("UPDATE hb_principal SET administrator=true WHERE id=%s",(a,))
+    private_observation=str(uuid4())
+    c.execute("INSERT INTO hb_context_material(id,agent,kind,source,state,value) VALUES(%s,%s,'input',%s,'pending',%s)",
+      (private_observation,a,private,Jsonb({"roomObservation":True,"responseRequired":False})))
+    await read(private_observation)
+    status,value=await call("announce",{"sourceId":private_observation,"body":"Uninvited private reply","reason":"Fixture negative"},turn)
+    assert status==403,(status,value)
+    assert not c.execute("SELECT 1 FROM hb_context_material WHERE source=%s AND kind='need'",(private,)).fetchone()
+    proof["administrativeReadDoesNotEnrollInPrivateExchange"]=True
    status,value=await call("observe",{"observationId":identity,"workId":work,"workRevision":1,
     "body":"The announced feature affects this already accepted documentation responsibility; retain the original objective and verify source before use."},turn)
    assert status==200 and value["responseRequired"] is False and value["writerSteered"] is False,(status,value)
@@ -131,7 +141,7 @@ async def run(c):
  c.rollback()
  assert not c.execute("SELECT 1 FROM hb_event WHERE id=%s",(event,)).fetchone()
  proof["allFixtureWritesRolledBack"]=True
- path=Path("/aosp/development/lax-three-context-20261018-r01/qualification/room-observations-http-r31.json")
+ path=Path("/aosp/development/lax-three-context-20261018-r01/qualification/room-observations-http-r32.json")
  path.write_text(json.dumps(proof,indent=2)+"\n");print(json.dumps(proof))
 try:
  with store.pool.connection() as connection:asyncio.run(run(connection))

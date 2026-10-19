@@ -383,6 +383,8 @@ def perform(store,c,actor,purpose,binding,p):
             require_current_read(binding,source,p["nativeTurn"])
             event=store.readable_event(c,actor,source["source"])
             store.room(c,actor,event["room"],"can_post")
+            if event["audience"]=="direct" and actor["id"] not in (event["author"],event["recipient"]):
+                raise Denied("Administrative reading does not enroll you in a private exchange")
         identity=str(uuid5(UUID(str(source["id"])),p["operationId"]))
         value={"required":False,"material":v["body"],"reason":v["reason"],"prerequisites":[]}
         c.execute("INSERT INTO hb_context_material(id,agent,kind,source,state,value) VALUES(%s,%s,'need',%s,'ready',%s)",
