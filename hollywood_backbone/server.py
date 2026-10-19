@@ -713,7 +713,14 @@ async def edit_invoke(request, method, *args):
 async def edit_call_body(request, method, model):
     try:
         p = await body(request, model)
-    except (ValidationError, ValueError, TypeError):
+    except ValidationError as error:
+        from .edit_validation import details
+        return web.json_response({
+            "error": "invalid_edit_request", "mayApply": False,
+            "requestRejectedBeforeDispatch": True,
+            "validationErrors": details(error, model),
+        }, status=400)
+    except (ValueError, TypeError):
         return web.json_response({"error": "invalid_edit_request", "mayApply": False}, status=400)
     return await edit_invoke(request, method, p.model_dump(mode="json", by_alias=True))
 
