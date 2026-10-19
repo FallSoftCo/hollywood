@@ -728,6 +728,10 @@ class Store:
         )
 
     def catalog(self, actor_id):
+        # One batch for the bounded room page, counts and previews. Visibility and
+        # eligibility precede latest selection: private newer events cannot mask
+        # older visible ones. Never use activity.project here (receipt queries and
+        # arbitrary execution details are deliberately outside this contract).
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             rows = c.execute(
@@ -757,6 +761,42 @@ class Store:
                        AND h.generation=d.generation AND h.claim_id=d.claim_id
                        AND (%s OR h.human=%s)
                        GROUP BY h.room
+                   ), visible_feed AS (
+                       SELECT e.*,p.kind AS author_kind,
+                         floor(extract(epoch FROM e.created_at)*1000)::bigint AS occurred_at
+                       FROM hb_event e JOIN readable_rooms r ON r.id=e.room
+                       JOIN hb_principal p ON p.id=e.author AND p.authority=e.authority
+                       WHERE e.authority=%s
+                       AND (%s OR e.audience='room' OR e.author=%s OR e.recipient=%s)
+                   ), messages AS (
+                       SELECT DISTINCT ON (room) room,seq,
+                         jsonb_build_object(
+                           'eventId',id,'seq',seq,'occurredAt',occurred_at,
+                           'authorId',author,'authorKind',author_kind,
+                           'body',left(body,320),'truncated',char_length(body)>320
+                         ) AS preview,
+                         jsonb_build_object('eventId',id,'seq',seq,'occurredAt',occurred_at) AS recency
+                       FROM visible_feed
+                       WHERE kind IN ('message','request') AND author_kind IN ('human','agent')
+                       AND coalesce(data->>'type','') NOT IN
+                         ('executionActivity','peerCompletion','collaborationProtocol','reportScopeProtocol')
+                       ORDER BY room,seq DESC
+                   ), actions AS (
+                       SELECT DISTINCT ON (room) room,seq,
+                         jsonb_build_object(
+                           'eventId',id,'seq',seq,'occurredAt',occurred_at,'authorId',author,
+                           'nativeType',CASE WHEN jsonb_typeof(data->'nativeType')='string'
+                             THEN data->>'nativeType' END,
+                           'status',CASE WHEN jsonb_typeof(data->'status')='string'
+                             THEN data->>'status' END,
+                           'title',CASE WHEN jsonb_typeof(data->'title')='string'
+                             THEN left(data->>'title',320) END,
+                           'truncated',CASE WHEN jsonb_typeof(data->'title')='string'
+                             THEN char_length(data->>'title')>320 ELSE false END
+                         ) AS preview,
+                         jsonb_build_object('eventId',id,'seq',seq,'occurredAt',occurred_at) AS recency
+                       FROM visible_feed WHERE data->>'type'='executionActivity'
+                       ORDER BY room,seq DESC
                    )
                    SELECT r.*,jsonb_build_object(
                      'version',1,
@@ -767,13 +807,20 @@ class Store:
                      'cancelRequested',coalesce(c.cancelling,0),
                      'unknown',coalesce(c.unknown,0),
                      'waitingForHuman',coalesce(w.waiting,0)
-                   ) AS activity
+                   ) AS activity,jsonb_build_object(
+                     'version',1,'latestMessage',m.preview,'latestActivity',x.preview,
+                     'recency',CASE WHEN x.seq IS NULL OR m.seq>x.seq
+                       THEN m.recency ELSE x.recency END
+                   ) AS "feedSummary"
                    FROM readable_rooms r LEFT JOIN counts c ON c.room=r.id
-                   LEFT JOIN waiting w ON w.room=r.id ORDER BY r.name""",
+                   LEFT JOIN waiting w ON w.room=r.id
+                   LEFT JOIN messages m ON m.room=r.id
+                   LEFT JOIN actions x ON x.room=r.id ORDER BY r.name""",
                 (
                     a["authority"], a["administrator"], a["id"],
                     a["authority"], a["administrator"], a["id"], a["id"],
                     a["authority"], a["administrator"], a["id"],
+                    a["authority"], a["administrator"], a["id"], a["id"],
                 ),
             ).fetchall()
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}
