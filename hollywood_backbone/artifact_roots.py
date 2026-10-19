@@ -38,6 +38,18 @@ def validate(c, actor, delivery, evidence):
     from .agent_context import execution
 
     binding = execution(c, delivery["id"], delivery["generation"])
+    begin=c.execute("""SELECT result FROM hb_context_operation WHERE agent=%s
+        AND purpose='writer' AND operation=%s""",
+        (actor["id"],"context-begin:"+str(delivery["native_turn"]))).fetchone()
+    scopes=[s for s in begin["result"].get("executionScopes",[]) if
+        s["deliveryId"]==str(delivery["id"]) and s["generation"]==delivery["generation"]] if begin else []
+    if scopes:
+        if len(scopes)!=1:
+            raise Denied("One original artifact execution scope required")
+        scope=scopes[0]
+        from .purpose_effects import binding as purpose_binding
+        source={**scope,"executionScopeId":scope["id"],"requestId":scope["sourceRequestId"]}
+        binding=purpose_binding(c,actor,source)
     if not binding or binding["principal"] != actor["id"]:
         raise Denied("Captured persistent artifact reporter required")
     for entry in roots:

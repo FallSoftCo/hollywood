@@ -1118,6 +1118,8 @@ class Store:
         binding = read_binding(c, identity, d["generation"])
         from .agent_context import execution
         agent_binding = execution(c, identity, d["generation"])
+        from .purpose_effects import accepted_scope
+        purpose_scope = accepted_scope(c, d)
         from .admission import trace
 
         return {
@@ -1126,6 +1128,7 @@ class Store:
             "request": json_value(e),
             **({"nativeGoalBinding": json_value(binding)} if binding else {}),
             **({"agentContextBinding": json_value(agent_binding)} if agent_binding else {}),
+            **({"purposeExecutionScope": json_value(purpose_scope)} if purpose_scope else {}),
         }
 
     def transition(self, actor_id, identity, operation, payload):

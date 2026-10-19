@@ -30,6 +30,11 @@ def apply(c,store,actor,binding,p):
     if question:
         if incoming["data"].get("originalDeliveryId")!=str(d["id"]):
             raise Denied("Question answer belongs to different original work")
+    elif source["value"].get("peerContinuation"):
+        from .context_peer_updates import relation
+        causal=relation(c,actor["id"],source["source"])
+        if not causal or causal["parentWorkId"]!=str(work["id"]):
+            raise Denied("Peer follow-up has no current original delegation")
     elif (incoming["room"]!=original["room"] or incoming["audience"]!=original["audience"]
           or incoming["audience"]=="direct" and incoming["author"]!=original["author"]):
         raise Denied("Work correction requires the original communication scope")
@@ -45,6 +50,14 @@ def apply(c,store,actor,binding,p):
     change(c,work,"pending" if work["state"]=="waiting" else work["state"],
         {**work["value"],"updates":updates,
          "resumeRevision":work["value"].get("resumeRevision",0)+1})
+    if source["value"].get("unadmittedWorkId"):
+        child=item(c,store,actor,source["value"]["unadmittedWorkId"],"work")
+        if (child["source"]!=source["source"] or child["state"]!="pending"
+                or answer["state"]!="pending" or answer["generation"]!=0
+                or child["value"].get("execution") or child["value"].get("peerRequests")):
+            raise Conflict("Previously admitted work cannot be merged by interpretation")
+        change(c,child,"superseded",{**child["value"],"supersededByWorkId":str(work["id"]),
+            "reason":"Causally linked peer continuation; no execution was admitted"})
     change(c,source,"handled",{**source["value"],"appliedToWorkId":str(work["id"])})
     if question:
         completed=c.execute("""UPDATE hb_delivery SET state='completed',result_event=%s,

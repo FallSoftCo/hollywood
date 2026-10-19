@@ -39,3 +39,23 @@ An unchanged original operation returns its receipt without another continuation
 Initial context enrollment also ingests pending addressed requests using their
 existing event and delivery IDs. A request queued before the first agent process
 exists is retained and consumed without another send.
+
+
+## Purpose-native collaboration and causal peer follow-ups
+
+Protected collaboration admits v3 sources only after enrolled-host relay
+authentication, immutable accepted writer scope validation, current inference
+permit, independently fresh executor observation and explicit physical grants.
+Direct native mutations still require the writer credential. The derived
+purpose binding never fabricates a legacy context/execution row.
+
+An actual peer request back, sourced to the original outbound delegation,
+carries peerContinuation/parentWorkId. The reader applies it to that unfinished
+work across authorized rooms. A prior unadmitted misclassification can be
+retained as superseded only at pending delivery generation zero with no execution
+or child delegation. Required answers can become ready from verified writer
+material before parent completion; only the responder publishes.
+
+r22 PostgreSQL evidence is rollback-only with frozen native facts. The actual
+private two-agent model continuation remains a separate acceptance gate. Neither
+implies physical-phone, multihost, compaction or complete enterprise readiness.

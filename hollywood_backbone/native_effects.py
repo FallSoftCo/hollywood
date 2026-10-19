@@ -198,7 +198,7 @@ def enter(c, identity):
         request["entered"] = True
 
 
-def validate(c, actor, value):
+def validate(c, actor, value, *, protected_relay=None):
     if (value["agentId"], value["authorityId"]) != (
         str(actor["id"]), str(actor["authority"])
     ):
@@ -219,7 +219,7 @@ def validate(c, actor, value):
     ).fetchone()
     if value["schema"] == "hollywood-native-source/v3":
         from .purpose_effects import validate as validate_purpose
-        matches=validate_purpose(c,actor,value,_request.get())
+        matches=validate_purpose(c,actor,value,_request.get(),protected_relay=protected_relay)
     elif value["schema"] == "hollywood-native-source/v2":
         from .agent_context import execution
         binding = execution(c, d["id"], d["generation"])

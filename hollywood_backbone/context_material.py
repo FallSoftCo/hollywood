@@ -49,7 +49,7 @@ def index(c, store, actor, purpose, binding, turn, value):
       CASE WHEN id=ANY(%s::uuid[]) THEN 0 ELSE 1 END AS priority
       FROM hb_context_material WHERE agent=%s AND kind=ANY(%s)
       AND (%s='history' OR id=ANY(%s::uuid[])
-           OR (%s='reader' AND kind='work' AND state NOT IN ('complete','cancelled')))
+           OR (%s='reader' AND kind='work' AND state NOT IN ('complete','cancelled','superseded')))
       AND (%s<>'responder' OR state IN ('ready','published'))"""
     args = [active, actor["id"], kinds, view, active, purpose, purpose]
     if boundary:

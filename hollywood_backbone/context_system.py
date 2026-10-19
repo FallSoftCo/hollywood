@@ -85,7 +85,7 @@ def ingest(c, agent, event):
     source=c.execute("SELECT data FROM hb_event WHERE id=%s",(event,)).fetchone()
     question=source["data"].get("type")=="humanQuestionAnswer"
     materials = [("input", "pending", peer or ({"humanQuestionAnswer":True} if question else {}))]
-    if peer is None and not question:
+    if (peer is None or peer.get("responseRequired")) and not question:
         materials.append(("need", "interpreting", {"inputId": identity, "required": True, "prerequisites": []}))
     for kind, state, value in materials:
         key = identity if kind == "input" else str(uuid5(UUID(identity), "response"))
@@ -244,14 +244,17 @@ def perform(store,c,actor,purpose,binding,p):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
       "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","amend","directory"},
-      "writer":{"pending","snapshot","read","progress","complete","announce","peer_request","wait_peers","directory"},
+      "writer":{"pending","snapshot","read","progress","complete","announce","peer_request","wait_peers","directory","response_material"},
       "responder":{"pending","snapshot","read","publish","suppress"},
     }
     if action not in permitted[purpose]:
         raise Denied("Tool does not belong to this context purpose")
-    target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers") else v.get("inputId") if action in ("accept","answer","peer_result","amend") else v.get("communicationId")
+    target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers","response_material") else v.get("inputId") if action in ("accept","answer","peer_result","amend") else v.get("communicationId")
     if target and target not in {str(x) for x in binding["active_material"]}:
         raise Denied("Material does not belong to this captured native turn")
+    if action=="response_material":
+        from .context_peer_updates import response_material
+        return response_material(c,store,actor,binding,p)
     if action=="amend":
         if purpose!="reader":
             raise Denied("Only the reader interprets work updates")
@@ -267,6 +270,9 @@ def perform(store,c,actor,purpose,binding,p):
     if action=="pending":
         c.execute("UPDATE hb_purpose_context SET observed_at=clock_timestamp() WHERE agent=%s AND purpose=%s",
                   (actor["id"],purpose))
+        if purpose=="reader":
+            from .context_peer_updates import refresh
+            refresh(c,store,actor)
         if purpose=="writer":
             cancelled=c.execute("""SELECT m.* FROM hb_context_material m JOIN hb_delivery d
               ON d.event=m.source AND d.agent=m.agent
@@ -304,6 +310,8 @@ def perform(store,c,actor,purpose,binding,p):
             raise Conflict("Input already interpreted")
         if source["value"].get("peerCompletion"):
             raise Conflict("Record the peer result on its original work; no new task or acknowledgement is required")
+        if action=="accept" and source["value"].get("peerContinuation"):
+            raise Conflict("Apply the causally linked peer follow-up to parentWorkId; do not create a competing task")
         if source["value"].get("humanQuestionAnswer"):
             raise Conflict("Apply the human answer to its original work; do not create a new task or acknowledgement")
         delivery=c.execute("SELECT state,cancellation_requested FROM hb_delivery WHERE event=%s AND agent=%s",

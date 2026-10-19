@@ -172,7 +172,8 @@ class RuntimeObservation(Input):
     hollywoodVersion: str = Field(min_length=1,max_length=64)
     runtimeProtocol: Literal["lax-purpose-runtime/v3"]
     availableCapabilities: list[Literal["native-peer-provisioning/v1",
-        "purpose-human-continuations/v1","reader-work-updates/v1"]] = Field(min_length=1,max_length=3)
+        "purpose-human-continuations/v1","reader-work-updates/v1","purpose-native-collaboration/v1",
+        "causal-peer-updates/v1","native-plan-tool/v1"]] = Field(min_length=1,max_length=6)
     workId: UUID
     workRevision: int = Field(ge=1)
     priorNativeTurn: str = Field(min_length=1,max_length=128)

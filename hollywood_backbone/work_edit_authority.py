@@ -42,7 +42,10 @@ def current(store, c, actor, source, request, binding=None):
     need(not c.execute('''SELECT 1 FROM hb_work_dependency d JOIN hb_work p ON p.id=d.prerequisite
         WHERE d.work=%s AND p.state<>'accepted' LIMIT 1''', (work['id'],)).fetchone(),
         'work_changed', 'Current prerequisite acceptance required')
-    if binding is None:
+    if source["schema"] == "hollywood-native-source/v3":
+        from .purpose_effects import binding as purpose_binding
+        binding = purpose_binding(c, actor, source)
+    elif binding is None:
         from .agent_context import execution
         binding = execution(c, source['deliveryId'], source['generation'])
     need(binding and str(binding['principal']) == source['agentId']
@@ -53,6 +56,8 @@ def current(store, c, actor, source, request, binding=None):
         AND context_id=%s AND native_thread=%s AND workspace_id=%s AND host=%s''',
         (actor['id'], actor['authority'], source['contextId'], source['nativeThread'],
          binding['workspace_id'], source['hostId'])).fetchone()
+    if source["schema"] == "hollywood-native-source/v3":
+        context = binding["schema"] == "lax-purpose-execution-binding/v1"
     need(context, 'work_changed', 'Current private context must match original Work execution')
     placement = c.execute('SELECT revision FROM hb_placement WHERE agent=%s AND host=%s AND enabled',
                           (actor['id'], source['hostId'])).fetchone()

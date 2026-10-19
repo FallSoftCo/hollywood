@@ -85,7 +85,7 @@ def read_bridge(store, actor_id, host):
 
 def participation(store, c, relay, payload, tools=None, patch_actions=None):
     source = native_effects.source(json.dumps(payload["source"]))
-    if source["schema"] != "hollywood-native-source/v2" or source["tool"] not in (tools if tools is not None else TOOLS):
+    if source["schema"] not in {"hollywood-native-source/v2","hollywood-native-source/v3"} or source["tool"] not in (tools if tools is not None else TOOLS):
         raise Denied("Captured native collaboration callback required")
     if source["tool"] == "apply_patch" and payload["command"]["action"] not in (patch_actions if patch_actions is not None else {"inspect"}):
         raise Denied("Patch preflight cannot silently create ownership or an edit plan")
@@ -93,7 +93,7 @@ def participation(store, c, relay, payload, tools=None, patch_actions=None):
     actor = store.actor(c, source["agentId"])
     if actor["authority"] != relay["authority"] or actor["kind"] != "agent":
         raise Denied("Native actor unavailable")
-    native_effects.validate(c, actor, source)
+    native_effects.validate(c, actor, source, protected_relay=relay)
     resource = c.execute("""SELECT x.* FROM hb_executor x JOIN hb_host_admission h ON h.host=x.host
         WHERE x.id=%s AND x.delivery=%s AND x.generation=%s
         AND x.observed_at > clock_timestamp()-make_interval(secs=>h.sample_max_age)""",
@@ -110,6 +110,9 @@ def participation(store, c, relay, payload, tools=None, patch_actions=None):
         ON a.principal=x.principal AND a.context_id=x.context_id AND a.native_thread=x.native_thread
         AND a.workspace_id=x.workspace_id WHERE x.delivery=%s AND x.generation=%s AND a.host=%s""",
         (source["deliveryId"], source["generation"], source["hostId"])).fetchone()
+    if source["schema"] == "hollywood-native-source/v3":
+        from .purpose_effects import binding as purpose_binding
+        binding = purpose_binding(c, actor, source)
     if not binding or binding["principal"] != actor["id"]:
         raise Conflict("Captured host/workspace/context changed")
     event = store.readable_event(c, actor, source["requestId"])

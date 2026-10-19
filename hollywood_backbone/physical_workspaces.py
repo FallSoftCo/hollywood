@@ -50,6 +50,11 @@ def grant(c, actor, workspace, work_id, payload):
     if root['revision'] != payload['workspaceRevision'] or work['revision'] != payload['workRevision']:
         raise Conflict('Workspace/work revision changed')
     context = c.execute('SELECT * FROM hb_agent_context WHERE principal=%s', (work['owner'],)).fetchone()
+    purpose = c.execute("""SELECT b.context_id,s.host FROM hb_purpose_context b
+        JOIN hb_context_system s ON s.agent=b.agent WHERE b.agent=%s AND b.purpose='writer' AND s.enabled""",
+        (work['owner'],)).fetchone()
+    if purpose:
+        context = purpose
     if not context:
         raise Denied('Captured persistent owner context required')
     old = c.execute('SELECT * FROM hb_physical_grant WHERE workspace=%s AND work=%s FOR UPDATE', (workspace, work_id)).fetchone()

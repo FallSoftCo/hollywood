@@ -130,7 +130,8 @@ def publish(c, store, actor, need, provenance, supplied_body):
 def incoming(c, agent, event):
     row = c.execute("SELECT data FROM hb_event WHERE id=%s", (event,)).fetchone()
     if row["data"].get("type") != "peerCompletion":
-        return None
+        from .context_peer_updates import relation
+        return relation(c,agent,event)
     need = c.execute("""SELECT id,value FROM hb_context_material WHERE agent=%s
       AND kind='need' AND value->>'requestEventId'=%s""",
                      (agent, row["data"]["replyToRequest"])).fetchone()
