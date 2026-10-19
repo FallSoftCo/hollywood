@@ -192,3 +192,17 @@ def end(c,actor,purpose,binding,p):
     c.execute("""UPDATE hb_context_permit SET state='released',native_turn=%s,terminal_status=%s
         WHERE id=%s""",(p["nativeTurn"],p["value"]["status"],identity))
     return {"disposition":"admitted","capacityReleased":True,"permitId":str(row["id"])}
+
+def release_unused(c, actor, purpose, binding, p):
+    if set(p["value"]) != {"permitId"} or binding["active_turn"] is not None:
+        raise Conflict("Only an unused inference reservation may be released")
+    row = c.execute("SELECT * FROM hb_context_permit WHERE id=%s AND agent=%s AND purpose=%s FOR UPDATE",
+                    (p["value"]["permitId"], actor["id"], purpose)).fetchone()
+    if (not row or row["context_id"] != binding["context_id"]
+            or row["native_thread"] != p["nativeThread"] or row["native_turn"] is not None
+            or row["state"] not in ("reserved", "released")):
+        raise Conflict("Reservation already belongs to a native turn")
+    c.execute("UPDATE hb_context_permit SET state='released',terminal_status='failed' WHERE id=%s",
+              (row["id"],))
+    return {"permitId": str(row["id"]), "state": "released", "nativeTurn": None,
+            "disposition": "unused_reservation", "workCompletionInferred": False}

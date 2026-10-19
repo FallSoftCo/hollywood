@@ -92,7 +92,7 @@ def index(c, store, actor, purpose, binding, turn, value):
     return result
 
 
-def read(c, store, actor, purpose, binding, turn, value):
+def read(c, store, actor, purpose, binding, turn, value, *, track=True):
     reference = value.get("reference")
     if not isinstance(reference, str) or not 1 <= len(reference) <= 42:
         raise ValueError("Invalid material reference")
@@ -145,7 +145,7 @@ def read(c, store, actor, purpose, binding, turn, value):
         raise ValueError("Material offset outside original content")
     stop = min(offset + CHUNK_CHARS, len(encoded))
     following = stop if stop < len(encoded) else None
-    if reference != "role" and row is not None and (purpose == "reader"
+    if track and reference != "role" and row is not None and (purpose == "reader"
                                 or purpose == "responder" and row["state"] == "ready"
                                 or purpose == "writer" and row["kind"] == "work"):
         reads = dict(binding["reads"])

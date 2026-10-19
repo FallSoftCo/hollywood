@@ -253,6 +253,8 @@ def lifecycle(c, store, actor, purpose, binding, p):
 
 def perform(store,c,actor,purpose,binding,p):
     action,v=p["action"],p["value"]
+    if action == "release_reservation":
+        return context_capacity.release_unused(c,actor,purpose,binding,p)
     if action == "reserve":
         return context_capacity.reserve(store,c,actor,purpose,binding,p)
     if action in ("admit", "ready"):
@@ -262,6 +264,15 @@ def perform(store,c,actor,purpose,binding,p):
         return (admit if action == "admit" else ready)(store, c, actor, binding, p)
     if action in ("begin", "close", "end"):
         return lifecycle(c, store, actor, purpose, binding, p)
+    if action in ("inbox", "inbox_adopt"):
+        if purpose != "reader":
+            raise Denied("Primary input delivery belongs to the reader")
+        from .context_inbox import snapshot, adopt
+        if action == "inbox":
+            return snapshot(c, store, actor, binding, p)
+        if not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]:
+            raise Conflict("Original reader turn no longer admits delivery")
+        return adopt(c, store, actor, binding, p)
     if action == "activity":
         # Recovery may append this immutable log after the original turn closes.
         # It neither admits callbacks nor changes execution/work settlement.
@@ -349,6 +360,8 @@ def perform(store,c,actor,purpose,binding,p):
         return retrieve(c,store,actor,purpose,binding,p["nativeTurn"],v)
     if action in ("accept","answer"):
         source=item(c,store,actor,v["inputId"],"input")
+        from .context_peers import require_current_read
+        require_current_read(binding,source,p["nativeTurn"])
         if source["state"]!="pending":
             raise Conflict("Input already interpreted")
         if source["value"].get("roomObservation"):
