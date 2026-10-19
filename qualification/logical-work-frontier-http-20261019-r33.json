@@ -1,0 +1,13 @@
+{
+  "schema": "lax-logical-work-frontier-http/v1",
+  "at": 1792402972.2570293,
+  "mode": "Real authenticated HTTP and PostgreSQL; synthetic request/material fixtures rolled back; no native launch/executor facts inserted",
+  "modelsStarted": 0,
+  "cachedOldBindingCannotSilentlyDowngradeCurrentScheduling": true,
+  "twoDistinctLogicalClaimsUseNoInferenceCapacityOrNativeStarts": true,
+  "consumedResponsibilityDoesNotBlockOtherPendingWork": true,
+  "explicitNewContinuationMakesSameWorkRunnable": true,
+  "neverAdmittedCancellationLeavesOtherLogicalClaimUntouched": true,
+  "unknownOriginalExecutionStillFencesNewOwnership": true,
+  "allFixturesRolledBack": true
+}

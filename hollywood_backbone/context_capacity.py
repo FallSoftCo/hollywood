@@ -60,6 +60,10 @@ def reserve(store,c,actor,purpose,binding,p):
                     (identity,actor["id"])).fetchone()
         if not m or m["kind"]!=kind or m["state"] not in states:
             raise Conflict("Original material no longer runnable")
+        if purpose=="writer" and binding["work_scheduling"]==2:
+            from .context_work_frontier import runnable
+            if not runnable(m):
+                raise Conflict("No new continuation for this original work")
         e=store.readable_event(c,actor,m["source"])
         observation=purpose=="reader" and m["kind"]=="input" and m["value"].get("roomObservation") is True
         store.room(c,actor,e["room"],"can_read" if observation else "can_post")

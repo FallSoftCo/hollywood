@@ -33,7 +33,10 @@ def claim(store, c, a, operation, host, capabilities, *, expected_delivery=None)
         return store.claim_receipt(c, previous["delivery"])
     admission.presence(store, c, a, host, capabilities)
     admission.lock(c, host)
-    observed = admission.diagnose(store, c, a, host, capabilities, record=False)
+    from . import purpose_claims
+    purpose=expected_delivery is not None and purpose_claims.enabled(c,a,host)
+    observed = (purpose_claims.diagnose(store,c,a,host,expected_delivery) if purpose else
+                admission.diagnose(store,c,a,host,capabilities,record=False))
     if (expected_delivery is not None and observed["eligibleDeliveryId"] is not None
             and str(observed["eligibleDeliveryId"]) != expected_delivery):
         observed = {**observed, "eligibleDeliveryId": None, "reason": "another_work_ahead"}

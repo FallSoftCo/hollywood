@@ -1,0 +1,17 @@
+# Purpose work ownership and continuation scheduling
+
+A purpose agent can retain multiple durable responsibilities while its writer has one admitted native inference. A work claim is not a model slot or a second resident process. Purpose scheduling v2 is negotiated through the existing context binding; legacy callers keep their original admission path. Cached old binding receipts cannot downgrade a currently negotiated writer.
+
+The same claim transaction still checks exact delivery identity, placement, canonical role/cooperation and work lifecycle. Purpose logical claims may coexist; new native starts still require the shared host capacity reservation, one active writer permit, captured immutable execution scope and an independently observed actual executor. Unknown or cancellation-requested prior execution remains fenced until its original disposition is established.
+
+Each work records the reader-update revision consumed by its native episode. Unchanged unfinished work does not keep running merely because another task finished or a global wake hash changed. A new explicit contribution resumes that responsibility; a distinct pending responsibility may run in the same writer history. Old terminal snapshots normalize without manufacturing a new input or claiming work/effect completion.
+
+Cancellation selects the exact captured active material. Cancelling another queued or inactive responsibility does not interrupt the current writer. Inactive logical cancellation is acknowledged only when no native reservation/turn is unsettled and the material was never admitted or has a confirmed terminal native permit. Pending questions expire without a fabricated answer; uncertain dispatched controls remain unknown. Logical cancellation does not undo external effects or prove that arbitrary external jobs stopped.
+
+Context completion is a handoff. A canonical work reference retains the existing Hollywood work/goal identity; its original native report must exist before internal completion. Submission remains distinct from verifier acceptance. Unsettled original native edits and locally unconfirmed native tool effects fence completion.
+
+The actual HTTP/PG contract qualification separately records synthetic fixture metadata and rolled-back claims. It inserts no native launch/executor facts and proves no model behavior. The live two-responsibility model journey must establish preserved first work, actual second execution, scoped first-delivery cancellation during the second turn and the original second final result. Inspect that retained outcome before claiming semantic qualification.
+
+The v2 feature is a paired release. Do not downgrade to old admission semantics with unfinished multiple-work ownership. Drain or explicitly reconcile affected work, preserve current data/unknowns, and restore the recorded software closure together; never restore an old database or repost tasks. Native Goal dependencies, shared-edit/report reconciliation, late native event attribution and fresh enterprise bootstrap remain separate release gates.
+
+Actual r33 model journey preserved two responsibilities and targeted cancellation, but the second artifact was blocked by the bridge's one-executor pre-frame assumption. This is partial evidence, not a completed deliverable. See qualification/independent-work-native-20261019-r33.json. The original second responsibility remains open for source-corrected continuation.

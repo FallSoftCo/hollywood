@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS hb_purpose_context(
 ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS active_turn text;
 ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS active_material uuid[] NOT NULL DEFAULT '{}';
 ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS accepting boolean NOT NULL DEFAULT false;
+ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS work_scheduling smallint NOT NULL DEFAULT 1 CHECK(work_scheduling IN (1,2));
 CREATE TABLE IF NOT EXISTS hb_context_material(
  id uuid PRIMARY KEY, agent uuid NOT NULL REFERENCES hb_context_system(agent),
  kind text NOT NULL, source uuid NOT NULL REFERENCES hb_event(id),
@@ -139,18 +140,26 @@ def call(store, actor_id, token_digest, agent, purpose, p):
         old=c.execute("SELECT * FROM hb_context_operation WHERE agent=%s AND purpose=%s AND operation=%s",
                       (agent,purpose,op)).fetchone()
         if old:
+            if p["action"]=="bind" and binding["work_scheduling"]==2 and p["value"].get("workScheduling",1)!=2:
+                raise Conflict("Explicit drained work-scheduling downgrade required")
             if old["digest"]!=fingerprint:
                 raise Conflict("Original context operation changed")
             return old["result"]
         if p["action"]=="bind":
-            if p["value"] != {"runtimeProtocol":"lax-purpose-runtime/v3"}:
+            if p["value"] not in ({"runtimeProtocol":"lax-purpose-runtime/v3"},
+                    {"runtimeProtocol":"lax-purpose-runtime/v3","workScheduling":2}):
                 raise Conflict("Native work and inference admission runtime required")
+            scheduling=p["value"].get("workScheduling",1)
+            if binding["work_scheduling"]==2 and scheduling==1:
+                raise Conflict("Explicit drained work-scheduling downgrade required")
+            c.execute("UPDATE hb_purpose_context SET work_scheduling=%s WHERE agent=%s AND purpose=%s",
+                      (scheduling,actor["id"],purpose))
             if binding["native_thread"] and binding["native_thread"]!=p["nativeThread"]:
                 raise Conflict("Original context thread changed")
             c.execute("UPDATE hb_purpose_context SET native_thread=%s WHERE agent=%s AND purpose=%s",
                       (p["nativeThread"],agent,purpose))
             result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose,
-                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1}
+                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling}
         elif p["nativeThread"]!=binding["native_thread"]:
             raise Conflict("Native context binding changed")
         else:
@@ -187,7 +196,8 @@ def lifecycle(c, store, actor, purpose, binding, p):
                 raise Conflict("Original request cancelled before admission")
             if purpose == "writer":
                 change(c, row, "running", {**row["value"], "execution": {
-                    "nativeThread": p["nativeThread"], "nativeTurn": turn, "status": "inProgress"}})
+                    "nativeThread": p["nativeThread"], "nativeTurn": turn, "status": "inProgress",
+                    "resumeRevision":row["value"].get("resumeRevision",0)}})
         c.execute("UPDATE hb_purpose_context SET active_turn=%s,active_material=%s::uuid[],accepting=true WHERE agent=%s AND purpose=%s",
                   (turn, ids, actor["id"], purpose))
         from .context_execution import capture
@@ -212,7 +222,8 @@ def lifecycle(c, store, actor, purpose, binding, p):
         if row["kind"] == "work" and row["state"] not in ("complete", "cancelled"):
             change(c, row, "cancelled" if cancelled else "waiting" if row["state"]=="waiting" else "pending",
                    {**row["value"], "execution": {"nativeThread": p["nativeThread"],
-                    "nativeTurn": turn, "status": status}})
+                    "nativeTurn": turn, "status": status,
+                    "resumeRevision":row["value"].get("execution",{}).get("resumeRevision",row["value"].get("resumeRevision",0))}})
         if cancelled:
             c.execute("""UPDATE hb_context_material SET state='cancelled',revision=revision+1,
               updated_at=clock_timestamp() WHERE agent=%s AND source=%s
@@ -286,21 +297,11 @@ def perform(store,c,actor,purpose,binding,p):
             from .context_room_observations import refresh as observations
             observations(c,store,actor)
         if purpose=="writer":
-            cancelled=c.execute("""SELECT m.* FROM hb_context_material m JOIN hb_delivery d
-              ON d.event=m.source AND d.agent=m.agent
-              WHERE m.agent=%s AND m.kind='work' AND m.state='waiting' AND d.cancellation_requested
-              AND m.value->'execution'->>'status' IN ('completed','interrupted','failed')
-              AND NOT EXISTS(SELECT 1 FROM hb_purpose_context b WHERE b.agent=m.agent
-                  AND b.active_turn IS NOT NULL AND m.id=ANY(b.active_material)) FOR UPDATE OF m""",
-              (actor["id"],)).fetchall()
-            for work in cancelled:
-                c.execute("""UPDATE hb_context_material SET state='cancelled',revision=revision+1,
-                  updated_at=clock_timestamp() WHERE agent=%s AND source=%s
-                  AND state NOT IN ('handled','published','complete','cancelled')""",
-                  (actor["id"],work["source"]))
-                c.execute("""UPDATE hb_delivery SET state='cancelled',revision=revision+1,
-                  updated_at=clock_timestamp() WHERE agent=%s AND event=%s AND cancellation_requested""",
-                  (actor["id"],work["source"]))
+            from .context_cancellations import settle_idle
+            settle_idle(c,store,actor)
+            if binding["work_scheduling"]==2:
+                from .context_work_frontier import normalize
+                normalize(c,actor)
         kind={"reader":"input","writer":"work","responder":"need"}[purpose]
         rows=c.execute("""SELECT m.id,m.kind,m.state,m.revision,
           coalesce((m.value->>'resumeRevision')::bigint,0) AS resume_revision,
@@ -309,8 +310,13 @@ def perform(store,c,actor,purpose,binding,p):
           ON d.event=m.source AND d.agent=m.agent WHERE m.agent=%s AND m.kind=%s
           AND ((m.kind='input' AND m.state='pending')
             OR (m.kind='work' AND m.state IN ('pending','running'))
-            OR (m.kind='need' AND m.state='ready')) ORDER BY m.created_at,m.id LIMIT 100""",
-          (actor["id"],kind)).fetchall()
+            OR (m.kind='need' AND m.state='ready'))
+          AND (m.kind<>'work' OR %s=1 OR m.id=ANY(%s::uuid[])
+               OR COALESCE(d.cancellation_requested,false)
+               OR coalesce((m.value->>'resumeRevision')::bigint,0)>
+                  coalesce((m.value->'execution'->>'resumeRevision')::bigint,-1))
+          ORDER BY m.created_at,m.id LIMIT 100""",
+          (actor["id"],kind,binding["work_scheduling"],binding["active_material"])).fetchall()
         return {"pending":json_value(rows)}
     if action in ("snapshot", "read"):
         from .context_material import index, read
@@ -357,6 +363,19 @@ def perform(store,c,actor,purpose,binding,p):
                            (event["id"],actor["id"])).fetchone()
         if work["state"] in ("complete","cancelled") or delivery and delivery["cancellation_requested"]:
             raise Conflict("Work no longer admits execution contributions")
+        if action=="complete":
+            if delivery["state"] not in ("claimed","running"):
+                raise Conflict("Unsettled or closed original execution cannot complete work")
+            if c.execute("SELECT 1 FROM hb_edit_permit WHERE authority=%s AND source->>'deliveryId'=%s AND state<>'settled' LIMIT 1",
+                         (actor["authority"],str(delivery["id"]))).fetchone():
+                raise Conflict("Original native edit receipts remain unsettled")
+            canonical=event["data"].get("workId")
+            if canonical:
+                row=c.execute("SELECT * FROM hb_work WHERE id=%s AND authority=%s",
+                              (canonical,actor["authority"])).fetchone()
+                if (not row or row["delivery"]!=delivery["id"] or row["owner"]!=actor["id"]
+                        or row["state"] not in ("submitted","accepted","blocked") or not row["report_event"]):
+                    raise Conflict("Canonical work requires its original native report; context completion is not acceptance")
         progress=(work["value"].get("progress",[])+[v["body"]])[-8:]
         state="complete" if action=="complete" else "running"
         value={**work["value"],"progress":progress,"evidence":v.get("evidence",[])}
@@ -378,6 +397,10 @@ def perform(store,c,actor,purpose,binding,p):
         source=item(c,store,actor,v["sourceId"])
         if source["kind"] not in ("work","input"):
             raise ValueError("Communication needs a source work/input")
+        delivery=c.execute("SELECT cancellation_requested FROM hb_delivery WHERE event=%s AND agent=%s",
+                           (source["source"],actor["id"])).fetchone()
+        if source["state"]=="cancelled" or delivery and delivery["cancellation_requested"]:
+            raise Conflict("Cancelled work/input cannot create new communication")
         if source["value"].get("roomObservation"):
             from .context_peers import require_current_read
             require_current_read(binding,source,p["nativeTurn"])

@@ -1,0 +1,38 @@
+{
+  "schema": "lax-native-independent-work-qualification/v1",
+  "at": 1792404644.2332096,
+  "state": "partial-native-failure-identified",
+  "originalInputsReposted": false,
+  "firstDeliveryId": "4545461c-bbd0-40c8-9088-7f241b66beca",
+  "secondDeliveryId": "a4ee9182-29db-4f92-8d01-0e741b95d564",
+  "firstState": "cancelled",
+  "originalQuestionState": "expired",
+  "secondState": "running-logical-work-with-terminal-inference",
+  "secondNativeTurn": "01a15398-2f04-77b2-bf86-38855f17163a",
+  "secondNativeStatus": "completed",
+  "secondArtifactSaved": false,
+  "sameWriterHistory": true,
+  "single20SecondWaitObserved": true,
+  "targetedCancellationInterruptedSecond": false,
+  "nativeGitEvidence": {
+    "observedLogin": "aiyer-commits",
+    "remote": "https://github.com/FallSoftCo/codex.git",
+    "ref": "refs/heads/harness/three-context-20261018-r01",
+    "sha": "11c24f95c3793e515c57ed5676e300750bce344b"
+  },
+  "observedFailures": [
+    {
+      "component": "native-collaboration",
+      "cause": "Pre-frame authentication requires exactly one logical executor for a resident process before exact turn is available. Several accepted responsibilities legitimately share a resident writer. Falls through to misleading guardian denial.",
+      "effect": "No patch dispatched; no protected edit permit; artifact absent."
+    },
+    {
+      "component": "context-transport",
+      "cause": "Model record_progress ignored declared 4000-character schema; actual body43930 characters. HTTP overlarge input rejected but non-JSON failure fell through to missing-operation receipt403, hiding the known rejection.",
+      "effect": "No progress recorded. Do not infer uncertain admitted effects or repeat the oversized operation."
+    }
+  ],
+  "nextSlice": "Keep original task and native histories; fix source/bridge lookup and bounded request validation, qualify exact source fences, activate only private dependencies, and use existing typed host runtime observation for original work continuation. No human/peer message impersonation or original input replay.",
+  "productionChanged": false,
+  "phoneChanged": false
+}
