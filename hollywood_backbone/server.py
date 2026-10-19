@@ -472,8 +472,12 @@ async def boundary(request, handler):
             request["actor"] = actor["id"]
             request["tokenDigest"] = digest(authorization[7:])
             scope = await asyncio.to_thread(request.app[STORE].context_token_scope, request["tokenDigest"])
-            if scope and not (request.path == f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}" or request.method == "GET" and request.path.startswith(f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}/operations/")):
-                raise Denied("Purpose credential has no general transport authority")
+            own_context = scope and request.path == f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}"
+            own_receipt = scope and request.method == "GET" and request.path.startswith(
+                f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}/operations/")
+            native_read = scope and scope["purpose"] == "writer" and request.method == "GET" and request.path.startswith("/hollywood/v3/")
+            if scope and not (own_context or own_receipt or native_read):
+                raise Denied("Purpose credential has no general mutation authority")
         return await handler(request)
     except Denied:
         return web.json_response({"error": "Access denied"}, status=403)
