@@ -52,8 +52,12 @@ def read(store, actor_id, identity):
                                (actor["id"], actor["authority"])).fetchall()
             hosts = {p["host"] for p in policy}
             version = revision(c, plan)
-            member_hosts = c.execute("SELECT host FROM hb_agent_context WHERE principal IN (SELECT owner FROM hb_work WHERE id=ANY(%s::uuid[]))",
-                                    ([p["workId"] for p in version["manifest"]["participants"]],)).fetchall()
+            members = [p["workId"] for p in version["manifest"]["participants"]]
+            member_hosts = c.execute("""SELECT host FROM hb_agent_context
+                WHERE principal IN (SELECT owner FROM hb_work WHERE id=ANY(%s::uuid[]))
+                UNION SELECT host FROM hb_context_system WHERE enabled
+                AND agent IN (SELECT owner FROM hb_work WHERE id=ANY(%s::uuid[]))""",
+                (members,members)).fetchall()
             need(any(p["host"] in hosts for p in member_hosts) or plan["host"] in hosts,
                  "scope_mismatch", "Controller does not own a participant namespace")
             for host in hosts:

@@ -1,0 +1,15 @@
+{
+  "at": 1792408918.6573608,
+  "schema": "purpose-native-plan-fences/v1",
+  "mode": "Real QA PostgreSQL under actual app role; source scopes derived from recorded real native begin receipts and independently observed existing executors. Consent/physical-work-grant dictionaries are rollback-only fixtures, not claims of actual model consent, plan, filesystem mutation or acceptance. No executor/launch/native/process facts inserted.",
+  "modelsStarted": 0,
+  "realPurposeOnlyAdmissionsAcceptedWithoutLegacyBinding": true,
+  "actualIdlePeerConsentAdmissionAccepted": true,
+  "cancelledParticipantRejected": true,
+  "unknownExecutorRejected": true,
+  "changedNativeTurnRejected": true,
+  "revokedPhysicalGrantRejected": true,
+  "disabledPurposeSystemRejected": true,
+  "changedContextRejected": true,
+  "allFixturesRolledBack": true
+}

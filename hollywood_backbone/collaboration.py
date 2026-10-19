@@ -121,7 +121,11 @@ def participation(store, c, relay, payload, tools=None, patch_actions=None):
         "SELECT 1 FROM hb_goal WHERE id=%s AND state<>'active'", (event["data"]["goalId"],)
     ).fetchone():
         raise Conflict("Current participation goal no longer admits collaboration")
-    if c.execute("""SELECT 1 FROM hb_delivery WHERE agent=%s AND id<>%s
+    # Purpose writers admit an exact execution scope and one current inference.
+    # Other durable responsibilities (including the waiting human parent) are
+    # not competing executions. Physical path claims still fence overlap.
+    if source["schema"] != "hollywood-native-source/v3" and c.execute(
+        """SELECT 1 FROM hb_delivery WHERE agent=%s AND id<>%s
         AND state IN ('claimed','running','unknown','cancel_requested') LIMIT 1""",
         (actor["id"], source["deliveryId"])).fetchone():
         raise Conflict("Competing original participation remains unsettled")

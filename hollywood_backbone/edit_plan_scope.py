@@ -143,18 +143,40 @@ def participant_fences(store, c, plan, manifest, rows, cleanup=False):
         need(goal["id"] == plan["goal"] and work["room"] == plan["room"]
              and (cleanup or work["revision"] == expected[str(vote["work"])]["workRevision"]),
              "work_changed", "Participant canonical scope changed")
-        row = c.execute("""SELECT d.*,e.state AS executor_state,e.controller,e.observed_at,h.controller AS current_controller,
-             h.sample_max_age FROM hb_delivery d JOIN hb_agent_execution x ON x.delivery=d.id AND x.generation=d.generation
-             JOIN hb_agent_context a ON a.principal=x.principal AND a.context_id=x.context_id
-               AND a.workspace_id=x.workspace_id AND a.native_thread=x.native_thread AND a.host=d.host
-             JOIN hb_agent_role r ON r.principal=d.agent AND r.revision=x.role_revision
-             JOIN hb_placement p ON p.agent=d.agent AND p.host=d.host AND p.enabled
-             JOIN hb_executor e ON e.delivery=d.id AND e.generation=d.generation AND e.claim_id=d.claim_id
-             JOIN hb_host_admission h ON h.host=d.host
-             WHERE d.id=%s AND d.agent=%s AND d.host=%s AND x.workspace_id=%s
-               AND x.context_id=%s AND x.role_revision=%s""",
-             (source["deliveryId"], actor["id"], source["hostId"], vote["context_workspace"],
-              source["contextId"], source["roleRevision"])).fetchone()
+        if source["schema"] == "hollywood-native-source/v3":
+            from .purpose_effects import binding as purpose_binding
+            try:
+                accepted = purpose_binding(c, actor, source)
+            except (Conflict, Denied) as error:
+                raise EditError("participant_unsettled", "Original accepted purpose consent binding changed") from error
+            need(str(accepted["workspace_id"]) == str(vote["context_workspace"]),
+                 "participant_unsettled", "Participant purpose workspace changed")
+            # Consent is durable after its inference ends. Its immutable begin
+            # receipt and independently observed logical executor remain required;
+            # a later turn/claim or enrollment change invalidates this consent.
+            row = c.execute("""SELECT d.*,e.state AS executor_state,e.controller,e.observed_at,
+                h.controller AS current_controller,h.sample_max_age FROM hb_delivery d
+                JOIN hb_agent_role r ON r.principal=d.agent AND r.revision=%s
+                JOIN hb_placement p ON p.agent=d.agent AND p.host=d.host AND p.enabled
+                JOIN hb_executor e ON e.id=%s AND e.delivery=d.id
+                  AND e.generation=d.generation AND e.claim_id=d.claim_id
+                JOIN hb_host_admission h ON h.host=d.host
+                WHERE d.id=%s AND d.agent=%s AND d.host=%s""",
+                (source["roleRevision"],source["executorId"],source["deliveryId"],
+                 actor["id"],source["hostId"])).fetchone()
+        else:
+            row = c.execute("""SELECT d.*,e.state AS executor_state,e.controller,e.observed_at,h.controller AS current_controller,
+                 h.sample_max_age FROM hb_delivery d JOIN hb_agent_execution x ON x.delivery=d.id AND x.generation=d.generation
+                 JOIN hb_agent_context a ON a.principal=x.principal AND a.context_id=x.context_id
+                   AND a.workspace_id=x.workspace_id AND a.native_thread=x.native_thread AND a.host=d.host
+                 JOIN hb_agent_role r ON r.principal=d.agent AND r.revision=x.role_revision
+                 JOIN hb_placement p ON p.agent=d.agent AND p.host=d.host AND p.enabled
+                 JOIN hb_executor e ON e.delivery=d.id AND e.generation=d.generation AND e.claim_id=d.claim_id
+                 JOIN hb_host_admission h ON h.host=d.host
+                 WHERE d.id=%s AND d.agent=%s AND d.host=%s AND x.workspace_id=%s
+                   AND x.context_id=%s AND x.role_revision=%s""",
+                 (source["deliveryId"], actor["id"], source["hostId"], vote["context_workspace"],
+                  source["contextId"], source["roleRevision"])).fetchone()
         need(row and not row["cancellation_requested"] and (cleanup or str(work["delivery"]) == source["deliveryId"]),
              "participant_unsettled", "Participant consent lineage changed")
         need(row["claim_id"] == source["claimId"] and row["generation"] == source["generation"]
