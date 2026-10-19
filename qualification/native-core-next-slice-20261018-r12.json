@@ -1,0 +1,68 @@
+{
+  "schema": "lax-native-core-next-slice/v1",
+  "objective": "Global can create and run a capable independent team through Hollywood, with original work, identities and attributable results preserved.",
+  "milestone": "N1 \u2014 full native single-host work loop",
+  "currentEvidence": {
+    "sharedToolCore": "NativeTools now owns the existing handlers, effect journals and original-operation recovery. Connector and purpose NativeToolSession use that same implementation.",
+    "nativeHumanJourney": {
+      "passed": true,
+      "readerTurns": 1,
+      "writerTurns": 1,
+      "responderTurns": 1,
+      "sharedNativeReads": 2,
+      "activityEvents": 6,
+      "activityDeliveries": 0,
+      "finalReplyCharacters": 377,
+      "preservedArtifactHashes": 104
+    },
+    "purposeServiceMechanism": {
+      "passed": true,
+      "linuxUnits": 3,
+      "persistentHistories": 3,
+      "modelTurns": 0,
+      "duplicateAndMixedLaunchesBlocked": true,
+      "processesDrained": true
+    },
+    "limits": "The installed purpose writer currently exposes native read tools only. General mutation transport remains closed. No Global-created team or complete native capability parity is claimed."
+  },
+  "sourceFindings": [
+    {
+      "source": "hollywood_backbone/context_system.py:accept; store.py:claim",
+      "finding": "The prototype writes a context-work claim/running state directly; the existing full native claim path rejects configured purpose agents. Restore one shared admission path rather than presenting metadata as native executor admission."
+    },
+    {
+      "source": "lax_connector/execution_lifecycle.py; service_observer.py; service_runtime.py",
+      "finding": "Explicit captured executor ownership is now factored. Actual installed guardian approval, reservation, attachment and independent observation still need to recognize the purpose services."
+    },
+    {
+      "source": "hollywood_backbone/native_effects.py:validate; store.py:transition",
+      "finding": "Current native source checks pin a delivery to one native turn. The accepted per-turn purpose receipts already preserve original ownership; extend effect validation coherently across successive turns without fake delivery generations."
+    },
+    {
+      "source": "hollywood_backbone/context_system.py:call",
+      "finding": "Role revision is frozen by the prototype's configuration join. Coherent role refresh must retain context/history and accepted work, while current permissions remain independently enforced."
+    },
+    {
+      "source": "lax_connector/workflow.py; context_system.py:accept/complete",
+      "finding": "Internal context work is a handoff, not formal hb_work acceptance/report/review. Restore the existing canonical workflow and cooperation paths; keep these domains explicit."
+    }
+  ],
+  "nextImplementation": [
+    "Connect accepted purpose work to the existing claim/admission, execution journal and independently observed executor lifecycle. Preserve the original source, delivery and ownership generation.",
+    "Extend installed service approval/provisioning for the purpose layout and verify actual model/account, workspace, admin, Git and SSH access. Map approved guardians and native processes exactly; keep reader/responder recovery independent of writer drainage.",
+    "Keep work ownership, resident process/resource ownership and inference capacity separate. A confirmed wait for a peer must not hold a model permit that prevents that peer from running. Unknown original turns remain held; do not fix deadlock by choosing an arbitrary slot count.",
+    "Bind native tool/effect provenance to the accepted purpose execution and independently live executor. Enable the existing administration, workflow/review, cooperation/editing and questions only through that common path.",
+    "Preserve responder-owned outward communication, handle scoped reader corrections/findings with version/read barriers, and refresh responsibilities without replacing the agent identity."
+  ],
+  "processLayout": {
+    "status": "Actual private three-unit metadata prototype qualified; root installer/service enrollment integration pending.",
+    "rationale": "Each purpose can have its own Linux service/cgroup and native history while retaining one Hollywood agent identity. A writer group can drain without reader/responder processes masquerading as remaining execution. These are LAX runtime units, with no new semantic orchestration service.",
+    "remaining": "Apply an aggregate agent resource budget and exact approved launcher mapping. Validate scheduling capacity separately from resident process identity."
+  },
+  "acceptance": "A single ordinary human request makes Global create a room and peer through its native tools and provision the real peer itself. The peer performs useful cooperative editing/work, a relevant correction/finding is handled, Global independently verifies/reviews the artifact and its responder reports to the original audience. Then exercise the same work through restart, Stop and compaction before user rollout.",
+  "validationPriority": "Use actual models and the authenticated user/agent APIs for the end-state journey. Use bounded deterministic checks for identity, receipts, admission and cancellation; no broad edge-case campaign before this capable work loop exists.",
+  "rollout": "Private candidate only until that end state and environment readiness pass. Keep production services, phone pairings, queued work, active typing/voice and deliberately stopped sessions intact.",
+  "productionReplacementReady": false,
+  "noNewSemanticComponent": true,
+  "noRAMBuildTrees": true
+}

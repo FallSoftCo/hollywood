@@ -1,0 +1,17 @@
+{
+  "schema": "lax-native-purpose-services-qualification/v1",
+  "date": "2026-10-18",
+  "sourceCommit": "94317438ea3ac3f294d9aca7248a4f9f6c7918b5",
+  "laxVersion": "0.1.0.dev70",
+  "executorOwnerDetachedFromMutableScheduler": true,
+  "linuxServices": 3,
+  "persistentHistoriesRetained": 3,
+  "modelTurns": 0,
+  "canonicalEventsBefore": 85,
+  "canonicalEventsAfter": 85,
+  "duplicateAndMixedLaunchesBlocked": true,
+  "ownedProcessesDrained": true,
+  "installedExecutorAttestationProven": false,
+  "limitation": "Actual Linux unit/process separation and exact native metadata resume, not installed service enrollment or business-effect admission.",
+  "productionReplacementReady": false
+}

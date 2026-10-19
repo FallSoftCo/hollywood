@@ -1,0 +1,89 @@
+{
+  "schema": "lax-shared-native-core-qualification/v1",
+  "date": "2026-10-18",
+  "source": {
+    "lax": "3548bc784b",
+    "hollywood": "768346c",
+    "laxVersion": "0.1.0.dev69",
+    "hollywoodVersion": "0.3.0.dev45"
+  },
+  "sharedNativeCoreFactored": true,
+  "actualHumanJourney": {
+    "passed": true,
+    "operation": "three-context-native-core-catalog-r11",
+    "elapsedSeconds": 280.32956075668335,
+    "wakeCounts": {
+      "global:reader": 1,
+      "global:writer": 1,
+      "global:responder": 1
+    },
+    "sharedNativeCalls": [
+      "hollywood_room_info",
+      "hollywood_rooms"
+    ],
+    "attributedReplies": 1,
+    "finalReplyCharacters": 377,
+    "canonicalActivityEvents": 6,
+    "activityDeliveries": 0,
+    "artifactSha256": "19897a025a7d080e7574c535b7512815306d744e5353834a6c9303ac642e2b63",
+    "canonicalRoomMetadataMatched": true,
+    "preservedArtifactCount": 104
+  },
+  "authenticatedHTTPBoundary": [
+    {
+      "purpose": "reader",
+      "method": "GET",
+      "route": "rooms",
+      "status": 403
+    },
+    {
+      "purpose": "reader",
+      "method": "POST",
+      "route": "principals",
+      "status": 403
+    },
+    {
+      "purpose": "writer",
+      "method": "GET",
+      "route": "rooms",
+      "status": 200
+    },
+    {
+      "purpose": "writer",
+      "method": "POST",
+      "route": "principals",
+      "status": 403
+    },
+    {
+      "purpose": "responder",
+      "method": "GET",
+      "route": "rooms",
+      "status": 403
+    },
+    {
+      "purpose": "responder",
+      "method": "POST",
+      "route": "principals",
+      "status": 403
+    },
+    {
+      "purpose": "writer",
+      "method": "GET",
+      "route": "other-purpose-original-receipt",
+      "status": 403
+    }
+  ],
+  "compatibilityChecks": {
+    "passed": 103,
+    "fixtureChecksAreNotModelEvidence": true
+  },
+  "limits": [
+    "Full native mutating administration/provisioning",
+    "Independent installed executor integration in purpose runtime",
+    "Global-created team",
+    "Formal canonical work/review integration",
+    "Compaction/Stop/fresh-host/phone/multi-host acceptance"
+  ],
+  "internalMaterialIsNotFormalWork": true,
+  "productionReplacementReady": false
+}
