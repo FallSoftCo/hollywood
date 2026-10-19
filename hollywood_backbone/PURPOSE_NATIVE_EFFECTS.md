@@ -95,3 +95,15 @@ stale responder rejection, actual reply publication and original incoming-reques
 completion, while the parent claim/generation stays unfinished. Premature parent
 final publication remains denied. Those probes roll back their frozen metadata;
 the actual original two-agent continuation is separately observed.
+
+
+Inference reservation reads retain the original accepted result and add the
+separate currentPermit projection. A confirmed terminal native attempt that was
+never admitted cannot reuse or overwrite a released permit belonging to an older
+turn. Its context-end receipt records not_admitted/capacityReleased=false under
+the same authenticated purpose/context; no work completion is inferred.
+
+The real recurring-set failure was reproduced using its original released
+reservation through HTTP. A new attempt on the same material set receives a
+different reservation. The actual runtime then observed and reconciled the exact
+interrupted turn without replacing its history or resetting uncertainty.

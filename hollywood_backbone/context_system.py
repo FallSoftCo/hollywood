@@ -201,7 +201,7 @@ def lifecycle(c, store, actor, purpose, binding, p):
     status = p["value"].get("status")
     if status not in ("completed", "interrupted", "failed"):
         raise ValueError("A confirmed terminal native status is required")
-    context_capacity.end(c,actor,purpose,binding,p)
+    admission=context_capacity.end(c,actor,purpose,binding,p)
     for identity in binding["active_material"]:
         row = item(c, store, actor, str(identity))
         delivery = c.execute("SELECT cancellation_requested FROM hb_delivery WHERE event=%s AND agent=%s",
@@ -221,7 +221,7 @@ def lifecycle(c, store, actor, purpose, binding, p):
               AND state NOT IN ('completed','cancelled')""", (actor["id"], row["source"]))
     c.execute("UPDATE hb_purpose_context SET active_turn=NULL,active_material='{}',accepting=false WHERE agent=%s AND purpose=%s",
               (actor["id"], purpose))
-    return {"nativeTurn": turn, "state": status}
+    return {"nativeTurn": turn, "state": status,"admission":admission}
 
 
 def perform(store,c,actor,purpose,binding,p):
@@ -431,7 +431,13 @@ def receipt(store, actor_id, token_digest, agent, purpose, operation):
             if permit:
                 return {"permit":json_value(permit),"admission":{"reason":"original_permit_observation"}}
             raise Denied("Original operation receipt unavailable")
-        return row["result"]
+        result=dict(row["result"])
+        if isinstance(result.get("permit"),dict):
+            current=c.execute("""SELECT * FROM hb_context_permit WHERE id=%s AND agent=%s
+                AND purpose=%s""",(result["permit"]["id"],agent,purpose)).fetchone()
+            if current is not None:
+                result["currentPermit"]=json_value(current)
+        return result
 
 
 def configuration(store, actor_id, agent, *, connection=None):

@@ -167,8 +167,19 @@ def end(c,actor,purpose,binding,p):
         return
     row=c.execute("SELECT * FROM hb_context_permit WHERE id=%s AND agent=%s AND purpose=%s FOR UPDATE",
                   (identity,actor["id"],purpose)).fetchone()
+    if (row and row["context_id"]==binding["context_id"] and row["native_thread"]==p["nativeThread"]
+            and row["state"]=="released" and row["native_turn"]!=p["nativeTurn"]
+            and binding["active_turn"] is None and not binding["active_material"]
+            and not c.execute("""SELECT 1 FROM hb_context_operation WHERE agent=%s AND purpose=%s
+                AND operation=%s""",(actor["id"],purpose,"context-begin:"+p["nativeTurn"])).fetchone()):
+        # The native turn was rejected before business admission after a client
+        # reused a stale receipt. Its confirmed terminal fact must not overwrite
+        # the older permit or claim another release of its capacity.
+        return {"disposition":"not_admitted","capacityReleased":False,
+            "referencedPermitId":str(row["id"]),"originalPermitNativeTurn":row["native_turn"]}
     if (not row or row["context_id"]!=binding["context_id"] or row["native_thread"]!=p["nativeThread"]
             or row["native_turn"] not in (None,p["nativeTurn"]) or row["state"] not in ("reserved","running")):
         raise Conflict("Original terminal inference permit changed")
     c.execute("""UPDATE hb_context_permit SET state='released',native_turn=%s,terminal_status=%s
         WHERE id=%s""",(p["nativeTurn"],p["value"]["status"],identity))
+    return {"disposition":"admitted","capacityReleased":True,"permitId":str(row["id"])}
