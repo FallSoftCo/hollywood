@@ -19,6 +19,18 @@ def lifecycle(c,store,actor,purpose,binding,p):
             (identity,actor["id"],purpose,system["host"],binding["context_id"],p["nativeThread"],
              "frozen-scope-fact:"+identity,digest(p),value["materialIds"],system["role_revision"]))
         value["permitId"]=identity
+        if purpose=="writer":
+            d=c.execute("SELECT d.* FROM hb_delivery d JOIN hb_context_material m ON m.source=d.event AND m.agent=d.agent WHERE m.id=%s",
+                        (value["materialIds"][0],)).fetchone()
+            if not c.execute("SELECT 1 FROM hb_executor WHERE delivery=%s AND generation=%s AND state<>'stopped'",
+                             (d["id"],d["generation"])).fetchone():
+                from psycopg.types.json import Jsonb
+                controller=c.execute("SELECT controller FROM hb_host_admission WHERE host=%s",(system["host"],)).fetchone()
+                c.execute("""INSERT INTO hb_executor(id,authority,delivery,agent,host,generation,claim_id,
+                    descriptor,descriptor_digest,state,controller,launch_phase,reservation_descriptor,reservation_digest)
+                    VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,'live',%s,'attached',%s,%s)""",
+                    (str(uuid4()),actor["authority"],d["id"],actor["id"],system["host"],d["generation"],d["claim_id"],
+                     Jsonb({}),digest({}),controller["controller"],Jsonb({}),digest({})))
     elif p["action"]=="end":
         permit=c.execute("SELECT id FROM hb_context_permit WHERE agent=%s AND purpose=%s AND native_turn=%s",
                          (actor["id"],purpose,p["nativeTurn"])).fetchone()

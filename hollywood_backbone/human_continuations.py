@@ -16,6 +16,22 @@ def nonblocking(row):
 
 
 def context(c, row):
+    system=c.execute("SELECT * FROM hb_context_system WHERE agent=%s AND enabled",
+                     (row["agent"],)).fetchone()
+    if system:
+        binding=c.execute("SELECT * FROM hb_purpose_context WHERE agent=%s AND purpose='writer'",
+                          (row["agent"],)).fetchone()
+        begin=c.execute("""SELECT result FROM hb_context_operation WHERE agent=%s AND purpose='writer'
+            AND operation=%s""",(row["agent"],"context-begin:"+row["native_turn"])).fetchone()
+        matches=[s for s in begin["result"].get("executionScopes",[]) if
+            s.get("deliveryId")==str(row["delivery"]) and s.get("generation")==row["generation"]
+            and s.get("nativeThread")==row["native_thread"] and s.get("nativeTurn")==row["native_turn"]] if begin else []
+        if (not binding or len(matches)!=1 or binding["native_thread"]!=row["native_thread"]
+                or str(binding["context_id"])!=matches[0]["contextId"]):
+            raise Conflict("Original purpose question context changed")
+        return {"principal":row["agent"],"context_id":str(binding["context_id"]),
+                "native_thread":binding["native_thread"],"host":system["host"],
+                "workspace_id":system["workspace"],"bindingKind":"purpose"}
     original = c.execute(
         "SELECT * FROM hb_agent_execution WHERE delivery=%s AND generation=%s",
         (row["delivery"], row["generation"]),
@@ -89,6 +105,8 @@ def enqueue(store, c, actor, row, delivery, response):
         "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
         (uid(), actor["authority"], event, row["agent"]),
     )
+    from .context_system import ingest
+    ingest(c,row["agent"],event)
     return event
 
 

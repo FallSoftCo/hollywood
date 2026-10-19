@@ -135,7 +135,8 @@ def read(c, store, actor, purpose, binding, turn, value):
         raise ValueError("Material offset outside original content")
     stop = min(offset + CHUNK_CHARS, len(encoded))
     following = stop if stop < len(encoded) else None
-    if reference != "role" and (purpose == "responder" and row["state"] == "ready"
+    if reference != "role" and (purpose == "reader"
+                                or purpose == "responder" and row["state"] == "ready"
                                 or purpose == "writer" and row["kind"] == "work"):
         reads = dict(binding["reads"])
         prior = reads.get(reference)

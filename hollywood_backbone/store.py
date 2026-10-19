@@ -395,9 +395,17 @@ class Store:
     def close(self):
         self.pool.close()
 
-    def context_configure(self, actor_id, agent, payload):
+    def context_configuration(self, actor_id, agent):
+        from .context_system import configuration
+        return configuration(self, actor_id, agent)
+
+    def context_configure(self, actor_id, agent, payload, *, command=None):
         from .context_system import configure
-        return configure(self, actor_id, agent, payload)
+        return configure(self, actor_id, agent, payload, command=command)
+
+    def _admin_context_configure(self,c,actor,agent,payload):
+        from .context_system import configure_transaction
+        return configure_transaction(self,c,actor,agent,payload)
 
     def context_call(self, actor_id, token_digest, agent, purpose, payload):
         from .context_system import call
@@ -1411,6 +1419,9 @@ class Store:
             (agent,),
         ).fetchone():
             raise Conflict("Responsibility change requires the original execution to settle first; pending work retains its owner")
+        if c.execute("""SELECT 1 FROM hb_context_permit WHERE agent=%s
+            AND state IN ('reserved','running') LIMIT 1""",(agent,)).fetchone():
+            raise Conflict("Responsibility change waits for current native inference to settle")
 
         c.execute(
             "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose,home_room,native_goal_scope) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(principal) DO UPDATE SET primary_role=EXCLUDED.primary_role,purpose=EXCLUDED.purpose,home_room=EXCLUDED.home_room,native_goal_scope=EXCLUDED.native_goal_scope,revision=hb_agent_role.revision+1",

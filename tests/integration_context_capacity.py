@@ -224,7 +224,7 @@ class RollbackAPI:
         except BaseException as error:
             self.ready.put(error)
 
-    def call(self,actor,purpose,payload,operation=None,runtime_protocol="lax-purpose-runtime/v2"):
+    def call(self,actor,purpose,payload,operation=None,runtime_protocol="lax-purpose-runtime/v3"):
         path="agents/"+str(actor["id"])+"/contexts/"+purpose
         if operation:
             path+="/operations/"+operation

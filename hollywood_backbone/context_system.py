@@ -32,32 +32,39 @@ CREATE TABLE IF NOT EXISTS hb_context_operation(
  digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(agent,purpose,operation));
 """ + context_capacity.SCHEMA
 
-def configure(store, actor_id, agent, payload):
-    with store.pool.connection() as c:
-        actor = store.actor(c, actor_id)
-        if not actor["administrator"]:
-            raise Denied("Installed administrator required")
-        target = c.execute("""SELECT p.*,r.revision FROM hb_principal p
-          JOIN hb_agent_role r ON r.principal=p.id
-          JOIN hb_placement l ON l.agent=p.id AND l.enabled
-          WHERE p.id=%s AND p.authority=%s AND p.kind='agent' AND p.active AND l.host=%s""",
-          (agent, actor["authority"], payload["hostId"])).fetchone()
-        if not target:
-            raise Denied("Enrolled agent placement required")
-        c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("context:"+agent,))
-        old = c.execute("SELECT * FROM hb_context_system WHERE agent=%s", (agent,)).fetchone()
-        if old:
-            raise Conflict("Existing context system requires explicit migration")
-        bindings = payload["bindings"]
-        if {b["purpose"] for b in bindings} != PURPOSES or len(bindings) != 3:
-            raise ValueError("Exactly three purpose bindings required")
-        c.execute("INSERT INTO hb_context_system(agent,authority,host,workspace,role_revision) VALUES(%s,%s,%s,%s,%s)",
-                  (agent,target["authority"],payload["hostId"],payload["workspaceId"],target["revision"]))
-        for b in bindings:
-            c.execute("INSERT INTO hb_token(digest,principal) VALUES(%s,%s)",(b["credentialDigest"],agent))
-            c.execute("INSERT INTO hb_purpose_context(agent,purpose,context_id,token_digest) VALUES(%s,%s,%s,%s)",
-                      (agent,b["purpose"],b["contextId"],b["credentialDigest"]))
-        return {"agentId":agent,"purposes":sorted(PURPOSES),"configured":True}
+def configure(store, actor_id, agent, payload, *, command=None):
+    from .administrative import mutate
+    return mutate(store,actor_id,"context_configure",[agent,payload],command)
+
+
+def configure_transaction(store,c,actor,agent,payload):
+    target = c.execute("""SELECT p.*,r.revision FROM hb_principal p
+      JOIN hb_agent_role r ON r.principal=p.id
+      JOIN hb_placement l ON l.agent=p.id AND l.enabled
+      WHERE p.id=%s AND p.authority=%s AND p.kind='agent' AND p.active AND l.host=%s""",
+      (agent, actor["authority"], payload["hostId"])).fetchone()
+    if not target:
+        raise Denied("Enrolled agent placement required")
+    c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("context:"+agent,))
+    old = c.execute("SELECT * FROM hb_context_system WHERE agent=%s", (agent,)).fetchone()
+    if old:
+        existing = configuration(store, str(actor["id"]), agent, connection=c)
+        expected = {b["purpose"]: (b["contextId"], b["credentialDigest"]) for b in payload["bindings"]}
+        actual = {b["purpose"]: (b["contextId"], b["credentialDigest"]) for b in existing["bindings"]}
+        if (old["host"] == UUID(payload["hostId"]) and old["workspace"] == payload["workspaceId"]
+                and old["enabled"] and actual == expected and len(payload["bindings"]) == 3):
+            return {"agentId":agent,"purposes":sorted(PURPOSES),"configured":True,"reconciled":True}
+        raise Conflict("Existing context system requires explicit migration")
+    bindings = payload["bindings"]
+    if {b["purpose"] for b in bindings} != PURPOSES or len(bindings) != 3:
+        raise ValueError("Exactly three purpose bindings required")
+    c.execute("INSERT INTO hb_context_system(agent,authority,host,workspace,role_revision) VALUES(%s,%s,%s,%s,%s)",
+              (agent,target["authority"],payload["hostId"],payload["workspaceId"],target["revision"]))
+    for b in bindings:
+        c.execute("INSERT INTO hb_token(digest,principal) VALUES(%s,%s)",(b["credentialDigest"],agent))
+        c.execute("INSERT INTO hb_purpose_context(agent,purpose,context_id,token_digest) VALUES(%s,%s,%s,%s)",
+                  (agent,b["purpose"],b["contextId"],b["credentialDigest"]))
+    return {"agentId":agent,"purposes":sorted(PURPOSES),"configured":True}
 
 def ingest(c, agent, event):
     if not c.execute("SELECT 1 FROM hb_context_system WHERE agent=%s AND enabled",(agent,)).fetchone():
@@ -65,8 +72,10 @@ def ingest(c, agent, event):
     identity = str(event)
     from .context_peers import incoming
     peer = incoming(c, agent, event)
-    materials = [("input", "pending", peer or {})]
-    if peer is None:
+    source=c.execute("SELECT data FROM hb_event WHERE id=%s",(event,)).fetchone()
+    question=source["data"].get("type")=="humanQuestionAnswer"
+    materials = [("input", "pending", peer or ({"humanQuestionAnswer":True} if question else {}))]
+    if peer is None and not question:
         materials.append(("need", "interpreting", {"inputId": identity, "required": True, "prerequisites": []}))
     for kind, state, value in materials:
         key = identity if kind == "input" else str(uuid5(UUID(identity), "response"))
@@ -97,7 +106,7 @@ def call(store, actor_id, token_digest, agent, purpose, p):
         c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",("context:"+agent,))
         system=c.execute("""SELECT s.* FROM hb_context_system s JOIN hb_placement l
           ON l.agent=s.agent AND l.host=s.host AND l.enabled
-          JOIN hb_agent_role r ON r.principal=s.agent AND r.revision=s.role_revision
+          JOIN hb_agent_role r ON r.principal=s.agent
           WHERE s.agent=%s AND s.enabled""",(agent,)).fetchone()
         binding=c.execute("""SELECT b.* FROM hb_purpose_context b JOIN hb_token t
           ON t.digest=b.token_digest AND NOT t.revoked
@@ -105,6 +114,10 @@ def call(store, actor_id, token_digest, agent, purpose, p):
           (agent,purpose,token_digest)).fetchone()
         if not system or not binding:
             raise Denied("Purpose credential or installed placement unavailable")
+        role=c.execute("SELECT revision FROM hb_agent_role WHERE principal=%s",(actor["id"],)).fetchone()
+        if system["role_revision"]!=role["revision"]:
+            c.execute("UPDATE hb_context_system SET role_revision=%s WHERE agent=%s",
+                      (role["revision"],actor["id"]))
         if p["action"] in ("pending", "ready"):
             if p["nativeThread"]!=binding["native_thread"]:
                 raise Conflict("Native context binding changed")
@@ -118,14 +131,14 @@ def call(store, actor_id, token_digest, agent, purpose, p):
                 raise Conflict("Original context operation changed")
             return old["result"]
         if p["action"]=="bind":
-            if p["value"] != {"runtimeProtocol":"lax-purpose-runtime/v2"}:
+            if p["value"] != {"runtimeProtocol":"lax-purpose-runtime/v3"}:
                 raise Conflict("Native work and inference admission runtime required")
             if binding["native_thread"] and binding["native_thread"]!=p["nativeThread"]:
                 raise Conflict("Original context thread changed")
             c.execute("UPDATE hb_purpose_context SET native_thread=%s WHERE agent=%s AND purpose=%s",
                       (p["nativeThread"],agent,purpose))
             result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose,
-                    "runtimeProtocol":"lax-purpose-runtime/v2"}
+                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1}
         elif p["nativeThread"]!=binding["native_thread"]:
             raise Conflict("Native context binding changed")
         else:
@@ -220,15 +233,20 @@ def perform(store,c,actor,purpose,binding,p):
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
-      "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","directory"},
+      "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","amend","directory"},
       "writer":{"pending","snapshot","read","progress","complete","announce","peer_request","wait_peers","directory"},
       "responder":{"pending","snapshot","read","publish","suppress"},
     }
     if action not in permitted[purpose]:
         raise Denied("Tool does not belong to this context purpose")
-    target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers") else v.get("inputId") if action in ("accept","answer","peer_result") else v.get("communicationId")
+    target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers") else v.get("inputId") if action in ("accept","answer","peer_result","amend") else v.get("communicationId")
     if target and target not in {str(x) for x in binding["active_material"]}:
         raise Denied("Material does not belong to this captured native turn")
+    if action=="amend":
+        if purpose!="reader":
+            raise Denied("Only the reader interprets work updates")
+        from .context_work_updates import apply
+        return apply(c,store,actor,binding,p)
     if action in ("directory", "peer_request", "wait_peers", "peer_result"):
         from . import context_peers
         if action == "directory":
@@ -276,6 +294,8 @@ def perform(store,c,actor,purpose,binding,p):
             raise Conflict("Input already interpreted")
         if source["value"].get("peerCompletion"):
             raise Conflict("Record the peer result on its original work; no new task or acknowledgement is required")
+        if source["value"].get("humanQuestionAnswer"):
+            raise Conflict("Apply the human answer to its original work; do not create a new task or acknowledgement")
         delivery=c.execute("SELECT state,cancellation_requested FROM hb_delivery WHERE event=%s AND agent=%s",
                            (source["source"],actor["id"])).fetchone()
         if not delivery or delivery["cancellation_requested"] or delivery["state"] != "pending":
@@ -310,9 +330,17 @@ def perform(store,c,actor,purpose,binding,p):
         value={**work["value"],"progress":progress,"evidence":v.get("evidence",[])}
         own_change(c,actor,binding,work,state,value,p["nativeTurn"])
         if action=="complete":
-            need=need_for(c,store,actor,work["source"])
-            change(c,need,"ready",{**need["value"],"material":v["body"],
-                                   "evidence":value["evidence"],"prerequisites":[]})
+            if c.execute("""SELECT 1 FROM hb_attention WHERE delivery=%s
+                AND method IN ('hollywood/question','item/tool/requestUserInput')
+                AND state IN ('pending','response_submitted','native_submitted')
+                AND request->>'isBlocking'='false'""",(delivery["id"],)).fetchone():
+                raise Conflict("Original human question prerequisite is unresolved")
+            needs=c.execute("""SELECT * FROM hb_context_material WHERE agent=%s AND kind='need'
+                AND value->>'workId'=%s AND state='waiting' FOR UPDATE""",
+                (actor["id"],str(work["id"]))).fetchall()
+            for need in needs:
+                change(c,need,"ready",{**need["value"],"material":v["body"],
+                                       "evidence":value["evidence"],"prerequisites":[]})
         return {"workId":str(work["id"]),"state":state}
     if action=="announce":
         source=item(c,store,actor,v["sourceId"])
@@ -383,3 +411,22 @@ def receipt(store, actor_id, token_digest, agent, purpose, operation):
                 return {"permit":json_value(permit),"admission":{"reason":"original_permit_observation"}}
             raise Denied("Original operation receipt unavailable")
         return row["result"]
+
+
+def configuration(store, actor_id, agent, *, connection=None):
+    """Enrollment readback contains digests, never usable bearer credentials."""
+    if connection is None:
+        with store.pool.connection() as c:
+            return configuration(store, actor_id, agent, connection=c)
+    c = connection
+    actor = store.actor(c, actor_id)
+    system = c.execute("SELECT * FROM hb_context_system WHERE agent=%s AND authority=%s",
+                       (agent, actor["authority"])).fetchone()
+    if not system or not (actor["administrator"] or str(actor["id"]) == agent):
+        raise Denied("Own enrolled context system required")
+    bindings = c.execute("""SELECT purpose,context_id,token_digest,native_thread
+        FROM hb_purpose_context WHERE agent=%s ORDER BY purpose""",(agent,)).fetchall()
+    return json_value({"system":{"agentId":agent,"authorityId":system["authority"],
+        "hostId":system["host"],"workspaceId":system["workspace"],"enabled":system["enabled"]},
+        "bindings":[{"purpose":b["purpose"],"contextId":b["context_id"],
+                     "credentialDigest":b["token_digest"],"nativeThread":b["native_thread"]} for b in bindings]})

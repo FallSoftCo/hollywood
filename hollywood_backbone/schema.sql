@@ -935,3 +935,9 @@ BEGIN
  RETURN NULL;
 END $$;
 INSERT INTO hb_schema VALUES (33) ON CONFLICT DO NOTHING;
+
+-- A persistent purpose context may recover the same claim in a later physical incarnation.
+-- Stopped records remain immutable; no replacement while a predecessor is undrained.
+ALTER TABLE hb_executor DROP CONSTRAINT IF EXISTS hb_executor_delivery_generation_key;
+CREATE UNIQUE INDEX IF NOT EXISTS hb_executor_one_active_attempt
+ ON hb_executor(delivery,generation) WHERE state<>'stopped';

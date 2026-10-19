@@ -27,15 +27,21 @@ def capture(c, store, actor, purpose, binding, p, material_ids):
                 AND operation=%s AND host=%s""",
                 (actor["id"], d["id"], d["claim_id"], d["host"])).fetchone():
             raise Conflict("Original native admission receipt required")
-        # This binds turn attribution only. It does not attest executor liveness
-        # or grant business mutation authority.
+        executor=c.execute("""SELECT x.id FROM hb_executor x
+            JOIN hb_host_admission h ON h.host=x.host AND h.authority=x.authority
+            JOIN hb_principal controller ON controller.id=h.controller AND controller.active
+            WHERE x.delivery=%s AND x.generation=%s AND x.claim_id=%s
+              AND x.state='live' AND x.launch_phase='attached' AND x.controller=h.controller""",
+            (d["id"],d["generation"],d["claim_id"])).fetchone()
+        if not executor:
+            raise Conflict("Accepted writer requires an independently live original executor")
         c.execute("""UPDATE hb_delivery SET state='running',native_thread=%s,native_turn=%s,
             revision=revision+1,updated_at=clock_timestamp() WHERE id=%s""",
             (p["nativeThread"], p["nativeTurn"], d["id"]))
         request = store.readable_event(c, actor, d["event"])
         store.room(c, actor, request["room"], "can_post")
         value = json_value({
-            "schema": "lax-execution-scope/v1", "authorityId": actor["authority"],
+            "schema": "lax-execution-scope/v2", "executorId":executor["id"], "authorityId": actor["authority"],
             "agentId": actor["id"], "hostId": d["host"], "workspaceId": system["workspace"],
             "contextId": binding["context_id"], "purpose": purpose,
             "roleRevision": system["role_revision"], "nativeThread": p["nativeThread"],

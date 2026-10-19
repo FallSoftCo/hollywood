@@ -47,16 +47,17 @@ class ContextBinding(Input):
 
 
 class ContextSystemConfiguration(Input):
+    operationId: str | None = Field(default=None,min_length=1,max_length=128)
     hostId: UUID
     workspaceId: str = Field(min_length=1, max_length=256)
     bindings: list[ContextBinding] = Field(min_length=3, max_length=3)
 
 
 class ContextCall(Input):
-    runtimeProtocol: Literal["lax-purpose-runtime/v2"]
+    runtimeProtocol: Literal["lax-purpose-runtime/v3"]
     operationId: str = Field(min_length=1, max_length=128)
     action: Literal["bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "accept", "answer", "announce",
-                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "peer_result", "activity"]
+                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "peer_result", "amend", "activity"]
     nativeThread: str = Field(min_length=1, max_length=128)
     nativeTurn: str = Field(min_length=1, max_length=128)
     value: dict = Field(default_factory=dict)
@@ -477,7 +478,16 @@ async def boundary(request, handler):
             own_receipt = scope and request.method == "GET" and request.path.startswith(
                 f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}/operations/")
             native_read = scope and scope["purpose"] == "writer" and request.method == "GET" and request.path.startswith("/hollywood/v3/")
-            if scope and not (own_context or own_receipt or native_read):
+            writer=scope and scope["purpose"]=="writer"
+            executor_metadata=writer and request.method=="POST" and (
+                request.path.startswith("/hollywood/v3/connector/deliveries/") and
+                request.path.endswith(("/executor","/executor/reserve"))
+                or request.path.startswith("/hollywood/v3/executors/") and request.path.endswith("/native")
+                or request.path=="/hollywood/v3/attention"
+                or request.path.startswith("/hollywood/v3/attention/") and request.path.endswith("/acknowledge"))
+            native_effect=writer and request.method in ("POST","PUT","PATCH","DELETE") and (
+                native_effects.source(request.headers.get(native_effects.HEADER)) or {}).get("schema")=="hollywood-native-source/v3"
+            if scope and not (own_context or own_receipt or native_read or executor_metadata or native_effect):
                 raise Denied("Purpose credential has no general mutation authority")
         return await handler(request)
     except Denied:
@@ -500,7 +510,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("delivery_recover", "delivery_edit_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state"):
+    if method in ("context_configure", "delivery_recover", "delivery_edit_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "placement_state"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -1348,6 +1358,10 @@ async def supervision_ack(request):
     return await invoke(request, "supervision_ack", p.sequence, p.revision)
 
 
+async def context_configuration_read(request):
+    return await invoke(request, "context_configuration", str(UUID(request.match_info["agent"])))
+
+
 async def context_configuration(request):
     p = await body(request, ContextSystemConfiguration)
     return await invoke(request, "context_configure", str(UUID(request.match_info["agent"])),
@@ -1375,6 +1389,7 @@ def application(store):
     app.add_routes(
         [
             web.get("/health", health),
+            web.get("/hollywood/v3/agents/{agent}/context-system", context_configuration_read),
             web.put("/hollywood/v3/agents/{agent}/context-system", context_configuration),
             web.post("/hollywood/v3/agents/{agent}/contexts/{purpose}", context_call),
             web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/operations/{operation}", context_receipt),

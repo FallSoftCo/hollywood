@@ -114,6 +114,14 @@ def create(store, actor_id, identity, payload):
             return receipt(store, c, a, old, d)
         if d["state"] not in ("claimed", "running"):
             raise Conflict("Native turn no longer accepts attention")
+        if c.execute("SELECT 1 FROM hb_context_system WHERE agent=%s AND enabled",(a["id"],)).fetchone():
+            if not c.execute("""SELECT 1 FROM hb_purpose_context b JOIN hb_context_permit p
+                ON p.agent=b.agent AND p.purpose=b.purpose AND p.native_thread=b.native_thread
+                AND p.native_turn=b.active_turn AND p.state='running'
+                WHERE b.agent=%s AND b.purpose='writer' AND b.accepting
+                  AND b.active_turn=%s AND b.native_thread=%s""",
+                (a["id"],payload["nativeTurn"],payload["nativeThread"])).fetchone():
+                raise Conflict("Current admitted purpose writer required for new attention")
         if (d["native_thread"] and d["native_thread"] != payload["nativeThread"]) or (
             d["native_turn"] and d["native_turn"] != payload["nativeTurn"]
         ):

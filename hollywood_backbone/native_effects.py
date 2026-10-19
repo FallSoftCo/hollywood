@@ -73,10 +73,18 @@ def source(raw):
         return value
 
     value = json.loads(raw, object_pairs_hook=unique)
-    if not isinstance(value, dict) or set(value) != FIELDS:
+    if not isinstance(value, dict):
+        raise ValueError("Native source object required")
+    purpose=value.get("schema")=="hollywood-native-source/v3"
+    expected=FIELDS | {"executionScopeId","executorId"} if purpose else FIELDS
+    if set(value)!=expected:
         raise ValueError("Native source fields differ")
-    if value["schema"] not in ("hollywood-native-source/v1", "hollywood-native-source/v2"):
+    if value["schema"] not in ("hollywood-native-source/v1", "hollywood-native-source/v2", "hollywood-native-source/v3"):
         raise ValueError("Native source schema differs")
+    if purpose:
+        value["executorId"]=str(UUID(value["executorId"]))
+        if not re.fullmatch(r"execution-[a-f0-9]{64}",value["executionScopeId"]):
+            raise ValueError("Accepted purpose scope identity required")
     for key in ("authorityId", "agentId", "hostId", "deliveryId", "requestId"):
         value[key] = str(UUID(value[key]))
     if type(value["generation"]) is not int or value["generation"] < 1:
@@ -86,9 +94,9 @@ def source(raw):
             raise ValueError("Native source identity invalid")
     if type(value["roleRevision"]) is not int or value["roleRevision"] < 1:
         raise ValueError("Native role revision invalid")
-    if value["schema"] == "hollywood-native-source/v2" and value["nativeGoalId"] is not None:
+    if value["schema"] in ("hollywood-native-source/v2","hollywood-native-source/v3") and value["nativeGoalId"] is not None:
         raise ValueError("Agent execution cannot assert a synthetic native goal")
-    for key in (("contextId",) if value["schema"] == "hollywood-native-source/v2" else ("contextId", "nativeGoalId")):
+    for key in (("contextId",) if value["schema"] in ("hollywood-native-source/v2","hollywood-native-source/v3") else ("contextId", "nativeGoalId")):
         if not isinstance(value[key], str) or not 1 <= len(value[key]) <= 256:
             raise ValueError("Native binding identity invalid")
     if not re.fullmatch(r"[a-f0-9]{64}", value["argumentsDigest"]):
@@ -209,7 +217,10 @@ def validate(c, actor, value):
     role = c.execute(
         "SELECT revision FROM hb_agent_role WHERE principal=%s", (actor["id"],)
     ).fetchone()
-    if value["schema"] == "hollywood-native-source/v2":
+    if value["schema"] == "hollywood-native-source/v3":
+        from .purpose_effects import validate as validate_purpose
+        matches=validate_purpose(c,actor,value,_request.get())
+    elif value["schema"] == "hollywood-native-source/v2":
         from .agent_context import execution
         binding = execution(c, d["id"], d["generation"])
         matches = bool(binding and binding["native_thread"] == value["nativeThread"]
@@ -235,7 +246,7 @@ def validate(c, actor, value):
              AND x.controller=h.controller AND controller.active AND p.enabled""",
         (d["id"], d["generation"], d["claim_id"]),
     ).fetchone()
-    if not row:
+    if not row or (value["schema"]=="hollywood-native-source/v3" and str(row["id"])!=value["executorId"]):
         raise Conflict("Original executor is not independently live")
 
 

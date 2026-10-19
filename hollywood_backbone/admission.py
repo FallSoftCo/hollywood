@@ -212,7 +212,8 @@ def diagnose(store, c, actor, host, capabilities, record=False):
         """SELECT d.id,d.state,d.native_thread,d.native_turn,x.state AS resource_state
            FROM hb_delivery d LEFT JOIN hb_executor x ON x.delivery=d.id AND x.state<>'stopped'
            WHERE d.agent=%s AND (d.state IN ('claimed','running','unknown','cancel_requested')
-             OR x.id IS NOT NULL)
+             OR (x.id IS NOT NULL AND NOT EXISTS(SELECT 1 FROM hb_context_system s
+                 WHERE s.agent=d.agent AND s.enabled)))
            ORDER BY d.updated_at LIMIT 1""",
         (actor["id"],),
     ).fetchone()
@@ -293,7 +294,8 @@ def diagnose(store, c, actor, host, capabilities, record=False):
                     WHERE m.room=e.room AND m.principal=p.id AND m.can_read AND m.can_post))
                   AND NOT EXISTS(SELECT 1 FROM hb_delivery b WHERE b.agent=d.agent
                     AND b.state IN ('claimed','running','unknown','cancel_requested'))
-                  AND NOT EXISTS(SELECT 1 FROM hb_executor x WHERE x.agent=d.agent AND x.state<>'stopped')
+                  AND (EXISTS(SELECT 1 FROM hb_context_system s WHERE s.agent=d.agent AND s.enabled)
+                    OR NOT EXISTS(SELECT 1 FROM hb_executor x WHERE x.agent=d.agent AND x.state<>'stopped'))
             ) SELECT * FROM heads WHERE position=1""",
             (host, policy["connector_max_age"], Jsonb(sorted(CAPABILITIES))),
         ).fetchall()

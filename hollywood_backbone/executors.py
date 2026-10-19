@@ -66,8 +66,11 @@ def begin(store, actor_id, identity, payload, *, reserved=False):
         old = command(c, actor, operation, fingerprint)
         if old:
             return old
-        if d["state"] != "claimed":
-            raise Conflict("Only an original claimed delivery may capture an executor")
+        purpose=c.execute("SELECT 1 FROM hb_context_system WHERE agent=%s AND enabled",
+                          (actor["id"],)).fetchone()
+        allowed=("claimed","running") if purpose and not reserved else ("claimed",)
+        if d["state"] not in allowed or d["cancellation_requested"]:
+            raise Conflict("Only an original admitted delivery may capture an executor")
         policy = c.execute("SELECT * FROM hb_host_admission WHERE host=%s", (d["host"],)).fetchone()
         if not policy or policy["machine_identity"] != payload["machineIdentity"]:
             raise Conflict("Enrolled executor host changed")
@@ -286,7 +289,14 @@ def observe(store, actor_id, host, identity, payload):
         # Physical stop and unresolved semantic effects remain separate facts.
         if payload["state"] == "stopped":
             current = d["generation"] == row["generation"] and d["claim_id"] == row["claim_id"]
-            if current and d["state"] in ("claimed", "running", "cancel_requested"):
+            settled_purpose=c.execute("""SELECT 1 FROM hb_context_system s
+                JOIN hb_purpose_context b ON b.agent=s.agent AND b.purpose='writer'
+                JOIN hb_context_permit p ON p.agent=s.agent AND p.purpose='writer'
+                    AND p.native_thread=%s AND p.native_turn=%s
+                WHERE s.agent=%s AND s.enabled AND b.active_turn IS NULL
+                    AND p.state='released' AND p.terminal_status IN ('completed','interrupted','failed')""",
+                (d["native_thread"],d["native_turn"],d["agent"])).fetchone()
+            if current and not settled_purpose and d["state"] in ("claimed", "running", "cancel_requested"):
                 c.execute(
                     "UPDATE hb_delivery SET state='unknown',revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",
                     (d["id"],),
@@ -304,6 +314,8 @@ def observe(store, actor_id, host, identity, payload):
                 actor,
                 event["room"],
                 "progress",
+                "The resident executor is stopped after a confirmed terminal inference. Original unfinished work and effect evidence are preserved; nothing was replayed."
+                if settled_purpose else
                 "The original executor is stopped. Unresolved effects remain held; no work was replayed.",
                 audience=event["audience"],
                 recipient=event["author"] if event["audience"] == "direct" else None,

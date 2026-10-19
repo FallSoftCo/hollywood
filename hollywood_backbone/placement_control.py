@@ -25,7 +25,18 @@ def view(row):
 def read(store, actor_id, principal):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
-        return view(enrolled(c, actor, principal))
+        if not actor["administrator"] and str(actor["id"])!=principal:
+            raise Denied("Administrator or placement owner required")
+        target=c.execute("SELECT 1 FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
+                         (principal,actor["authority"])).fetchone()
+        if not target:
+            raise Denied("Agent unavailable")
+        row=c.execute("SELECT * FROM hb_placement WHERE agent=%s",(principal,)).fetchone()
+        if row is None:
+            return {"schema":"hollywood-placement/v1","authorityId":str(actor["authority"]),
+                "agentId":principal,"hostId":None,"placement":None,"state":"not_enrolled",
+                "newExecutionAdmitted":False,"drainVerified":False,"mayApply":False}
+        return view(row)
 
 
 def change(c, actor, principal, payload):
