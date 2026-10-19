@@ -64,7 +64,17 @@ def configure_transaction(store,c,actor,agent,payload):
         c.execute("INSERT INTO hb_token(digest,principal) VALUES(%s,%s)",(b["credentialDigest"],agent))
         c.execute("INSERT INTO hb_purpose_context(agent,purpose,context_id,token_digest) VALUES(%s,%s,%s,%s)",
                   (agent,b["purpose"],b["contextId"],b["credentialDigest"]))
-    return {"agentId":agent,"purposes":sorted(PURPOSES),"configured":True}
+    # Requests accepted before the first process was installed remain canonical.
+    # Ingest their original IDs; never re-post or create replacement deliveries.
+    pending=c.execute("""SELECT d.event FROM hb_delivery d JOIN hb_event e ON e.id=d.event
+        WHERE d.agent=%s AND d.state='pending' ORDER BY e.seq LIMIT 1001""",(agent,)).fetchall()
+    if len(pending)>1000:
+        raise Conflict("Large historical queue requires an explicit migration")
+    for row in pending:
+        store.readable_event(c,target,row["event"])
+        ingest(c,agent,row["event"])
+    return {"agentId":agent,"purposes":sorted(PURPOSES),"configured":True,
+            "existingPendingInputsIngested":len(pending)}
 
 def ingest(c, agent, event):
     if not c.execute("SELECT 1 FROM hb_context_system WHERE agent=%s AND enabled",(agent,)).fetchone():

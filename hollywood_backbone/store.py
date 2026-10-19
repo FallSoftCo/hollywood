@@ -36,6 +36,14 @@ def json_value(value):
 
 
 class Store:
+    def runtime_observe(self,actor_id,host,agent,payload):
+        from .runtime_observation import observe
+        return observe(self,actor_id,host,agent,payload)
+
+    def runtime_observation_read(self,actor_id,host,agent,operation):
+        from .runtime_observation import read
+        return read(self,actor_id,host,agent,operation)
+
     def placement_read(self, actor_id, principal):
         from .placement_control import read
         return read(self, actor_id, principal)

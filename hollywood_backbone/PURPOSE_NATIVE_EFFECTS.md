@@ -27,3 +27,15 @@ Authenticated readback exposes binding IDs and credential digests, never tokens.
 The v3 runtime protocol is a deployment fence: earlier purpose runtimes are
 rejected before they can start work against this changed executor contract.
 Legacy v1/v2 native effect sources retain their separate validation paths.
+
+A protected installation upgrade can be recorded through the existing enrolled
+host controller as native runtime metadata. The immutable host-command receipt
+attributes software versions and available capabilities to that service. It
+preserves the original work and can make an idle, confirmed-terminal writer
+eligible for one continuation. It cannot steer an active writer, clear
+cancellation, grant permissions, create chat messages, or infer prior effects.
+An unchanged original operation returns its receipt without another continuation.
+
+Initial context enrollment also ingests pending addressed requests using their
+existing event and delivery IDs. A request queued before the first agent process
+exists is retained and consumed without another send.

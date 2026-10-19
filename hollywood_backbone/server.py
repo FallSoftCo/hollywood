@@ -164,6 +164,20 @@ class HostAdmissionPolicy(Input):
     connectorMaxAgeSeconds: int = Field(ge=5, le=300)
 
 
+class RuntimeObservation(Input):
+    operationId: str = Field(min_length=1,max_length=128)
+    machineIdentity: str = Field(pattern=r"^[a-f0-9]{64}$")
+    installationDigest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    laxVersion: str = Field(min_length=1,max_length=64)
+    hollywoodVersion: str = Field(min_length=1,max_length=64)
+    runtimeProtocol: Literal["lax-purpose-runtime/v3"]
+    availableCapabilities: list[Literal["native-peer-provisioning/v1",
+        "purpose-human-continuations/v1","reader-work-updates/v1"]] = Field(min_length=1,max_length=3)
+    workId: UUID
+    workRevision: int = Field(ge=1)
+    priorNativeTurn: str = Field(min_length=1,max_length=128)
+
+
 class HostSample(Input):
     operationId: str = Field(min_length=1, max_length=128)
     machineIdentity: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -1358,6 +1372,17 @@ async def supervision_ack(request):
     return await invoke(request, "supervision_ack", p.sequence, p.revision)
 
 
+async def runtime_observe(request):
+    p=await body(request,RuntimeObservation)
+    return await invoke(request,"runtime_observe",str(UUID(request.match_info["host"])),
+        str(UUID(request.match_info["agent"])),p.model_dump(mode="json"))
+
+
+async def runtime_observation_read(request):
+    return await invoke(request,"runtime_observation_read",str(UUID(request.match_info["host"])),
+        str(UUID(request.match_info["agent"])),request.match_info["operation"])
+
+
 async def context_configuration_read(request):
     return await invoke(request, "context_configuration", str(UUID(request.match_info["agent"])))
 
@@ -1389,6 +1414,8 @@ def application(store):
     app.add_routes(
         [
             web.get("/health", health),
+            web.post("/hollywood/v3/hosts/{host}/agents/{agent}/runtime-observations",runtime_observe),
+            web.get("/hollywood/v3/hosts/{host}/agents/{agent}/runtime-observations/{operation}",runtime_observation_read),
             web.get("/hollywood/v3/agents/{agent}/context-system", context_configuration_read),
             web.put("/hollywood/v3/agents/{agent}/context-system", context_configuration),
             web.post("/hollywood/v3/agents/{agent}/contexts/{purpose}", context_call),
