@@ -1,0 +1,45 @@
+{
+  "schema": "hollywood-catalog-native-delivery/v1",
+  "at": 1792452767.6624367,
+  "implementationCommit": "ecce1e2ebb503378e6bca8c8ec27449b476e92d5",
+  "source": "Real native LAX coordinator, engineer and independent reviewer, each with separate reader, writer and responder histories, working through Hollywood human and agent APIs. Maintainer integration preserves the reviewed commit and authorship.",
+  "product": "Viewer-visible feedSummary v1 in the room catalog: conversation and action previews with canonical recency; existing access, counts, order and page limits remain intact.",
+  "mechanicalEvidence": {
+    "engineerIntegration": "Eight contract groups passed. All 38 original behavioral assertions remained after the fixture app-binding repair. Real PostgreSQL and authenticated in-process routes; fixtures rolled back.",
+    "independentReviewer": "The native reviewer ran the targeted integration independently and accepted the Work and Goal through canonical tools.",
+    "heldOutEvaluatorSha256": "346af809a4daea047cc8ef5787255e09213388626e730423b0fe7a82f5269470",
+    "heldOutChecks": "Actual PostgreSQL and HTTP with rollback fixtures: audience privacy, hidden newer events, Unicode and safe projections, sequence versus clock skew, stable recency and bounded round trips. Six SQL calls for both small and larger room sets.",
+    "brokenControlsRejected": [
+      "Empty summaries",
+      "Read time used as recency",
+      "Administrative visibility for everyone",
+      "Constant first room"
+    ]
+  },
+  "workflowEvidence": {
+    "nativeAgents": 3,
+    "nativeHistories": 9,
+    "originalHumanExecutionRequests": 1,
+    "ordinaryHumanStatusQuestions": 1,
+    "originalDelivery": "completed generation1",
+    "goal": "accepted",
+    "work": "accepted afterindependentrejection/rework",
+    "latencySeconds": 1971.92718,
+    "initialObservationSeconds": 1800,
+    "initialWindowSatisfied": false,
+    "observedContextCompactionItems": 0
+  },
+  "retainedFailuresAndInterventions": [
+    "QA connection capacity was exhausted. The maintainer raised its bounded role limit from 12 to 20 without changing service PIDs. This run was assisted.",
+    "Engineering attempt one failed at connection capacity; attempt two failed in the mocked-request app binding. Both attempts are retained.",
+    "The native engineer corrected the fixture under a fresh assignment of the same Work. Behavioral assertions were retained; the maintainer did not edit implementation code.",
+    "A read-only observer query used a nonexistent sort column. It was corrected after the scheduled inputs were already accepted, with no task or message replay.",
+    "The original 30-minute observation window expired. Later completion is recorded with its measured latency."
+  ],
+  "limits": [
+    "One assisted scenario does not establish autonomous enterprise operation or statistical reliability.",
+    "SQL round trips are bounded; performance against large histories and under load is not qualified.",
+    "No phone UI or deployed-service cutover is implied.",
+    "The separate SDK109 full reader hard-crash journey failed despite successful native queue reconstruction. LAX migration remains blocked on native recovery."
+  ]
+}
