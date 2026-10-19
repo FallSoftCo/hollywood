@@ -312,6 +312,9 @@ def acknowledge(store, actor_id, identity, operation, payload):
                 raise Conflict("Acknowledgement contents changed")
             return old["result"]
         state = payload["state"]
+        if payload.get("reason") and (state!="expired" or row["state"]!="pending"
+                or not continuations.nonblocking(row)):
+            raise Conflict("Only an unanswered nonblocking question may be withdrawn with a reason")
         allowed = {
             "pending": {"expired", "unknown"},
             "response_submitted": {"native_submitted", "expired", "unknown"},
@@ -329,7 +332,9 @@ def acknowledge(store, actor_id, identity, operation, payload):
             recipient=row["human"],
             audience="direct",
             source=row["event"],
-            data={"attentionId": identity, "state": state, "nativeConsumptionProved": False},
+            data={"attentionId": identity, "state": state, "nativeConsumptionProved": False,
+                  **({"reason":payload["reason"],"withdrawnByAgent":True}
+                     if state=="expired" and payload.get("reason") else {})},
         )
         c.execute(
             "UPDATE hb_attention SET state=%s,revision=revision+1,updated_at=clock_timestamp() WHERE id=%s",

@@ -1121,9 +1121,11 @@ class Store:
         from .purpose_effects import accepted_scope
         purpose_scope = accepted_scope(c, d)
         from .admission import trace
+        from .native_edit_contract import contract as native_edit_contract
 
         return {
             "admissionTrace": json_value(trace(c, identity)),
+            "nativeEditContract": native_edit_contract(),
             "delivery": json_value(d),
             "request": json_value(e),
             **({"nativeGoalBinding": json_value(binding)} if binding else {}),

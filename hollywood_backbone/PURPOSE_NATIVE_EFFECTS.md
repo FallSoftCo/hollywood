@@ -59,3 +59,17 @@ material before parent completion; only the responder publishes.
 r22 PostgreSQL evidence is rollback-only with frozen native facts. The actual
 private two-agent model continuation remains a separate acceptance gate. Neither
 implies physical-phone, multihost, compaction or complete enterprise readiness.
+
+
+Nonblocking human questions are excluded from the physical-effect control fence;
+their unanswered state still remains a work-completion prerequisite. Execution
+approvals and unresolved native controls retain their existing fence. An agent
+can expire its own unanswered nonblocking question with an attributed reason;
+this is an explicit withdrawal, not a human response.
+
+The shared HTTP action contract admits response_material. Actual HTTP probes
+exercise this boundary as well as legacy/extended attention acknowledgements.
+A rollback-only server using the exact original protected preflight body proved
+the nonblocking-question guard failure and its correction. Frozen native facts
+and metadata-only reservations are clearly distinguished from the subsequent
+actual-model native edit proof.

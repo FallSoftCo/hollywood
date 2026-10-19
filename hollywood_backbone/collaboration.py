@@ -186,7 +186,9 @@ def reviewed(c, claim, command):
 def settled_controls(c, claim):
     for table, terminal in (("hb_attention", "('closed','expired')"),
                             ("hb_native_control", "('native_recorded','rejected')")):
-        if c.execute(f"SELECT 1 FROM {table} WHERE delivery=%s AND state NOT IN {terminal} LIMIT 1",
+        nonblocking = (" AND NOT (method IN ('hollywood/question','item/tool/requestUserInput')"
+                       " AND request->>'isBlocking'='false')") if table=="hb_attention" else ""
+        if c.execute(f"SELECT 1 FROM {table} WHERE delivery=%s AND state NOT IN {terminal}"+nonblocking+" LIMIT 1",
                      (claim["origin_delivery"],)).fetchone():
             raise Conflict("Original effects/controls remain unresolved")
 

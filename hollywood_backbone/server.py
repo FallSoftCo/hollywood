@@ -57,7 +57,7 @@ class ContextCall(Input):
     runtimeProtocol: Literal["lax-purpose-runtime/v3"]
     operationId: str = Field(min_length=1, max_length=128)
     action: Literal["bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "accept", "answer", "announce",
-                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "peer_result", "amend", "activity"]
+                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "peer_result", "amend", "activity", "response_material"]
     nativeThread: str = Field(min_length=1, max_length=128)
     nativeTurn: str = Field(min_length=1, max_length=128)
     value: dict = Field(default_factory=dict)
@@ -331,6 +331,7 @@ class AttentionAcknowledgement(Input):
     generation: int = Field(ge=1)
     scope: AttentionScope
     state: Literal["native_submitted", "closed", "expired", "unknown"]
+    reason: str | None = Field(default=None,min_length=1,max_length=2000)
 
 
 class NativeGoalBinding(Input):
@@ -1143,12 +1144,15 @@ async def attention_response(request):
 
 async def attention_acknowledge(request):
     p = await body(request, AttentionAcknowledgement)
+    payload=p.model_dump(mode="json",exclude={"operationId"})
+    if payload.get("reason") is None:
+        payload.pop("reason")
     return await invoke(
         request,
         "attention_acknowledge",
         str(UUID(request.match_info["attention"])),
         p.operationId,
-        p.model_dump(mode="json", exclude={"operationId"}),
+        payload,
     )
 
 
