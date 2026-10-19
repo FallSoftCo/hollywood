@@ -52,6 +52,16 @@ def observe(store,actor_id,host,agent,payload):
         value={**work["value"],"runtimeUpdates":(work["value"].get("runtimeUpdates",[])+[observation])[-8:],
                "resumeRevision":work["value"].get("resumeRevision",0)+1}
         change(c,work,"pending",value)
+        # Re-observe only already-ready input answers sourced from this same
+        # work. Retain their identities and material; never manufacture a reply.
+        ready=c.execute("""SELECT * FROM hb_context_material WHERE agent=%s AND kind='need'
+            AND state='ready' AND value->>'workStillOpen'='true'
+            AND (value->>'workId'=%s OR value->>'materialWorkId'=%s) FOR UPDATE""",
+            (agent,str(work["id"]),str(work["id"]))).fetchall()
+        for need in ready:
+            material={k:v for k,v in need["value"].items() if k!="workId"}
+            change(c,need,"ready",{**material,"responseKind":"input_answer",
+                "materialWorkId":str(work["id"]),"runtimeObservationId":payload["operationId"]})
         return admission.finish(c,actor,payload["operationId"],fingerprint,{
             "kind":"native-runtime-observation","hostId":host,"agentId":agent,
             "workId":str(work["id"]),"workRevision":work["revision"]+1,

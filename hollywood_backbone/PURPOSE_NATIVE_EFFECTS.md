@@ -73,3 +73,25 @@ A rollback-only server using the exact original protected preflight body proved
 the nonblocking-question guard failure and its correction. Frozen native facts
 and metadata-only reservations are clearly distinguished from the subsequent
 actual-model native edit proof.
+
+
+## Required answers before parent completion
+
+A response need's workId is exclusively a final-result completion prerequisite.
+An input_answer can instead carry materialWorkId/materialWorkRevision as its
+verified writer-material provenance. It resolves that incoming request without
+claiming the parent work is complete. Publishing rechecks the original interpreted
+input, source work and cancellation; the original parent final still requires
+completed work. The responder retains sole publication ownership.
+
+Writer material remains revisable while the original answer is queued. Every
+revision invalidates an older responder read; publication must read the latest
+complete material. Published messages remain immutable. A targeted native
+software observation can normalize already-ready legacy input answers without
+recreating their input, task, audience, material or identity.
+
+Full HTTP qualification covers writer contribution, queued-material refresh,
+stale responder rejection, actual reply publication and original incoming-request
+completion, while the parent claim/generation stays unfinished. Premature parent
+final publication remains denied. Those probes roll back their frozen metadata;
+the actual original two-agent continuation is separately observed.

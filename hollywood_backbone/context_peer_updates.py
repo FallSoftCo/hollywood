@@ -56,12 +56,36 @@ def response_material(c,store,actor,binding,p):
     if not any(u["inputId"]==str(source["id"]) for u in work["value"].get("updates",[])):
         raise Denied("Original work has no such interpreted contribution")
     need=need_for(c,store,actor,source["source"])
-    if need["state"]!="waiting" or need["value"].get("workId")!=str(work["id"]):
-        raise Conflict("Original required response is no longer waiting")
+    linked=need["value"].get("materialWorkId") or need["value"].get("workId")
+    if (need["state"] not in ("waiting","ready") or linked!=str(work["id"])
+            or need["state"]=="ready" and need["value"].get("workStillOpen") is not True):
+        raise Conflict("Original input response is no longer open for writer material")
     body=v["body"]
     if not isinstance(body,str) or not body.strip() or len(body)>4000:
         raise ValueError("Bounded verified response material required")
-    change(c,need,"ready",{**need["value"],"material":body,"prerequisites":[],
+    # workId is a completion prerequisite, not a provenance pointer. An
+    # input answer must not retain the parent-final gate it is resolving.
+    value={k:v for k,v in need["value"].items() if k!="workId"}
+    change(c,need,"ready",{**value,"material":body,"prerequisites":[],
+        "responseKind":"input_answer","materialWorkId":str(work["id"]),
         "workStillOpen":True,"materialWorkRevision":work["revision"]})
     return {"communicationId":str(need["id"]),"state":"ready","workCompleted":False,
         "meaning":"Verified writer material for the responder; original work remains open."}
+
+
+def validate_answer_provenance(c,store,actor,need):
+    """A sourced prerequisite answer is distinct from parent work completion."""
+    value=need["value"]
+    work=item(c,store,actor,value["materialWorkId"],"work")
+    source=item(c,store,actor,str(need["source"]),"input")
+    parent=c.execute("SELECT * FROM hb_delivery WHERE agent=%s AND event=%s",
+        (actor["id"],work["source"])).fetchone()
+    if (value.get("responseKind")!="input_answer" or value.get("workId")
+            or work["source"]==need["source"] or work["state"] in ("cancelled","superseded")
+            or not parent or parent["cancellation_requested"]
+            or source["value"].get("appliedToWorkId")!=str(work["id"])
+            or source["state"]!="handled"):
+        raise Conflict("Original interpreted answer provenance or parent cancellation changed")
+    if not any(u["inputId"]==str(source["id"]) for u in work["value"].get("updates",[])):
+        raise Denied("Response material is not linked to this original work")
+    return work

@@ -325,10 +325,10 @@ def perform(store,c,actor,purpose,binding,p):
                    "evidence":[],"inputId":str(source["id"])}
             c.execute("INSERT INTO hb_context_material(id,agent,kind,source,state,value) VALUES(%s,%s,'work',%s,'pending',%s)",
                       (work_id,actor["id"],source["source"],Jsonb(value)))
-            change(c,need,"waiting",{**need["value"],"workId":work_id,"prerequisites":["result:"+work_id]})
+            change(c,need,"waiting",{**need["value"],"workId":work_id,"responseKind":"work_result","prerequisites":["result:"+work_id]})
             result={"workId":work_id,"communicationId":str(need["id"]),"workState":"pending"}
         else:
-            change(c,need,"ready",{**need["value"],"material":v["body"],"prerequisites":[]})
+            change(c,need,"ready",{**need["value"],"material":v["body"],"responseKind":"input_answer","prerequisites":[]})
             result={"communicationId":str(need["id"]),"state":"ready"}
         change(c,source,"handled",source["value"])
         return result
@@ -383,6 +383,9 @@ def perform(store,c,actor,purpose,binding,p):
     event=store.readable_event(c,actor,need["source"])
     store.room(c,actor,event["room"],"can_post")
     recipient=event["author"] if event["audience"]=="direct" else None
+    if need["value"].get("materialWorkId"):
+        from .context_peer_updates import validate_answer_provenance
+        validate_answer_provenance(c,store,actor,need)
     if need["value"].get("workId"):
         work=item(c,store,actor,need["value"]["workId"],"work")
         if work["state"]!="complete":
