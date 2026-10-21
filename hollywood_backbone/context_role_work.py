@@ -103,3 +103,26 @@ def initiate(c, store, actor, binding, p):
             "deliveryId": delivery_id, "workId": work_id, "communicationId": need_id,
             "roleRevision": role["revision"], "workState": "pending",
             "meaning": "Native bounded role work accepted; original tasks unchanged. No human request or chat self-request created."}
+
+
+def decision_owner(c, event):
+    """Resolve captured role authority, never the human behind source evidence."""
+    from .store import Store
+    material = c.execute("""SELECT value FROM hb_context_material
+        WHERE source=%s AND agent=%s AND kind='work'""",
+        (event["id"], event["recipient"])).fetchone()
+    authority = material["value"].get("roleInitiative", {}) if material else {}
+    role = authority.get("roleSnapshot", {})
+    if (not role or digest(role) != event["data"].get("roleSha256")
+            or role.get("revision") != event["data"].get("roleRevision")
+            or role.get("native_goal_scope") != "role"
+            or role.get("principal") != str(event["recipient"])
+            or not role.get("decision_owner")):
+        raise Conflict("Role work needs an explicitly captured human decision owner; evidence is not approval authority")
+    human = c.execute("""SELECT * FROM hb_principal WHERE id=%s AND authority=%s
+        AND kind='human' AND active""", (role["decision_owner"], event["authority"])).fetchone()
+    if not human:
+        raise Denied("Captured role decision owner is unavailable; no fallback is authorized")
+    Store.room(c, human, event["room"])
+    Store.room(c, human, event["room"], "can_request")
+    return human["id"]

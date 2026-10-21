@@ -244,6 +244,7 @@ class Transition(Input):
 class Role(Input):
     operationId: str | None = Field(default=None, min_length=1, max_length=128)
     nativeGoalScope: Literal["role", "work"] | None = None
+    decisionOwnerId: UUID | None = None
     primary: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9_-]*$")
     purpose: str = Field(min_length=1, max_length=4000)
     homeRoomId: UUID | None = None
@@ -1112,6 +1113,7 @@ async def role(request):
         str(p.homeRoomId) if p.homeRoomId else None,
         p.revision,
         p.nativeGoalScope,
+        str(p.decisionOwnerId) if p.decisionOwnerId else None if "decisionOwnerId" in p.model_fields_set else "preserve",
     )
 
 

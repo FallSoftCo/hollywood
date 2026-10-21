@@ -1,0 +1,64 @@
+{
+  "schema": "lax-role-human-owner-qualification/v1",
+  "at": 1792557825.8106394,
+  "qualifiedCandidate": {
+    "sdk": "0.1.0.dev115",
+    "hollywood": "0.3.0.dev81",
+    "nativeBinary": "f28cb6ba879472fcbd2538cb0644813ec6d73dda56c9232cc6988db28cb4c552"
+  },
+  "changes": [
+    "Canonical Role explicit nullable decision owner with preserve/set/clear and active same-authority human validation; fresh Global uses installation Owner; no inferred migration",
+    "Captured role snapshot/digest governs role-origin Attention routing; source facts never choose human authority; existing human-request routing retained",
+    "Existing native role tool/context carries owner; paired capability required before inference; stable bounded bind operation identity"
+  ],
+  "attempts": [
+    {
+      "name": "r251 SDK114 setup",
+      "result": "failed pre-task/pre-model;139-character binding operation rejected; original histories retained; fixed in SDK115"
+    },
+    {
+      "name": "r252 native",
+      "result": "failed driver caught wrong exception on expected HTTP403; canonical A question correct; original role delivery cancelled, original Attention expired unanswered"
+    },
+    {
+      "name": "r253 same-history distinct release",
+      "result": "frozen score failed wrong request-count assertion; actual output correct; disclosed independent34-check audit passed; not relabeled or counted as clean protocol pass"
+    },
+    {
+      "name": "r255 fresh independent cohort",
+      "result": "bounded-native-role-human-continuation-passed",
+      "seconds": 433.9555022716522,
+      "agentCount": 2,
+      "contexts": 6,
+      "disclosedScriptedHumans": 2,
+      "roleDeliveryId": "a138af8f-895b-56a0-9674-0b5baec836d6",
+      "attentionId": "2e5ad8bd-1d80-5ac2-a8c7-0a8e6147ddc1",
+      "independentAuditPassed": true,
+      "auditChecks": 32
+    }
+  ],
+  "observedOutcome": "Actual peer fact triggered new bounded role work after initial task closure. Private native question selected explicit A rather than B behind evidence. B read/answer and agent-as-human rejected403; one A reply amended original Work. Later native writer inference produced strict correct CLI/bulletin/provenance/audience outputs and public responder final; unchanged6histories and claim/generation. Authenticated user history/action privacy checked.",
+  "verification": {
+    "freshProtocol": "/var/lib/lax-role-decision-owner-20261020-r251/protocol-r255/protocol.json",
+    "freshRun": "/var/lib/lax-role-decision-owner-20261020-r251/role-owner-r255/run",
+    "independentAudit": "/aosp/development/lax-three-context-20261018-r01/qualification/role-decision-independent-audit-r255.json",
+    "sourceInstalled155Modules": true,
+    "wrongOutputBooleanControlRejectedBeforeModels": true,
+    "strictNativeOwnerCLI": {
+      "caseCount": 12,
+      "allPassed": true
+    },
+    "retirement": "/aosp/development/lax-three-context-20261018-r01/qualification/role-decision-retirement-r256.json"
+  },
+  "notProven": [
+    "General spontaneous relevance or semantic role adherence",
+    "Statistical reliability, cost benefit or causal superiority",
+    "Role-origin native Goal/team/cooperative editing end state and reviewed success definition/evidence binding",
+    "Generic crash/compaction/multi-host/phone/enterprise readiness",
+    "OS containment against a privileged host administrator; negative authorization checks exercise actual API actor credentials"
+  ],
+  "productionPromoted": false,
+  "liveSchemaMigrated": false,
+  "phoneChanged": false,
+  "next": "Native role-to-goal-to-peer-work journey with reviewed success definition; reuse existing Goal/Work/Decision, cooperation and artifact primitives. Investigate current exact acceptance binding before adding fields."
+}

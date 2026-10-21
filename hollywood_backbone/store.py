@@ -494,12 +494,13 @@ class Store:
                 (room, authority, "Enterprise coordination and administration", global_agent),
             )
             c.execute(
-                "INSERT INTO hb_agent_role(principal,authority,primary_role,home_room,purpose,native_goal_scope) VALUES(%s,%s,'global',%s,%s,'role')",
+                "INSERT INTO hb_agent_role(principal,authority,primary_role,home_room,purpose,native_goal_scope,decision_owner) VALUES(%s,%s,'global',%s,%s,'role',%s)",
                 (
                     global_agent,
                     authority,
                     room,
                     "Coordinate enterprise work and administer this deployment",
+                    owner,
                 ),
             )
             return {"authorityId": authority, "globalRoomId": room, "created": True}
@@ -1436,6 +1437,7 @@ class Store:
                     "nativeGoalScope": policy["native_goal_scope"],
                     "homeRoomId": policy["home_room"],
                     "rolePurpose": policy["purpose"],
+                    "roleDecisionOwnerId": policy["decision_owner"],
                     "activeRoomId": e["room"],
                     "roomPurpose": room["purpose"],
                     "roomOwnerId": room["owner"],
@@ -1469,11 +1471,11 @@ class Store:
                 }
             )
 
-    def role(self, actor_id, agent, primary, purpose, home_room, revision, native_goal_scope=None, *, command=None):
+    def role(self, actor_id, agent, primary, purpose, home_room, revision, native_goal_scope=None, decision_owner="preserve", *, command=None):
         from .administrative import mutate
-        return mutate(self, actor_id, 'role', [agent, primary, purpose, home_room, revision, native_goal_scope], command)
+        return mutate(self, actor_id, 'role', [agent, primary, purpose, home_room, revision, native_goal_scope, decision_owner], command)
 
-    def _admin_role(self, c, a, agent, primary, purpose, home_room, revision, native_goal_scope=None):
+    def _admin_role(self, c, a, agent, primary, purpose, home_room, revision, native_goal_scope=None, decision_owner="preserve"):
         target = c.execute(
             "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
             (agent, a["authority"]),
@@ -1490,12 +1492,20 @@ class Store:
         )
         if scope not in ("role", "work") or (primary == "global" and scope != "role"):
             raise ValueError("Global requires an ongoing native responsibility")
+        if decision_owner == "preserve":
+            decision_owner = str(old["decision_owner"]) if old and old["decision_owner"] else None
+        if decision_owner is not None:
+            human = c.execute("""SELECT 1 FROM hb_principal WHERE id=%s AND authority=%s
+                AND kind='human' AND active""", (decision_owner, a["authority"])).fetchone()
+            if not human:
+                raise Denied("Decision owner must be an active enrolled human in this authority")
         if old and (
             old["native_goal_scope"],
             old["primary_role"],
             old["purpose"],
             str(old["home_room"]) if old["home_room"] else None,
-        ) == (scope, primary, purpose, home_room):
+            str(old["decision_owner"]) if old["decision_owner"] else None,
+        ) == (scope, primary, purpose, home_room, decision_owner):
             return json_value(old)
         if (old["revision"] if old else 0) != revision:
             raise Conflict("Role revision changed")
@@ -1510,8 +1520,8 @@ class Store:
             raise Conflict("Responsibility change waits for current native inference to settle")
 
         c.execute(
-            "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose,home_room,native_goal_scope) VALUES(%s,%s,%s,%s,%s,%s) ON CONFLICT(principal) DO UPDATE SET primary_role=EXCLUDED.primary_role,purpose=EXCLUDED.purpose,home_room=EXCLUDED.home_room,native_goal_scope=EXCLUDED.native_goal_scope,revision=hb_agent_role.revision+1",
-            (agent, a["authority"], primary, purpose, home_room, scope),
+            "INSERT INTO hb_agent_role(principal,authority,primary_role,purpose,home_room,native_goal_scope,decision_owner) VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(principal) DO UPDATE SET primary_role=EXCLUDED.primary_role,purpose=EXCLUDED.purpose,home_room=EXCLUDED.home_room,native_goal_scope=EXCLUDED.native_goal_scope,decision_owner=EXCLUDED.decision_owner,revision=hb_agent_role.revision+1",
+            (agent, a["authority"], primary, purpose, home_room, scope, decision_owner),
         )
         return json_value(
             c.execute("SELECT * FROM hb_agent_role WHERE principal=%s", (agent,)).fetchone()

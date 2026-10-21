@@ -106,7 +106,7 @@ def read(c, store, actor, purpose, binding, turn, value, *, track=True):
         raise ValueError("Continuation requires the original material revision")
     if reference == "role":
         row = c.execute(
-            "SELECT primary_role,purpose,revision,native_goal_scope,home_room FROM hb_agent_role WHERE principal=%s",
+            "SELECT primary_role,purpose,revision,native_goal_scope,home_room,decision_owner FROM hb_agent_role WHERE principal=%s",
             (actor["id"],)).fetchone()
         revision = row["revision"]
         material = {"agentId": str(actor["id"]), "role": json_value(row)}

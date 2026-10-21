@@ -33,10 +33,8 @@ def human_owner(c, event):
             raise Conflict("Delegation source cycle")
         visited.add(event["id"])
         if event["kind"] == "control" and event["data"].get("type") == "roleWork":
-            # Its source is evidence, not delegated human authority. Until an
-            # explicit role decision owner is enrolled, never select a human
-            # by following the triggering fact's conversation lineage.
-            raise Conflict("Role work needs an explicitly enrolled human decision owner; evidence is not approval authority")
+            from .context_role_work import decision_owner
+            return decision_owner(c, event)
         actor = c.execute(
             "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND active",
             (event["author"], event["authority"]),

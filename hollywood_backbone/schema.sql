@@ -943,3 +943,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS hb_executor_one_active_attempt
  ON hb_executor(delivery,generation) WHERE state<>'stopped';
 
 ALTER TABLE hb_collaboration_bridge ADD COLUMN IF NOT EXISTS features jsonb NOT NULL DEFAULT '[]';
+
+-- Explicit human decision ownership belongs to canonical Role, never a room fact.
+-- Existing installations stay NULL until an authorized role update; no inference.
+ALTER TABLE hb_agent_role ADD COLUMN IF NOT EXISTS decision_owner uuid;
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_constraint WHERE conrelid='hb_agent_role'::regclass
+    AND conname='hb_agent_role_decision_owner_fk') THEN
+  ALTER TABLE hb_agent_role ADD CONSTRAINT hb_agent_role_decision_owner_fk
+   FOREIGN KEY(authority,decision_owner) REFERENCES hb_principal(authority,id);
+ END IF;
+END $$;
+INSERT INTO hb_schema VALUES (34) ON CONFLICT DO NOTHING;
