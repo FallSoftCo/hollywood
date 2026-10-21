@@ -109,9 +109,18 @@ def accept_goal(c,goal):
     contract=current(c,goal)
     if not contract["strategyCurrent"]:
         raise ContractConflict('GOAL_STRATEGY_REQUIRED','Goal strategy belongs to a superseded definition')
+    all_work=c.execute("""SELECT w.id,w.state,d.state AS delivery_state FROM hb_work w
+        LEFT JOIN hb_delivery d ON d.id=w.delivery WHERE w.goal=%s""",(goal["id"],)).fetchall()
+    frontier=set(contract["strategy"]["strategy"]["frontierWorkIds"])
+    if any(str(w["id"]) in frontier and w["state"]!="accepted" for w in all_work):
+        raise ContractConflict("GOAL_FRONTIER_UNACCEPTED","Selected strategy frontier is not accepted; explicitly revise a retired path")
     valid={x["id"] for x in contract["adoptedDefinition"]["definition"]["criteria"]}
     rows=c.execute("""SELECT criterion_ids FROM hb_work
         WHERE goal=%s AND state='accepted' AND goal_definition_revision=%s""",
         (goal["id"],adopted)).fetchall()
     if set(x for row in rows for x in row["criterion_ids"])!=valid:
         raise ContractConflict('GOAL_CRITERIA_UNCOVERED','Current accepted Work does not cover every adopted criterion')
+
+    if any(w["state"] not in ("accepted","cancelled") or w["delivery_state"] in
+           ("pending","claimed","running","unknown","cancel_requested") for w in all_work):
+        raise ContractConflict("GOAL_WORK_UNSETTLED","Goal retains unfinished work or uncertain execution; settle it explicitly before accepting")

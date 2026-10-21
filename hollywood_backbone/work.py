@@ -564,7 +564,7 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                     ).fetchall()
                     for item in rows:
                         store.room(c, a, item["room"])
-                    if not rows or any(w["state"] != "accepted" for w in rows):
+                    if not rows or (not goal["contract_required"] and any(w["state"] != "accepted" for w in rows)):
                         raise Conflict("Goal has unaccepted work")
                     if not payload["note"].strip():
                         raise Conflict("Goal acceptance requires explicit review")

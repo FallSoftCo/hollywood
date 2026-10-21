@@ -20,10 +20,11 @@ async def main():
     store=Store(json.loads(Path(os.environ["CONTRACT_DATABASE"]).read_text()));store.migrate()
     store.bootstrap(ids["authority"],"Finite Goal contract QA",{"globalRoomId":ids["room"],"credentials":credentials})
     checks=[];trace=[];runner=web.AppRunner(application(store));await runner.setup()
-    site=web.TCPSite(runner,"127.0.0.1",18784);await site.start()
+    port=int(os.environ.get("CONTRACT_PORT","18784"))
+    site=web.TCPSite(runner,"127.0.0.1",port);await site.start()
     async with ClientSession() as client:
       async def call(method,path,body=None,who="Owner",status=200):
-        async with client.request(method,"http://127.0.0.1:18784/hollywood/v3/"+path,json=body,
+        async with client.request(method,"http://127.0.0.1:"+str(port)+"/hollywood/v3/"+path,json=body,
             headers={"Authorization":"Bearer "+tokens[who]}) as response:
           data=await response.json();trace.append({"method":method,"path":path,"who":who,"status":response.status,"response":data})
           save("trace.json",trace);assert response.status==status,(method,path,response.status,data)
@@ -76,6 +77,7 @@ async def main():
         with store.pool.connection() as c:
           c.execute("UPDATE hb_delivery SET state='completed',native_thread='structural-fixture-not-model',native_turn='structural-fixture-not-model' WHERE id=%s",(assigned["deliveryId"],))
           c.execute("UPDATE hb_work SET state='submitted' WHERE id=%s",(ids["work"],))
+        retired=str(uuid4());await create_work(retired,["result"])
         changed={**definition,"criteria":[{"id":"privacy","requirement":"New privacy criterion","method":"review","verification":"Inspect aggregate-only result"}]}
         g=await goal();epoch=g["control_revision"]
         proposed=await contract("definition",{"definitionRevision":2,"definition":changed})
@@ -105,6 +107,12 @@ async def main():
           c.execute("UPDATE hb_work SET state='submitted' WHERE id=%s",(fresh,))
         w=(await call("GET","work/"+fresh))["work"]
         await call("POST","work/"+fresh+"/review",{"operationId":"review-current-revision","revision":w["revision"],"decision":"accepted","note":"Synthetic-state review guard only; not a real product review"})
+        g=await goal()
+        unsettled=await call("POST","goals/"+ids["goal"]+"/state",{"operationId":"reject-unsettled-retired-path","revision":g["revision"],"state":"accepted","note":"Current criteria covered, but old planned path is not settled"},status=409)
+        assert unsettled["code"]=="GOAL_WORK_UNSETTLED"
+        retired_work=(await call("GET","work/"+retired))["work"]
+        await call("POST","work/"+retired+"/cancel",{"operationId":"cancel-retired-path","revision":retired_work["revision"],"note":"Retire obsolete unstarted path after definition revision; no execution occurred"})
+        checks.append("explicitly cancelled superseded path is preserved without blocking verified current completion")
         g=await goal()
         await call("POST","goals/"+ids["goal"]+"/state",{"operationId":"accept-covered-current-goal","revision":g["revision"],"state":"accepted","note":"Current-version structural fixture coverage"})
         checks.append("current typed bindings and complete criterion coverage permit acceptance")
