@@ -22,6 +22,8 @@ def current(store, c, actor, source, request, binding=None):
         need(not attempt and not linked, 'work_changed', 'Canonical Work cannot be hidden by an ordinary request')
         return None
     work, goal = claims.work_scope(store, c, actor, data['workId'])
+    from .goal_contract import bind_work
+    bind_work(c,goal,work)
     policy = cooperation(c, goal['id'])
     need(request['kind'] == 'request' and str(request['recipient']) == str(actor['id'])
          and str(work['delivery']) == source['deliveryId'] and str(work['request_event']) == source['requestId']
@@ -69,6 +71,7 @@ def current(store, c, actor, source, request, binding=None):
     return json_value({'schema': CAPABILITY, 'workId': work['id'], 'workRevision': work['revision'],
         'goalId': goal['id'], 'goalRevision': goal['revision'],
         'goalControlRevision': goal['control_revision'],
+        **({'goalDefinitionRevision':work['goal_definition_revision'],'goalPlanRevision':work['goal_plan_revision']} if goal['contract_required'] else {}),
         'decisionSequence': current_sequence(c, str(work['room']), str(goal['id'])),
         'cooperationRevision': policy['revision'] if policy else None,
         'placementRevision': placement['revision'],

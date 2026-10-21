@@ -955,3 +955,35 @@ DO $$ BEGIN
  END IF;
 END $$;
 INSERT INTO hb_schema VALUES (34) ON CONFLICT DO NOTHING;
+
+
+-- Explicit native Goal definition/strategy; legacy Goals retain their semantics.
+ALTER TABLE hb_goal ADD COLUMN IF NOT EXISTS contract_required boolean NOT NULL DEFAULT false;
+ALTER TABLE hb_goal ADD COLUMN IF NOT EXISTS definition_revision bigint NOT NULL DEFAULT 0;
+ALTER TABLE hb_goal ADD COLUMN IF NOT EXISTS adopted_definition_revision bigint NOT NULL DEFAULT 0;
+ALTER TABLE hb_goal ADD COLUMN IF NOT EXISTS plan_revision bigint NOT NULL DEFAULT 0;
+ALTER TABLE hb_work ADD COLUMN IF NOT EXISTS goal_definition_revision bigint NOT NULL DEFAULT 0;
+ALTER TABLE hb_work ADD COLUMN IF NOT EXISTS goal_plan_revision bigint NOT NULL DEFAULT 0;
+ALTER TABLE hb_work ADD COLUMN IF NOT EXISTS criterion_ids jsonb NOT NULL DEFAULT '[]';
+CREATE TABLE IF NOT EXISTS hb_goal_definition(
+ goal uuid NOT NULL REFERENCES hb_goal(id), revision bigint NOT NULL CHECK(revision>0),
+ definition jsonb NOT NULL, digest text NOT NULL CHECK(length(digest)=64),
+ actor uuid NOT NULL REFERENCES hb_principal(id), source uuid NOT NULL REFERENCES hb_event(id),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(goal,revision));
+CREATE TABLE IF NOT EXISTS hb_goal_strategy(
+ goal uuid NOT NULL REFERENCES hb_goal(id), revision bigint NOT NULL CHECK(revision>0),
+ definition_revision bigint NOT NULL, strategy jsonb NOT NULL, digest text NOT NULL CHECK(length(digest)=64),
+ actor uuid NOT NULL REFERENCES hb_principal(id), source uuid NOT NULL REFERENCES hb_event(id),
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(goal,revision),
+ FOREIGN KEY(goal,definition_revision) REFERENCES hb_goal_definition(goal,revision));
+CREATE OR REPLACE FUNCTION hb_goal_control_epoch() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+ IF (NEW.state,NEW.owner,NEW.source,NEW.objective,NEW.acceptance,NEW.adopted_definition_revision)
+    IS DISTINCT FROM (OLD.state,OLD.owner,OLD.source,OLD.objective,OLD.acceptance,OLD.adopted_definition_revision) THEN
+  NEW.control_revision := OLD.control_revision + 1;
+ ELSE
+  NEW.control_revision := OLD.control_revision;
+ END IF;
+ RETURN NEW;
+END $$;
+INSERT INTO hb_schema VALUES (35) ON CONFLICT DO NOTHING;

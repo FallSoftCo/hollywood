@@ -24,6 +24,7 @@ from .report_scope_models import ReportScopeRead, ReportScopeProof
 from .report_scope import ScopeError
 from .artifact_roots import ArtifactRoot
 from .activity_models import Activity, normalize as normalize_activity
+from .goal_contract import ContractConflict
 
 
 class Input(BaseModel):
@@ -365,8 +366,12 @@ class CommunicationGrant(Input):
     allowRequests: bool = False
 
 
+from .goal_contract_models import DefinitionWrite, DefinitionAdopt, StrategyWrite
+
+
 class GoalCreate(Input):
     publishScopedIntent: bool = Field(default=False, strict=True)
+    requireDefinition: bool = Field(default=False, strict=True)
     operationId: str = Field(min_length=1, max_length=128)
     id: UUID
     sourceEventId: UUID
@@ -385,6 +390,7 @@ class WorkCreate(Input):
     specification: str = Field(min_length=1, max_length=6000)
     acceptance: str = Field(min_length=1, max_length=4000)
     dependencies: list[UUID] = Field(max_length=16)
+    criterionIds: list[str] = Field(default_factory=list,max_length=32)
 
 
 class WorkflowRevision(Input):
@@ -442,6 +448,7 @@ class WorkRecover(WorkflowRevision):
 
 
 class WorkRevise(WorkflowRevision):
+    criterionIds: list[str] = Field(default_factory=list,max_length=32)
     ownerId: UUID
     specification: str = Field(min_length=1, max_length=6000)
     acceptance: str = Field(min_length=1, max_length=4000)
@@ -512,6 +519,8 @@ async def boundary(request, handler):
         return web.json_response({"error": "Request body exceeds limit; nothing admitted"}, status=413)
     except Denied:
         return web.json_response({"error": "Access denied"}, status=403)
+    except ContractConflict as error:
+        return web.json_response({"error": str(error), "code": error.code}, status=409)
     except (Conflict, pg_errors.UniqueViolation):
         return web.json_response({"error": "Identity, revision or operation conflict"}, status=409)
     except (ValidationError, ValueError, TypeError, KeyError):
@@ -1276,6 +1285,8 @@ async def goal_create(request):
     # the additive opt-in, including explicit false.
     if not payload["publishScopedIntent"]:
         payload.pop("publishScopedIntent")
+    if not payload["requireDefinition"]:
+        payload.pop("requireDefinition")
     return await invoke(
         request,
         "workflow",
@@ -1284,6 +1295,13 @@ async def goal_create(request):
         p.operationId,
         payload,
     )
+
+
+async def goal_contract(request):
+    models={"definition":(DefinitionWrite,"goal.definition"),"adopt":(DefinitionAdopt,"goal.definition_adopt"),"strategy":(StrategyWrite,"goal.strategy")}
+    model,action=models[request.match_info["contract"]]
+    p=await body(request,model)
+    return await invoke(request,"workflow",action,str(UUID(request.match_info["goal"])),p.operationId,p.model_dump(mode="json",exclude={"operationId"}))
 
 
 async def work_create(request):
@@ -1488,6 +1506,7 @@ def application(store):
             web.get("/hollywood/v3/goals/{goal}/work", work_list),
             web.get("/hollywood/v3/rooms/{room}/work", work_list),
             web.post("/hollywood/v3/goals/{goal}/state", goal_state),
+            web.post("/hollywood/v3/goals/{goal}/contract/{contract:definition|adopt|strategy}",goal_contract),
             web.get("/hollywood/v3/work/{work}", work_read),
             web.get("/hollywood/v3/work/{work}/attempts", work_attempts),
             web.get("/hollywood/v3/rooms/{room}/decisions", decisions),

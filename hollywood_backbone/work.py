@@ -42,6 +42,7 @@ def work_row(store, c, actor, identity):
 
 
 def snapshot(store, c, actor, goal):
+    from .goal_contract import current as contract_snapshot
     # The plan is the goal's revisioned set of work records and immutable edges.
     # Unreadable work is never included; neither visibility nor membership admits it.
     rows = c.execute(
@@ -69,6 +70,7 @@ def snapshot(store, c, actor, goal):
             "plan": works,
             "planTruncated": len(rows) > 100,
             "cooperation": view(c, goal["id"], actor["id"]),
+            "contract": contract_snapshot(c,goal),
         }
     )
 
@@ -172,6 +174,10 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
         from .report_reconciliation import reconcile
 
         return reconcile(store, actor_id, identity, operation, payload, wire=wire)
+    if payload.get("criterionIds")==[]:
+        payload={k:v for k,v in payload.items() if k!="criterionIds"}
+    from . import goal_contract
+    contract_result = None
     fingerprint = digest({"workflow": action, "identity": identity, **payload})
     with store.pool.connection() as c:
         a = store.actor(c, actor_id)
@@ -224,6 +230,8 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                     payload["reviewBudget"],
                 ),
             )
+            if payload.get("requireDefinition"):
+                c.execute("UPDATE hb_goal SET contract_required=true WHERE id=%s",(gid,))
             goal = goal_row(store, c, a, gid, True)
             target_room, work = identity, None
         else:
@@ -261,7 +269,9 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                 and goal["state"] != "active"
             ):
                 raise Conflict("Goal is not active")
-            if action == "goal.cooperation":
+            if action in ("goal.definition","goal.definition_adopt","goal.strategy"):
+                contract_result=goal_contract.mutate(store,c,a,goal,action,payload)
+            elif action == "goal.cooperation":
                 cooperation.configure(store, c, a, goal, payload)
             elif action == "goal.work":
                 store.room(c, a, payload["roomId"], "can_request")
@@ -303,6 +313,8 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                         (a["authority"], goal["id"], wid, dep),
                     )
                 work = work_row(store, c, a, wid)
+                goal_contract.bind_work(c,goal,work,payload.get("criterionIds",[]))
+                work = work_row(store,c,a,wid)
                 target_room = payload["roomId"]
             elif action in ("work.assign", "work.claim"):
                 if action == "work.claim":
@@ -324,6 +336,8 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                         raise Conflict("Peer already has unsettled work")
                 elif work["owner"] is None:
                     raise Conflict("Open work must be claimed by an eligible executor")
+                goal_contract.bind_work(c,goal,work,assign=True)
+                work=work_row(store,c,a,identity)
                 if work["state"] != "planned" or work["delivery"]:
                     raise Conflict("Work already admitted or no longer planned")
                 if c.execute(
@@ -342,6 +356,14 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                     work["owner"] = a["id"]
                 cooperation.executor(store, c, goal, str(work["owner"]), work["room"])
                 policy = cooperation.row(c, goal["id"])
+                definition_binding={}
+                if goal["contract_required"]:
+                    definition=c.execute("SELECT definition,digest FROM hb_goal_definition WHERE goal=%s AND revision=%s",
+                                         (goal["id"],work["goal_definition_revision"])).fetchone()
+                    definition_binding={
+                        "goalDefinitionSha256":definition["digest"],
+                        "goalCriteria":[criterion for criterion in definition["definition"]["criteria"]
+                                        if criterion["id"] in work["criterion_ids"]]}
                 delivery = uid()
                 request = store.event(
                     c,
@@ -357,6 +379,10 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                         "acceptance": work["acceptance"],
                         "workRevision": work["revision"] + 1,
                         "workCompletionPolicy": "report-required/v1",
+                        "goalDefinitionRevision": work["goal_definition_revision"],
+                        "goalPlanRevision":work["goal_plan_revision"],
+                        "criterionIds":work["criterion_ids"],
+                        **definition_binding,
                         "cooperationRevision": policy["revision"] if policy else None,
                     },
                 )
@@ -412,6 +438,7 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                         identity,
                     ),
                 )
+                goal_contract.bind_work(c,goal,work,payload.get("criterionIds",[]))
             elif action == "work.report":
                 if a["id"] != work["owner"] or not work["delivery"]:
                     raise Denied("Assigned worker required")
@@ -465,6 +492,7 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
 
                 latest = current_sequence(c, work["room"], work["goal"])
                 if payload["decision"] == "accepted":
+                    goal_contract.bind_work(c,goal,work)
                     attempt = c.execute(
                         """SELECT a.briefing_sequence,r.event AS reconciliation_event,
                                   r.evidence AS reconciliation
@@ -473,14 +501,16 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                            WHERE a.delivery=%s""",
                         (work["delivery"],),
                     ).fetchone()
-                    if attempt and attempt["reconciliation_event"] == work["report_event"]:
+                    if (attempt and attempt["reconciliation_event"] is not None
+                        and attempt["reconciliation_event"] == work["report_event"]):
                         from .report_scope import verify_review
                         verify_review(store, c, a, work, goal, attempt["reconciliation"])
                     # A later report's decision read belongs to its additive audit,
                     # never to the original attempt's historical briefing field.
                     report_sequence = (
                         attempt["reconciliation"].get("briefingSequence")
-                        if attempt and attempt["reconciliation_event"] == work["report_event"]
+                        if (attempt and attempt["reconciliation_event"] is not None
+                            and attempt["reconciliation_event"] == work["report_event"])
                         else attempt["briefing_sequence"] if attempt else None
                     )
                     if latest and (
@@ -528,6 +558,7 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                 if goal["state"] == "cancel_requested" and state != "cancelled":
                     raise Conflict("Cancellation must reconcile before resume or new work")
                 if state == "accepted":
+                    goal_contract.accept_goal(c,goal)
                     rows = c.execute(
                         "SELECT state,room FROM hb_work WHERE goal=%s", (goal["id"],)
                     ).fetchall()
@@ -587,6 +618,8 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                 "deliveryId": work["delivery"] if work else None,
             }
         )
+        if contract_result is not None:
+            receipt["contract"]=contract_result
         if action == "goal.cooperation":
             receipt["cooperation"] = cooperation.view(c, goal["id"], a["id"])
         if action == "work.recover":

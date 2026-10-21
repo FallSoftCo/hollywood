@@ -153,6 +153,9 @@ def work_scope(store, c, actor, identity, cleanup=False):
     request = store.readable_event(c, actor, work["request_event"]) if work["request_event"] else None
     if policy and (not request or request["data"].get("cooperationRevision") != policy["revision"]):
         raise Conflict("Captured cooperation changed")
+    if not cleanup:
+        from .goal_contract import bind_work
+        bind_work(c,goal,work)
     if not cleanup and (goal["state"] != "active" or work["state"] != "assigned"):
         raise Conflict("Goal/work does not admit editing")
     return work, goal
