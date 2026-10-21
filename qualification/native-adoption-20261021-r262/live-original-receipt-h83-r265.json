@@ -1,0 +1,48 @@
+{
+  "schema": "lax-native-original-receipt-runtime-compatibility/v1",
+  "at": 1792566358.7663414,
+  "runtimeVersion": "0.3.0.dev83",
+  "phase": "h83",
+  "passed": true,
+  "recovery": {
+    "eventId": "f09337e9-1804-4e65-ab80-af0afca46f27",
+    "deliveryId": "e2f9a159-864a-41e4-b943-5eabb7966911",
+    "state": "pending",
+    "authorId": "301c8b83-8cdb-5b9a-9d7f-3b2fa6f0b3f6",
+    "recipientId": "2d4a0daa-0514-475e-be1e-71decacbd5bc",
+    "catalogActivity": {
+      "claimed": 0,
+      "pending": 1,
+      "running": 0,
+      "unknown": 0,
+      "version": 1,
+      "observedAt": 1792566358141,
+      "cancelRequested": 0,
+      "waitingForHuman": 0
+    },
+    "posts": 0
+  },
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/principals/301c8b83-8cdb-5b9a-9d7f-3b2fa6f0b3f6"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/commands/copy-native-human-receipt-r264"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms"
+    }
+  ],
+  "postCount": 0,
+  "modelsStarted": 0,
+  "listenersRetired": true,
+  "liveServicesChanged": false,
+  "scope": "Actual deployed client adapter GET recovery of original r264 accepted fixture through freshly installed candidate/fallback API. No new submit, native execution, physical phone or production migration claim."
+}

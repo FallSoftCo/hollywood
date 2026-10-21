@@ -1,3 +1,24 @@
+Current candidate: **SDK116/H83**. H82 was never promoted. The r262
+concurrency interpretation was wrong: the claimant waited on the existing
+authority fence, not the added agent lock. Those redundant source changes
+are removed. The original result/design remain below and in their files;
+see native-adoption-validation-correction-r265.json. The actual runtime
+change relative to H81 is the explicit legacy execution/resource-drain and
+tainted-pending-input enrollment guard.
+
+The corrected fresh copied-state trial passes21 checks, including the exact
+existing advisory authority-lock identity. Both the fresh H83 candidate and
+fresh H81 fallback recover the original r264 receipt with zero new POSTs.
+They have155 exact runtime-module hashes. Full native model proof remains
+version-scoped SDK116/H81; no new full H83 model run is claimed.
+
+The current reviewable rollout is existing-realm-rollout-r265.json.
+It preserves the actual phone human/realm/Global IDs, identifies enabled
+old supervisors, missing live native collaboration setup and old source
+routes, and lists required installed-UID checks before Global activation.
+Production schema21 and service PIDs remain unchanged; live health200.
+No phone/default/pairing/service/model cutover has occurred.
+
 # Existing-realm migration qualification
 
 These receipts separate native model behavior from deployment substrate.

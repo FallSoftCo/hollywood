@@ -1,0 +1,45 @@
+{
+  "schema": "lax-native-adoption-final-scope-review/v1",
+  "at": 1792566607.6501908,
+  "legacyClaimImplementationUnchangedFromH81": true,
+  "newRuntimeGuardOnly": "Unsettled deliveries, nonstopped executors, previously admitted/cancelled pending input refuse enrollment; no extra authority/claim lock or model-visible behavior change.",
+  "correctedFrozenTestSha256": "ba2ecd6b84838bbe7731ee2503a0a3756f88356a0981392f1d716d6f83bbde24",
+  "liveSchema": 21,
+  "liveHealthStatus": 200,
+  "protectedUnitPidsUnchanged": {
+    "hollywood-backbone.service": {
+      "MainPID": "1342390",
+      "ActiveState": "active"
+    },
+    "lax-host-e488f19b0f60.service": {
+      "MainPID": "1342392",
+      "ActiveState": "active"
+    },
+    "lax-global-e488f19b0f60.service": {
+      "MainPID": "1342394",
+      "ActiveState": "active"
+    },
+    "nextcomp-native-core.service": {
+      "MainPID": "2583312",
+      "ActiveState": "active"
+    }
+  },
+  "liveRealmDeliveryStates": [
+    {
+      "state": "failed",
+      "n": 13
+    },
+    {
+      "state": "completed",
+      "n": 125
+    },
+    {
+      "state": "cancelled",
+      "n": 3
+    }
+  ],
+  "productionMutations": 0,
+  "modelsStartedDuringAdoptionQualification": 0,
+  "fullModelRunOnH83Claimed": false,
+  "nextGate": "Exact old-worker stop intent, live native collaboration/resource setup, staged route reconciliation, installed UID/provider readiness before controlled Global-only activation."
+}

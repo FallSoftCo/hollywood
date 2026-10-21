@@ -86,10 +86,12 @@ administrator explicitly reselects through the normal CAS API.
 
 ### Existing single-context agent enrollment
 
-New purpose enrollment is an explicit drained protocol transition under the same
-agent lock as legacy claims and execution-context binding. Legacy claim checks
-its layout after acquiring that lock. An old worker that was waiting during the
-transition cannot claim new work after the enrollment commits.
+New purpose enrollment is an explicit drained protocol transition. The existing
+native authority fence serializes administrative enrollment against legacy
+claims before either takes domain locks. A waiting legacy claimant rechecks
+the layout only after enrollment commits. This safety comes from the existing
+fence, not an additional agent lock; the first r262 concurrency-test
+interpretation was incorrect and is retained with its correction.
 
 Enrollment refuses claimed, running, cancellation-requested or unknown original
 deliveries, and any registered executor without verified stopped state. A

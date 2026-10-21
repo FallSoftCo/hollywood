@@ -2,19 +2,36 @@
   "schema": "hollywood-native-adoption-evidence/v1",
   "at": 1792565218.8229787,
   "files": {
+    "build_native_adoption_r265.py": "4f242e1c68647c206badd08fc0ebcefadb0edd5b5fd50b1d738a2c3e43930e87",
     "native-adoption-pg-r262.json": "d6fa6ef02251bda8c3133c68504c9b400748a4efe992285c4187de69cc5ea65f",
+    "native-adoption-pg-r265.json": "9b51fd966ab0ae7ad6f7d9dc5860a70295ca104494e01ad77ae23faf993b1135",
     "native-adoption-design-r262.json": "aa9b828dcfaa08b3f7849aa9173191b56f2cc9afc4c60a9c9d3a54da174e32d2",
+    "native-adoption-final-review-r265.json": "487872b7fb2c79e28b248639961101db17979099f3abeaf2549f2da6069105a0",
+    "native-adoption-validation-correction-r265.json": "b0bad615f384dc3a16a8249669dbf0f46de8f985803c135c67a722839e75bdc9",
+    "live-original-receipt-h81-fallback-r265.json": "7d76926caedaf96a232cd5e50d3efe948fb34844d9c1deed081579377ef30756",
+    "native-adoption-fallback-r264.json": "c1454bacfc96bda078f0c838cb639c17681bf62f9f8513815e3bcb34dfc8b7e1",
+    "build_native_fallback_r264.py": "516c78b9778c1daa429f1add9782a208530246a6fe35c7c06749f3268b0a907f",
     "verify_live_gateway_write_recovery_r264.py": "a042d83a06374e678ecf39749445054e7bfff480c66d9963f3f1afbc5c7fd890",
+    "existing-realm-rollout-r265.json": "412e16cc923fe594353f7d8891c7d158fec6b9aa505678c036a8c3281a5b4e73",
     "live-existing-realm-readiness-r263.json": "365990fc04041e51b8fa608503caea793b1b2575dff1005295e9c75a1dbdd3c1",
     "live-global-metadata-rehearsal-r261.json": "4e5f4192425f9432847d463bd3de3f12379c658b27330c512dfe3d29a93e6d7f",
+    "native-adoption-runtime-r265.json": "0545a713f48536a76a3e45cfea201d341e14cb24f5c4fcf5d2d5d72abd543caa",
+    "restore_adoption_copy_r265.py": "1391995936dfe4b59df4d45522e369c30fe8dc2ca936ab8c987469361f57ef7e",
     "live-migration-rehearsal-result-r260.json": "6750263ccd78fb8373fb5ef11a27aab01faae0db059a5d4521965de8c77196b3",
     "live-gateway-write-recovery-r264.json": "50cf9a67a624ab53ab46fde506735bf2871863bc04dbd11d8f5dcab0b45d2e15",
     "native-adoption-runtime-r263.json": "3ca2e195f6ccdb5125a0087bb2873ba6456a5c483327235adb2d8145a4c2297b",
     "live-gateway-read-compatibility-r261.json": "9e77a3114dd500194b1624874c520b73ba805b294a0654aa65df02dc0c28f4be",
-    "README.md": "ee5d3f416af9f7c8b5bb8f022a67f65d05ca49d6a66b09ae4e9b25f7345fdf69"
+    "native-adoption-design-r265.json": "d3c50fd5f10ee912559857bd1b28b172983e3867afe10b0a4ed6a36e5a8de2eb",
+    "live-original-receipt-h83-r265.json": "3492b4b9b5ba69a024977cd63d6235a0d58366017bef281ad6c1632694ba5fd1",
+    "live-repository-routes-r264.json": "0ec504d9af21dbe5cf2d5e6f57dbdb2c466a88b73fdc25473ab8832c859b9d80",
+    "README.md": "f9e5e0c1adfa9c340f92b8b71558b13a971cdb8437a0bf984ce02da673e8856b",
+    "verify_original_receipt_runtime_r265.py": "89f1d76ccc50fb533da7f7629537ce5d169828f2e5afa5a67031e9553e096e16"
   },
   "testSourceSha256": "9b738e0aac232fd59a843a77dcdcac022fbd8139ce8cfe2cb679997f0e792ec0",
   "sourceOnly": true,
   "liveChanges": false,
-  "updatedAt": 1792565589.694426
+  "updatedAt": 1792567012.1131485,
+  "currentCandidate": "SDK116/H83",
+  "currentTestSourceSha256": "ba2ecd6b84838bbe7731ee2503a0a3756f88356a0981392f1d716d6f83bbde24",
+  "originalR262TestHashPreserved": true
 }

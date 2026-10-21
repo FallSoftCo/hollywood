@@ -1,0 +1,132 @@
+{
+  "schema": "lax-existing-realm-rollout/v2",
+  "at": 1792566534.433591,
+  "status": "reviewable-staged; not executed",
+  "productionReplacementReady": false,
+  "identity": {
+    "authorityId": "e488f19b-0f60-46ca-bd48-4fe544f06757",
+    "agentId": "2d4a0daa-0514-475e-be1e-71decacbd5bc",
+    "ownerHumanId": "301c8b83-8cdb-5b9a-9d7f-3b2fa6f0b3f6",
+    "globalRoomId": "3dd596b7-7a73-4828-969b-335c130551dc",
+    "hostId": "ec32d149-b563-589f-87c9-d5f468df1e79",
+    "endpoint": "http://127.0.0.1:18776"
+  },
+  "candidate": {
+    "sdk": "0.1.0.dev116",
+    "hollywood": "0.3.0.dev83",
+    "runtime": "/opt/harness/native-existing-realm-20261021-r265/venv",
+    "compatibleFallback": "/opt/harness/native-existing-realm-20261021-r263/fallback-h81",
+    "nativeBinary": "/opt/lax-native-pilot-20261020-r172/native/bin/codex-app-server",
+    "nativeSha256": "f28cb6ba879472fcbd2538cb0644813ec6d73dda56c9232cc6988db28cb4c552"
+  },
+  "qualified": [
+    "Real two-agent/six-context SDK116/H81 role->human decision->new room->native peer Work->artifact review->Goal completion; bounded explicit workflow, not generalized behavior.",
+    "Copied actual schema21->34 preserves51tables/137352original rows/owners/ACL; repeat data-idempotent.",
+    "Actual deployed NextComp adapter preserves human identity,12rooms and sampled original histories on upgraded copy.",
+    "Installed H82 copied API accepts exactly one disclosed human fixture; lost accepted reply recovered after API recreation via original GET receipt, no repeat POST, one pending reader input.",
+    "Existing host/controller machine identity and existing Global GitHub/sudo verified. Fresh native UID access not yet qualified.",
+    "H83 fresh copied-state21checks: original unresolved work/resource guards, clean original inputs/history, actual existing authority fence identified by pg_locks key. No new claim-lock change.",
+    "Installed H83 candidate and compatible H81 fallback both read original r264 unknown-client-outcome receipt through real deployed adapter with0newPOSTs. No model execution/fallback-active-turn recovery claim."
+  ],
+  "phases": [
+    {
+      "id": "R0",
+      "state": "passed",
+      "action": "Retain source-qualified native evidence, copied-state rehearsal and identified current/candidate/fallback artifacts. No live state restoration or phone pairing."
+    },
+    {
+      "id": "R1",
+      "state": "staged-partial",
+      "action": "Reconcile existing Global adoption intent using original agent/admin credential and explicit current paired-human decision owner. Use existing host enrollment, preserve old native thread as history, initialize3new independent purpose histories. Do not call fresh first_global bootstrap to replace this realm.",
+      "blockingItems": [
+        "Exact drained worker desired-state plan: legacy Global/host observer and11legacy worker supervisors are currently enabled/active; idle wrappers do not prove durable deliberate stop. Do not blanket start or resume them.",
+        "Install and verify existing native collaboration capture/channel and physical roots for actual host/authority; current live controller lacks nativeCollaborationCaptureConfig.",
+        "Reconcile actual environment repository routes; staged candidate changes only2platform source paths, retaining provider/SSH/build/NextComp source ownership."
+      ],
+      "toolProfilePrepared": {
+        "file": "/var/lib/lax-live-promotion-preview-20261021-r260/native-tools.candidate-r265.json",
+        "sha256": "bca58c0e1677a0bee257c747e518eca62a7c7d60ca3d162e4a937cf1b1f59f71",
+        "builtins": [
+          "view_image",
+          "web_search"
+        ],
+        "servers": [
+          "computer_use"
+        ],
+        "selectedExternalTools": 5,
+        "privatePilotCredentialsOrIdsCopied": false,
+        "limit": "Generic approved tool declaration only; actual MCP connectivity under new UID remains an installation check."
+      }
+    },
+    {
+      "id": "R2",
+      "state": "not executed",
+      "action": "At fresh quiet boundary inventory exact claims/executors/children/admissions, unit/dependency/config hashes, current human bindings and active voice/client constraints. Preserve current PostgreSQL/config backups. Drain only planned obsolete runtime supervisors; any unknown or active effect blocks protocol conversion.",
+      "rules": [
+        "Never cancel or mark complete original business work to obtain a quiet gate.",
+        "Keep direct coordinator/browser/phone-control transports alive. No old owner or timer wake.",
+        "Room arrivals during controlled API restart retain original operations; resolve unknown client acceptance by original receipt, no POST replay."
+      ]
+    },
+    {
+      "id": "R3",
+      "state": "not executed",
+      "action": "Migrate actual PG schema with H83 and replace only Hollywood API runtime on same private endpoint. Fresh authenticated identity/history/room-feed readback before Global enrollment. NextComp process/profile/pairing and databases remain bound to same identity."
+    },
+    {
+      "id": "R4",
+      "state": "not executed",
+      "action": "Apply explicit role decision owner with revision CAS; native context-system enrollment runs under existing authority fence and rejects unresolved original work/resources. Compose existing purpose_install prepare, collaboration_install prepare/apply, purpose_resources and purpose_environment; seal native readiness before starting only current Global.",
+      "requiredNativeUidChecks": [
+        "sudo -n id -u returns0",
+        "Approved model-account identity matches without inference startup just for account status",
+        "Existing GitHub provider authenticates expected account and intended repository access",
+        "Authorized system76/phone SSH routes perform bounded read-only checks",
+        "Correct maintained repository paths and ownership; active edits remain with owning coordinator",
+        "Real collaboration socket peer/unit/adapter and physical workspace grants; no shared filesystem assumption",
+        "Native model-visible tool profile/role/context binding matches installed SDK; no old Codex communication fallback"
+      ],
+      "legacyHistory": {
+        "thread": "01a13ffa-bd62-7a83-a15a-ad9c61cc945d",
+        "retention": "Read-only provenance; do not replay its old requests into reader, writer and responder. Preserve old active Goals/budgets/receipts; resume no old Goal merely because new Global starts."
+      }
+    },
+    {
+      "id": "R5",
+      "state": "not executed",
+      "action": "Use one original authorized disposable user API operation for actual installed Global execution, native question/answer, attributed actions versus conversation, peer communication and reconnect/cancel. Inspect receipts before any retry; then physical client voice/meaningful push under quiet boundary. Additional sessions migrate individually only after this slice passes."
+    }
+  ],
+  "rollback": {
+    "beforeNewNativeEffects": "Keep original artifacts/unit definitions and snapshots as recovery evidence. Inspect exact accepted receipts before choosing fallback; do not assume a failed HTTP response means no input.",
+    "afterNewNativeEffects": "Pause new execution using canonical placement state and stop only affected owned runtime after settling actual children. Keep schema34, original contexts/history/receipts, compatible H81 API/SDK116 fallback and same NextComp binding. No H29 downgrade, stale DB restore, new pairing or task replay. Disable new agent enrollment on fallback until H83 issue reconciled.",
+    "failureDoesNotMean": "Stopped process does not prove an external effect absent or reversible."
+  },
+  "environmentCandidate": {
+    "path": "/var/lib/lax-live-promotion-preview-20261021-r260/environment.candidate-r265.json",
+    "expectedLiveSha256": "8e758928649c1898ab87c7aa1b6f2f7b99550d74d5dff9692e4ce28fcf3a578d",
+    "candidateSha256": "69cf569c97f878aa12cfd7ec3fdb94d053a7b95d13fdc3b11349b3cbd54424be",
+    "changedRepositoryPaths": [
+      {
+        "old": "/aosp/development/lax-upstream-20261013/lax-connector-source",
+        "new": "/aosp/development/lax-three-context-20261018-r01/lax"
+      },
+      {
+        "old": "/aosp/development/lax-upstream-20261013/hollywood-backbone-source",
+        "new": "/aosp/development/lax-three-context-20261018-r01/hollywood"
+      }
+    ],
+    "providerSshBuildUnchanged": true,
+    "applied": false
+  },
+  "limits": [
+    "No production service or phone change has occurred.",
+    "New filesystem install against the production-ID database copy is forbidden because it would collide with real installation namespaces.",
+    "Natural relevance/long-run convergence and server-enforced definition/evidence binding remain separate research/product acceptance gaps; no universal safety or exactly-once claim.",
+    "Physical phone, fresh installation/generalized recovery and many-host enterprise operation remain unqualified."
+  ],
+  "validationCorrection": {
+    "receipt": "/aosp/development/lax-three-context-20261018-r01/qualification/native-adoption-validation-correction-r265.json",
+    "meaning": "r262 claimant waited on existing native-authority fence; extra actor-lock/claim changes did not establish a new race and are removed. Corrected21check copied-state trial identifies actual authority lock and validates only genuine drain guards."
+  }
+}

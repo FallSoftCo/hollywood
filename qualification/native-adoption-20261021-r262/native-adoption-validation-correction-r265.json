@@ -1,0 +1,15 @@
+{
+  "schema": "hollywood-adoption-validation-correction/v1",
+  "at": 1792566088.7964637,
+  "originalTrial": "native-adoption-pg-r262.json",
+  "mistake": "The competing claimant blocked in Store.actor/native_effects.enter on the pre-existing native-authority fence. The test did not isolate agent locking, and cannot support the claimed new race or the redundant lock changes.",
+  "sourceEvidence": [
+    "hollywood_backbone/store.py:Store.actor calls native_effects.enter before row/domain locks",
+    "hollywood_backbone/native_effects.py:enter takes exclusive authority lock for direct Store calls and context_configure HTTP; legacy HTTP claims take shared authority fence",
+    "hollywood_backbone/server.py:invoke propagates native transport before Store mutation"
+  ],
+  "correction": "Remove added agent locks/claim change. Retain actual drain/tainted-pending guards. Revise test to identify the actual advisory lock key; use fresh copied-state trial. No production action occurred.",
+  "realGap": "Original H81 metadata trial deliberately demonstrated unknown legacy work could remain while enrolling a new context system. H83 refuses unsettled delivery/executor and previously admitted pending work.",
+  "notChanged": "Original r262 result, protocol/design and claims preserved as historical evidence with this explicit correction; not silently rescored.",
+  "productionChanged": false
+}

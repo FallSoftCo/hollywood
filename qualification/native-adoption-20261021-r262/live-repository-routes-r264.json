@@ -1,0 +1,33 @@
+{
+  "schema": "lax-actual-realm-repository-route-audit/v1",
+  "at": 1792565796.5354066,
+  "profile": "/etc/harness/e488f19b-0f60-46ca-bd48-4fe544f06757/environment.json",
+  "profileSha256": "8e758928649c1898ab87c7aa1b6f2f7b99550d74d5dff9692e4ce28fcf3a578d",
+  "repositories": [
+    {
+      "path": "/aosp/development/lax-upstream-20261013/lax-connector-source",
+      "resolvedPath": "/aosp/development/lax-upstream-20261013/lax-connector-source",
+      "exists": true,
+      "head": "6a769c732b387a0a755eeaf644f855ccde4dc5fc",
+      "gitReadExitCode": 0
+    },
+    {
+      "path": "/aosp/development/lax-upstream-20261013/hollywood-backbone-source",
+      "resolvedPath": "/aosp/development/lax-upstream-20261013/hollywood-backbone-source",
+      "exists": true,
+      "head": "151746b721db9b7a0fc69f13c7f09fd8588e89b9",
+      "gitReadExitCode": 0
+    },
+    {
+      "path": "/aosp/development/nextcomp-live-rooms-r01",
+      "resolvedPath": "/aosp/development/nextcomp-live-rooms-r01",
+      "exists": true,
+      "head": "1fb5267a120752bc178c5f6d1a3c80fd04e57e10",
+      "gitReadExitCode": 0
+    }
+  ],
+  "maintainedLax": "/aosp/development/lax-three-context-20261018-r01/lax",
+  "maintainedHollywood": "/aosp/development/lax-three-context-20261018-r01/hollywood",
+  "sourceRouteChanged": false,
+  "scope": "Read-only route identity audit; existing path existence alone does not establish current maintained source or writable native UID access."
+}

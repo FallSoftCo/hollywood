@@ -39,10 +39,6 @@ def configure(store, actor_id, agent, payload, *, command=None):
 
 
 def configure_transaction(store,c,actor,agent,payload):
-    # Match purpose calls (context -> agent) and legacy claims/bindings (agent).
-    # A legacy claimant cannot cross the enrollment commit using a stale layout.
-    c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("context:"+agent,))
-    c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (agent,))
     target = c.execute("""SELECT p.*,r.revision FROM hb_principal p
       JOIN hb_agent_role r ON r.principal=p.id
       JOIN hb_placement l ON l.agent=p.id AND l.enabled
@@ -50,6 +46,7 @@ def configure_transaction(store,c,actor,agent,payload):
       (agent, actor["authority"], payload["hostId"])).fetchone()
     if not target:
         raise Denied("Enrolled agent placement required")
+    c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("context:"+agent,))
     old = c.execute("SELECT * FROM hb_context_system WHERE agent=%s", (agent,)).fetchone()
     if old:
         existing = configuration(store, str(actor["id"]), agent, connection=c)

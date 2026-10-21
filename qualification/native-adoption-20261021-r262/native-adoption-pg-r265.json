@@ -1,0 +1,47 @@
+{
+  "schema": "hollywood-native-adoption-pg/v1",
+  "modelsStarted": 0,
+  "servicesStarted": 0,
+  "scope": "Real PostgreSQL existing-agent transition, including competing legacy claim.\n\nRun only on an explicitly designated disposable database copy. Fixtures roll\nback; the final concurrency case commits the copied agent's metadata enrollment.\nNo filesystem installer, model, worker or live user operation is invoked.\n",
+  "checks": {
+    "reject-unsettled-claimed": true,
+    "reject-unsettled-running": true,
+    "reject-unsettled-cancel_requested": true,
+    "reject-unsettled-unknown": true,
+    "reject-tainted-pending-generation": true,
+    "reject-tainted-pending-claim": true,
+    "reject-tainted-pending-thread": true,
+    "reject-tainted-pending-turn": true,
+    "reject-tainted-pending-cancel": true,
+    "reject-undrained-terminal-executor-captured": true,
+    "reject-undrained-terminal-executor-live": true,
+    "reject-undrained-terminal-executor-unknown": true,
+    "clean-original-pending-ingested": true,
+    "same-enrollment-reconciles": true,
+    "legacy-history-retained": true,
+    "rollback-fixtures-removed": true,
+    "existing-authority-fence-blocks-competing-legacy-claim": true,
+    "observed-block-is-authority-fence-not-agent-lock": true,
+    "legacy-claim-observes-layout-after-existing-fence": true,
+    "copy-enrollment-same-agent-three-contexts": true,
+    "legacy-history-unchanged-after-copy-commit": true
+  },
+  "competingClaim": {
+    "blockedOnExistingAuthorityFence": true,
+    "observedWaitingLock": {
+      "hi": 2036114949,
+      "lo": 2502307815,
+      "objsubid": 1
+    },
+    "meaning": "Existing fence, not a newly introduced race fix.",
+    "result": {
+      "conflict": "Purpose-context agent uses its native context runtime"
+    }
+  },
+  "passed": true,
+  "disposableDatabase": "harness_native_adoption_20261021_r265",
+  "committedMetadataOnly": true,
+  "agentId": "2d4a0daa-0514-475e-be1e-71decacbd5bc",
+  "liveChanges": false,
+  "at": 1792566215.656525
+}

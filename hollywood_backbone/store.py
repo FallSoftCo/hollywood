@@ -1147,9 +1147,6 @@ class Store:
 
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
-            # Enrollment uses this same claim/binding lock. Check the runtime
-            # layout after acquiring it, never from a pre-transition snapshot.
-            c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (str(a["id"]),))
             if c.execute("SELECT 1 FROM hb_context_system WHERE agent=%s AND enabled", (a["id"],)).fetchone():
                 raise Conflict("Purpose-context agent uses its native context runtime")
             return claim(self, c, a, operation, host, capabilities)

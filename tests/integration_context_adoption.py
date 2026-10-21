@@ -156,11 +156,21 @@ def main(args):
                             break
                         c.execute("SELECT pg_stat_clear_snapshot()")
                         threading.Event().wait(0.01)
-                    mark("actual-legacy-claim-waits-for-enrollment", blocked and owner_pid in blocked["blockers"])
-                    report["competingClaim"] = {"blockedOnEnrollment": True, "waitQuery": blocked["query"]}
+                    mark("existing-authority-fence-blocks-competing-legacy-claim",
+                         blocked and owner_pid in blocked["blockers"])
+                    key = c.execute("SELECT hashtextextended(%s,0) AS n",
+                                    ("native-authority:" + str(actor["authority"]),)).fetchone()["n"]
+                    locks = c.execute("""SELECT classid::bigint AS hi,objid::bigint AS lo,objsubid
+                        FROM pg_locks WHERE pid=%s AND locktype='advisory' AND NOT granted""",
+                                      (state["pid"],)).fetchall()
+                    expected = {"hi": (key >> 32) & 0xffffffff, "lo": key & 0xffffffff, "objsubid": 1}
+                    mark("observed-block-is-authority-fence-not-agent-lock", expected in locks)
+                    report["competingClaim"] = {"blockedOnExistingAuthorityFence": True,
+                                               "observedWaitingLock": expected,
+                                               "meaning": "Existing fence, not a newly introduced race fix."}
                 # Enrollment is committed before the blocked Store.claim resumes.
                 result = future.result(timeout=10)
-                mark("legacy-claim-rechecks-layout-after-commit",
+                mark("legacy-claim-observes-layout-after-existing-fence",
                      result.get("conflict") == "Purpose-context agent uses its native context runtime")
                 report["competingClaim"]["result"] = result
         finally:

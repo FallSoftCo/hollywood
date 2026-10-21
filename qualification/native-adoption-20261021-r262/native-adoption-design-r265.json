@@ -1,0 +1,11 @@
+{
+  "schema": "hollywood-adoption-validation-design/v2",
+  "at": 1792566088.7969337,
+  "correction": "/aosp/development/lax-three-context-20261018-r01/qualification/native-adoption-validation-correction-r265.json",
+  "sourceScope": "Only new enrollment drain/tainted-pending guards, no new claim/authority/agent locks or schema change.",
+  "criterion": "Refuse unsettled original executions/resources and tainted pending input; preserve clean original inputs/history. Independently identify the existing authority fence in competing transactions.",
+  "trial": "Fresh private restore of original r260 exported snapshot; no repair/reset of prior trial or live state.",
+  "modelsStarted": 0,
+  "liveChanges": false,
+  "testSha256": "ba2ecd6b84838bbe7731ee2503a0a3756f88356a0981392f1d716d6f83bbde24"
+}
