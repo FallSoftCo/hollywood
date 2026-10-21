@@ -35,3 +35,12 @@ after new native work. Keep a compatible API and canonical state, pause new
 execution, and reconcile original receipts; never restore a stale live snapshot.
 No phone pairing, production service, user work or deliberately stopped agent
 was changed or resumed by this qualification.
+
+The installed H82 runtime also served one disclosed copied-realm human fixture
+through the actual deployed alpha110 HollywoodClient and request validator.
+The accepted reply was deliberately lost; the first client reported an
+unconfirmed outcome. After the test API was closed and recreated, a fresh
+client recovered the original command by GET. There was exactly one POST,
+one event/delivery and one reader input with generation0. The room catalog
+reported Pending1. No interpreter, model or executor acted on that fixture;
+this is receipt/reconnect integration, not completion/phone proof.

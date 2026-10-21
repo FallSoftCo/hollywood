@@ -1,0 +1,72 @@
+{
+  "schema": "lax-live-gateway-copy-write-recovery/v1",
+  "modelsStarted": 0,
+  "servicesChanged": false,
+  "scriptedHumanFixture": true,
+  "operationId": "copy-native-human-receipt-r264",
+  "scope": "One disclosed copied-realm human fixture; discard accepted reply then recover.\nNo live endpoint changes, phone operations, models or retry submissions.\n",
+  "send": {
+    "posts": 1,
+    "clientOutcome": "HOLLYWOOD_OUTCOME_UNCONFIRMED",
+    "scriptedHumanFixture": true
+  },
+  "recovery": {
+    "eventId": "f09337e9-1804-4e65-ab80-af0afca46f27",
+    "deliveryId": "e2f9a159-864a-41e4-b943-5eabb7966911",
+    "state": "pending",
+    "authorId": "301c8b83-8cdb-5b9a-9d7f-3b2fa6f0b3f6",
+    "recipientId": "2d4a0daa-0514-475e-be1e-71decacbd5bc",
+    "catalogActivity": {
+      "claimed": 0,
+      "pending": 1,
+      "running": 0,
+      "unknown": 0,
+      "version": 1,
+      "observedAt": 1792565464083,
+      "cancelRequested": 0,
+      "waitingForHuman": 0
+    },
+    "posts": 0
+  },
+  "originalCommands": 1,
+  "originalDeliveries": 1,
+  "readerInputs": 1,
+  "originalGeneration": 0,
+  "interpretationOrExecutionClaimed": false,
+  "totalPosts": 1,
+  "passed": true,
+  "liveBindingUnchanged": true,
+  "at": 1792565464.5930002,
+  "listenersRetired": true,
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/principals/301c8b83-8cdb-5b9a-9d7f-3b2fa6f0b3f6"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms"
+    },
+    {
+      "method": "POST",
+      "path": "/hollywood/v3/rooms/3dd596b7-7a73-4828-969b-335c130551dc/messages"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/principals/301c8b83-8cdb-5b9a-9d7f-3b2fa6f0b3f6"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/commands/copy-native-human-receipt-r264"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms"
+    }
+  ],
+  "liveChanges": false
+}
