@@ -1,0 +1,20 @@
+{
+  "at": 1792620568.3734841,
+  "state": "passed",
+  "cases": [
+    "old_h87_deadlock_reproduced",
+    "authenticated_native_resume_once_no_self_message",
+    "actionable_wait_rejected",
+    "running_only_no_wake",
+    "retired_frontier_no_wake",
+    "unknown_requires_review",
+    "other_reviewer_no_authority",
+    "cancelled_parent_not_revived"
+  ],
+  "source": "dc2d4ba8-9d28-4514-b775-a51621577c67",
+  "exactOriginalGoalWorkUnchanged": true,
+  "newConversationEvents": 0,
+  "providerModelRequests": 0,
+  "businessEffects": 0,
+  "scope": "Actual authenticated Hollywood API/real PG captured-deadlock integration, plus disclosed transactional machine counterfactuals. Not semantic/model behavior or complete system proof."
+}

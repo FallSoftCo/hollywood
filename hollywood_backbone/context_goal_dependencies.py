@@ -5,6 +5,7 @@ frontier; no model, work assignment, Goal transition or message is created here.
 """
 from uuid import UUID
 from .store import Conflict, Denied
+from .goal_contract import ContractConflict
 from .context_system import item, change
 from .context_peers import require_current_read, own_change
 
@@ -45,12 +46,15 @@ def wait(c,store,actor,binding,p):
     combined=list(dict.fromkeys(old+[str(UUID(x)) for x in ids]))
     if len(combined)>8:raise ValueError("Responsibility prerequisite limit exceeded")
     rows=goals(c,store,actor,work,combined)
-    snapshot=[{"goalId":str(g["id"]),"revision":g["revision"],"state":g["state"]} for g in rows]
+    from .context_goal_review_frontier import snapshot as review_snapshot
+    snapshot=[review_snapshot(c,store,actor,g) for g in rows]
+    if any(x.get("reviewFrontier",{}).get("actionable") for x in snapshot):
+        raise ContractConflict("NATIVE_GOAL_REVIEW_REQUIRED","Canonical Goal review is actionable for this responsibility; inspect current reports/plan/evidence before waiting")
     waiting=any(g["state"] not in TERMINAL for g in rows)
     own_change(c,actor,binding,work,"waiting" if waiting else work["state"],
       {**work["value"],"goalPrerequisites":combined,"goalResults":snapshot},p["nativeTurn"])
     return {"workId":str(work["id"]),"state":"waiting" if waiting else "results_available",
-       "goals":snapshot,"instruction":"End this inference while waiting; exact terminal Goal facts resume this same responsibility. Review acceptance/evidence before final response." if waiting else "Read current work and canonical results; terminal cancellation is not successful acceptance."}
+       "goals":snapshot,"instruction":"End this inference while waiting; new actionable current review or terminal Goal facts resume this same responsibility. Review evidence explicitly before final response." if waiting else "Read current work and canonical results; terminal cancellation is not successful acceptance."}
 
 def source_goals(c,actor,work):
     rows=c.execute("""SELECT g.id FROM hb_goal g JOIN hb_event e ON e.id=g.source
@@ -80,9 +84,12 @@ def refresh(c,store,actor):
         if not ids:continue
         try:current=goals(c,store,actor,work,ids)
         except Denied:continue
-        if any(g["state"] not in TERMINAL for g in current):continue
-        snapshot=[{"goalId":str(g["id"]),"revision":g["revision"],"state":g["state"]} for g in current]
-        if snapshot==work["value"].get("goalResults"):continue
+        from .context_goal_review_frontier import snapshot as review_snapshot, changed
+        snapshot=[review_snapshot(c,store,actor,g) for g in current]
+        previous=work["value"].get("goalResults",[])
+        terminal=all(g["state"] in TERMINAL for g in current)
+        if not terminal and not changed(previous,snapshot):continue
+        if snapshot==previous:continue
         change(c,work,"pending" if work["state"]=="waiting" else work["state"],
             {**work["value"],"goalResults":snapshot,
              "resumeRevision":work["value"].get("resumeRevision",0)+1})

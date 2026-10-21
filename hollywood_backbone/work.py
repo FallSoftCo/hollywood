@@ -742,6 +742,10 @@ def dispatch_reviews(store, actor_id, host, capabilities=(), *, connection=None)
     ).fetchall()
     admitted = []
     for goal in goals:
+        from .context_goal_review_frontier import native_parent
+        if native_parent(c,actor_id,goal):
+            # Its original native responsibility owns review; no self-addressed request.
+            continue
         from .cooperation import CAPABILITY
         from .cooperation import row as cooperation_row
 

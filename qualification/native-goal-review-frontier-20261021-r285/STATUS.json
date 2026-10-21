@@ -1,0 +1,17 @@
+{
+  "schema": "native-goal-review-frontier-qualification/v1",
+  "at": 1792620957.3477707,
+  "state": "machine_mechanics_passed_real_model_continuation_pending",
+  "failure": "Actual deployed native Global performed and reported its own Work; parent awaited terminal Goal while legacy review dispatcher excluded same-owner work/deferred Global to portfolio. All3contexts became idle. Original model trial retained as failed; no operator acceptance, task repost or artifact repair.",
+  "fix": "Existing accepted native parent owns current reviewer frontier. Changed actionable current reports/uncertainty/acceptance readiness resume same parent once; unchanged material does not wake again. No new coordinator, ledger, model context or self-addressed review request.",
+  "controls": "Original H87 server reproduces exact captured deadlock against fresh private PG copy. H88 resumes parent via authenticated API without changing Goal/Work/delivery or creating messages. Other cases explicitly machine counterfactuals, no semantic proof.",
+  "modelsInMachineTest": 0,
+  "nativeRustChanged": false,
+  "nativeSHA256": "073872ad1002c5897ad35ad1d96a3f200ee10490f3151a86d8360beed15b70b2",
+  "pending": [
+    "Separate real-provider original-request continuation",
+    "Original native3agent source deliverable and automatic refill",
+    "Complete installer/lifecycle/latest upstream/multihost/phone/enterprise proof"
+  ],
+  "productionReplacementReady": false
+}

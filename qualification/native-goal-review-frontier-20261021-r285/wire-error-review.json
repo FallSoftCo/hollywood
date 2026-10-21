@@ -1,0 +1,7 @@
+{
+  "at": 1792620174.844161,
+  "evidence": "server.errors exposes safe ContractConflict code/message and sanitizes bareConflict.",
+  "change": "Reuse existing ContractConflict NATIVE_GOAL_REVIEW_REQUIRED so an actionable wait precondition is visible to the caller, rather than an opaque identity/revision error. No new handler/component or changed expected task answer.",
+  "priorEightCasesPassed": true,
+  "productionChanged": false
+}
