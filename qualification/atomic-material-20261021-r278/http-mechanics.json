@@ -1,0 +1,14 @@
+{
+  "at": 1792608527.2806745,
+  "passed": true,
+  "checks": [
+    "single complete HTTP read is coherent across a concurrent material commit",
+    "original receipt immutable; a fresh read sees current revision",
+    "oversize refuses without proof/truncation; purpose boundaries and legacy paging retained",
+    "canonical self-assignment cannot merge or answer-only; accepted original gets distinct execution material"
+  ],
+  "modelsStarted": 0,
+  "nativeLifecycleProof": false,
+  "sqlMetadataFixturesDisclosed": true,
+  "sourceModules": "/aosp/development/lax-three-context-20261018-r01/hollywood/hollywood_backbone/context_material.py"
+}

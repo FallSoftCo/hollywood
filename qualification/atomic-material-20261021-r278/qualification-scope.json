@@ -1,0 +1,26 @@
+{
+  "at": 1792609054.1708088,
+  "versions": [
+    "SDK122",
+    "Hollywood87"
+  ],
+  "schemaVersion": 36,
+  "changes": [
+    "One coherent bounded context read, delivered as individual native input fragments without changing command output limits",
+    "Canonical assignment described from immutable attempt provenance and rejected as amendment/answer-only; original routing/claim/Goal/Work primitives retained"
+  ],
+  "mechanicsPassed": true,
+  "realModelCorrectedJourney": "Pending; no semantic success or superiority claimed",
+  "failedEvidenceRetained": [
+    "r274 original10m total-token ceiling failed",
+    "r276 additional30m total-token ceiling failed; no source implementation from team",
+    "r277 original live one-agent Goal canary failed canonical self-assignment dependency cycle; exact test cancelled and preserved"
+  ],
+  "sourceAuthorship": "Coordinator implements framework changes in same maintained physical trees; not falsely attributed to model team",
+  "productionAtRecord": "SDK121/H86 active, native image unchanged, corrected candidate not activated yet",
+  "notDone": [
+    "Automatic native window refill",
+    "Corrected real-model shared-source team completion",
+    "Full installation/recovery/multi-host/physical-phone and autonomous enterprise proof"
+  ]
+}

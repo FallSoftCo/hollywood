@@ -1,0 +1,12 @@
+{
+  "at": 1792608347.4912236,
+  "passed": true,
+  "nativeThreadPreserved": true,
+  "completeFragmentsDurableAcrossReopen": true,
+  "lostReplyAppendCalls": 1,
+  "originalUnknownObservedWithoutReplay": true,
+  "modelRequests": 0,
+  "businessEffects": 0,
+  "callbackCancellationBoundToExactFailedRead": true,
+  "scope": "Actual native append/read/reopen plus disclosed callback regression fixture. No real model reasoning, self-assignment execution or semantic superiority claim."
+}

@@ -135,7 +135,7 @@ def need_for(c, store, actor, source):
 
 def call(store, actor_id, token_digest, agent, purpose, p):
     with store.pool.connection() as c:
-        if p["action"]=="rebuild_snapshot":
+        if p["action"] in ("rebuild_snapshot","read_complete"):
             c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
         actor=store.actor(c,actor_id)
         if str(actor["id"])!=agent or actor["kind"]!="agent" or purpose not in PURPOSES:
@@ -183,7 +183,7 @@ def call(store, actor_id, token_digest, agent, purpose, p):
             c.execute("UPDATE hb_purpose_context SET native_thread=%s WHERE agent=%s AND purpose=%s",
                       (p["nativeThread"],agent,purpose))
             result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose,
-                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1,"roleDecisionOwner":1,"contextSelection":1,"contextRebuildSnapshot":1}
+                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1,"roleDecisionOwner":1,"contextSelection":1,"contextRebuildSnapshot":1,"completeMaterialRead":1}
         elif p["nativeThread"]!=binding["native_thread"]:
             raise Conflict("Native context binding changed")
         else:
@@ -310,9 +310,9 @@ def perform(store,c,actor,purpose,binding,p):
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
-      "reader":{"pending","selection","select","rebuild_request","snapshot","read","accept","answer","announce","peer_result","amend","directory","observe","initiative","room_list","room_history"},
-      "writer":{"pending","selection","select","rebuild_request","snapshot","read","progress","complete","announce","peer_request","wait_peers","wait_goals","directory","response_material"},
-      "responder":{"pending","selection","select","rebuild_request","snapshot","read","publish","suppress"},
+      "reader":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","accept","answer","announce","peer_result","amend","directory","observe","initiative","room_list","room_history"},
+      "writer":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","progress","complete","announce","peer_request","wait_peers","wait_goals","directory","response_material"},
+      "responder":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","publish","suppress"},
     }
     if action not in permitted[purpose]:
         raise Denied("Tool does not belong to this context purpose")
@@ -390,9 +390,9 @@ def perform(store,c,actor,purpose,binding,p):
           ORDER BY m.created_at,m.id LIMIT 100""",
           (actor["id"],kind,binding["work_scheduling"],binding["active_material"])).fetchall()
         return {"pending":json_value(rows),"contextRebuild":{"requestedOperationId":binding["rebuild_requested"],"generation":binding["rebuild_generation"],"selectionRevision":binding["selection_revision"]}}
-    if action in ("snapshot", "read"):
-        from .context_material import index, read
-        retrieve = index if action == "snapshot" else read
+    if action in ("snapshot", "read", "read_complete"):
+        from .context_material import index, read, complete
+        retrieve = {"snapshot":index,"read":read,"read_complete":complete}[action]
         return retrieve(c,store,actor,purpose,binding,p["nativeTurn"],v)
     if action in ("accept","answer"):
         source=item(c,store,actor,v["inputId"],"input")
@@ -400,6 +400,9 @@ def perform(store,c,actor,purpose,binding,p):
         require_current_read(binding,source,p["nativeTurn"])
         if source["state"]!="pending":
             raise Conflict("Input already interpreted")
+        if action=="answer":
+            from .context_assignments import require_separate
+            require_separate(c,actor,source)
         if source["value"].get("roomObservation"):
             raise Conflict("Observation is not an assigned request or required answer; use record_room_observation")
         if source["value"].get("peerCompletion"):

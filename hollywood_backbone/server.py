@@ -25,6 +25,8 @@ from .report_scope import ScopeError
 from .artifact_roots import ArtifactRoot
 from .activity_models import Activity, normalize as normalize_activity
 from .goal_contract import ContractConflict
+from .context_assignments import AssignmentConflict
+from .context_material import MaterialReadConflict
 
 
 class Input(BaseModel):
@@ -58,7 +60,7 @@ class ContextSystemConfiguration(Input):
 class ContextCall(Input):
     runtimeProtocol: Literal["lax-purpose-runtime/v3"]
     operationId: str = Field(min_length=1, max_length=128)
-    action: Literal["selection", "select", "rebuild_request", "rebuild_snapshot", "rebuild_installed", "release_reservation", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "accept", "answer", "announce",
+    action: Literal["selection", "select", "rebuild_request", "rebuild_snapshot", "rebuild_installed", "release_reservation", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "read_complete", "accept", "answer", "announce",
                     "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "wait_goals", "peer_result", "amend", "activity", "response_material", "observe", "initiative", "room_list", "room_history"]
     nativeThread: str = Field(min_length=1, max_length=128)
     nativeTurn: str = Field(min_length=1, max_length=128)
@@ -519,7 +521,7 @@ async def boundary(request, handler):
         return web.json_response({"error": "Request body exceeds limit; nothing admitted"}, status=413)
     except Denied:
         return web.json_response({"error": "Access denied"}, status=403)
-    except ContractConflict as error:
+    except (ContractConflict,AssignmentConflict,MaterialReadConflict) as error:
         return web.json_response({"error": str(error), "code": error.code}, status=409)
     except (Conflict, pg_errors.UniqueViolation, pg_errors.SerializationFailure):
         return web.json_response({"error": "Identity, revision or operation conflict"}, status=409)

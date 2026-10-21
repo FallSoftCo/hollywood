@@ -9,6 +9,17 @@ from .store import Conflict, Denied, json_value
 
 CHUNK_CHARS = 3072
 INDEX_BYTES = 6144
+COMPLETE_BYTES = 98304
+
+class MaterialReadConflict(Conflict):
+    code="MATERIAL_SNAPSHOT_TOO_LARGE"
+    def __init__(self):
+        super().__init__("Material exceeds the complete snapshot budget. Use explicit offset/revision reads; no content was truncated.")
+
+def trackable(purpose,reference,row):
+    return (reference=="role" or row is not None and (purpose=="reader"
+        or purpose=="responder" and row["state"]=="ready"
+        or purpose=="writer" and row["kind"]=="work"))
 
 
 def wire(value):
@@ -143,6 +154,10 @@ def read(c, store, actor, purpose, binding, turn, value, *, track=True):
         material = json_value(row)
         if purpose == "reader" and row["kind"] == "input":
             material["event"] = json_value(event)
+            from .context_assignments import current
+            assignment=current(c,actor,row)
+            if assignment:
+                material["canonicalAssignment"]=assignment
             if event["data"].get("type") == "peerCompletion" and event["source"]:
                 material["peerResult"] = json_value(store.readable_event(c,actor,event["source"]))
         if row["kind"] == "work":
@@ -160,9 +175,7 @@ def read(c, store, actor, purpose, binding, turn, value, *, track=True):
         raise ValueError("Material offset outside original content")
     stop = min(offset + CHUNK_CHARS, len(encoded))
     following = stop if stop < len(encoded) else None
-    if track and (reference == "role" or row is not None and (purpose == "reader"
-                                or purpose == "responder" and row["state"] == "ready"
-                                or purpose == "writer" and row["kind"] == "work")):
+    if track and trackable(purpose,reference,row):
         reads = dict(binding["reads"])
         prior = reads.get(reference)
         if offset and prior != {"revision": revision, "turn": turn, "nextOffset": offset}:
@@ -176,3 +189,32 @@ def read(c, store, actor, purpose, binding, turn, value, *, track=True):
             "nextOffset": following, "totalBytes": len(encoded),
             "sha256": hashlib.sha256(encoded.encode()).hexdigest(),
             "meaning": "Exact serialized material; concatenate matching revision chunks. A read does not certify its assertions."}
+
+
+def complete(c,store,actor,purpose,binding,turn,value):
+    """One database snapshot, one read proof, bounded fragments; never a summary."""
+    if set(value)-{"reference","revision"}:
+        raise ValueError("Complete material read accepts reference and optional revision")
+    reference=value.get("reference")
+    part=read(c,store,actor,purpose,binding,turn,value,track=False)
+    if part["totalBytes"]>COMPLETE_BYTES:
+        raise MaterialReadConflict()
+    first=dict(part);chunks=[]
+    while True:
+        chunks.append({"offset":part["offset"],"content":part["content"]})
+        offset=part["nextOffset"]
+        if offset is None:break
+        part=read(c,store,actor,purpose,binding,turn,
+            {"reference":reference,"revision":first["revision"],"offset":offset},track=False)
+    encoded="".join(x["content"] for x in chunks)
+    if len(encoded.encode())!=first["totalBytes"] or hashlib.sha256(encoded.encode()).hexdigest()!=first["sha256"]:
+        raise Conflict("Complete material changed; no read proof installed")
+    material=json.loads(encoded)
+    row=material if reference!="role" and ":" not in reference else None
+    if trackable(purpose,reference,row):
+        reads={**binding["reads"],reference:{"revision":first["revision"],"turn":turn}}
+        c.execute("UPDATE hb_purpose_context SET reads=%s WHERE agent=%s AND purpose=%s",
+            (Jsonb(reads),actor["id"],purpose))
+    return {"schema":"lax-context-material-snapshot/v1","reference":reference,
+        "revision":first["revision"],"sha256":first["sha256"],"totalBytes":first["totalBytes"],
+        "chunks":chunks,"meaning":"Exact purpose-authorized material at one coherent read cut; read proof does not establish comprehension or execution authority."}
