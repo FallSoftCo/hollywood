@@ -39,6 +39,8 @@ def capture(c, store, actor, purpose, binding, p, material_ids):
             revision=revision+1,updated_at=clock_timestamp() WHERE id=%s""",
             (p["nativeThread"], p["nativeTurn"], d["id"]))
         request = store.readable_event(c, actor, d["event"])
+        from .context_role_work import validate
+        validate(c, store, actor, request)
         store.room(c, actor, request["room"], "can_post")
         value = json_value({
             "schema": "lax-execution-scope/v2", "executorId":executor["id"], "authorityId": actor["authority"],

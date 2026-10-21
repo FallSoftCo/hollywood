@@ -1411,6 +1411,15 @@ class Store:
             from .cooperation import view
 
             goal_id = e["data"].get("goalId")
+            from .context_role_work import origin as role_origin
+            role_work = role_origin(c, a, e)
+            execution_origin = ({
+                "schema": "lax-role-work/v1", "kind": "standing-role",
+                "roleRevision": e["data"]["roleRevision"],
+                "roleSha256": e["data"]["roleSha256"],
+                "sourceEventId": str(e["source"]),
+                "observationId": e["data"]["observationId"],
+            } if role_work else None)
             if goal_id and cooperation_row(c, goal_id):
                 parent = c.execute("SELECT room FROM hb_goal WHERE id=%s", (goal_id,)).fetchone()
                 self.room(c, a, parent["room"])
@@ -1449,8 +1458,9 @@ class Store:
                     "hostId": d["host"],
                     "generation": d["generation"],
                     "deliveryState": d["state"],
-                    "obligation": "respond" if e["kind"] == "request" else "observe",
-                    "requiresResponse": e["kind"] == "request" and d["agent"] == a["id"],
+                    "executionOrigin": execution_origin,
+                    "obligation": "role_work" if role_work else "respond" if e["kind"] == "request" else "observe",
+                    "requiresResponse": (role_work or e["kind"] == "request") and d["agent"] == a["id"],
                     "observationPolicy": "silent-unless-material",
                     "membershipStartsExecution": False,
                     "peerBodyAuthority": "tool",

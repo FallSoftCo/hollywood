@@ -164,7 +164,7 @@ def call(store, actor_id, token_digest, agent, purpose, p):
             c.execute("UPDATE hb_purpose_context SET native_thread=%s WHERE agent=%s AND purpose=%s",
                       (p["nativeThread"],agent,purpose))
             result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose,
-                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling}
+                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1}
         elif p["nativeThread"]!=binding["native_thread"]:
             raise Conflict("Native context binding changed")
         else:
@@ -281,7 +281,7 @@ def perform(store,c,actor,purpose,binding,p):
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
-      "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","amend","directory","observe","room_list","room_history"},
+      "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","amend","directory","observe","initiative","room_list","room_history"},
       "writer":{"pending","snapshot","read","progress","complete","announce","peer_request","wait_peers","wait_goals","directory","response_material"},
       "responder":{"pending","snapshot","read","publish","suppress"},
     }
@@ -290,11 +290,12 @@ def perform(store,c,actor,purpose,binding,p):
     if action in ("room_list","room_history"):
         from . import context_room_reads
         return (context_room_reads.rooms if action=="room_list" else context_room_reads.history)(c,store,actor,v)
-    if action=="observe":
+    if action in ("observe", "initiative"):
         if v.get("observationId") not in {str(x) for x in binding["active_material"]}:
             raise Denied("Observation does not belong to this native turn")
         from .context_room_observations import record
-        return record(c,store,actor,binding,p)
+        from .context_role_work import initiate
+        return (record if action == "observe" else initiate)(c,store,actor,binding,p)
     target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers","wait_goals","response_material") else v.get("inputId") if action in ("accept","answer","peer_result","amend") else v.get("communicationId")
     if target and target not in {str(x) for x in binding["active_material"]}:
         raise Denied("Material does not belong to this captured native turn")

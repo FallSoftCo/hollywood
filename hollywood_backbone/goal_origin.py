@@ -5,8 +5,12 @@ from .store import Denied
 def resolve(store, c, actor, room, payload):
     """Record scoped planning intent without inventing a human request or turn."""
     source = store.readable_event(c, actor, payload["sourceEventId"])
-    if source["kind"] != "request":
-        raise Denied("Goal requires an addressed source request")
+    from .context_role_work import origin, validate
+    role_work = origin(c, actor, source)
+    if source["kind"] != "request" and not role_work:
+        raise Denied("Goal requires an addressed source request or original native role work")
+    if role_work:
+        validate(c, store, actor, source)
     if source["audience"] != "room":
         raise Denied("Room-visible goal requires room-visible source")
     if not actor["administrator"] and actor["id"] not in (source["author"], source["recipient"]):

@@ -1,0 +1,122 @@
+{
+  "schema": "lax-standing-role-qualification/v1",
+  "at": 1792553382.8277965,
+  "finding": "Corrected native role-work path completed useful event-backed follow-on after an initial finite task and human response, without another consumer assignment. Unrelated/repeated room facts and withdrawn responsibility produced no new consumer work or replies in this scenario.",
+  "architecture": "Two real independent LAX agents per cohort, each with reader/writer/responder histories; ordinary Hollywood communication and native execution. No fourth context, shadow task ledger, synthetic human input for peer facts or chat self-request.",
+  "attempts": [
+    {
+      "arm": "baseline",
+      "runtime": "SDK111/H77",
+      "state": "desired follow-on missing",
+      "initialFiniteTaskCompleted": true,
+      "releaseArtifactStayedStale": true,
+      "runReceipt": "/var/lib/lax-standing-responsibility-20261020-r242/baseline/run/result.json"
+    },
+    {
+      "arm": "candidate",
+      "runtime": "SDK112/H79",
+      "state": "FAILED frozen release window",
+      "reason": "Canonical role work admitted but existing context API/validator classified non-request as observation. Native writer turn interrupted/settled; no role artifact execution. Original cancelled, never replayed.",
+      "receipt": "/var/lib/lax-standing-responsibility-20261020-r242/candidate-failure-retained-r247.json"
+    },
+    {
+      "arm": "candidate-r247",
+      "runtime": "SDK113/H80",
+      "state": "bounded end-state PASS",
+      "runReceipt": "/var/lib/lax-standing-responsibility-20261020-r242/candidate-r247/run/result.json",
+      "newBoundedWork": true,
+      "correctOutput": true,
+      "sourceProvenance": true
+    }
+  ],
+  "testIntegrity": {
+    "originalModelScenarioUnchangedAfterStart": true,
+    "evidence": "Both run execution-intent source/scorer/protocol hashes are retained. Original failed source and inputs kept. Corrected attempt is a fresh cohort, not a within-original-attempt recovery or original two-arm causal result.",
+    "preModelAmendment": "Explicit source-provenance JSON schema clarified before any task/model input; original protocol retained.",
+    "controls": "Pre-model reference + constant/sample-aware/wrong-sort/bool-input wrong programs. Post-trial output-primitive boolean false-positive control retained; strict JSON supplementary check rejects it and actual output passes. Frozen scores unchanged.",
+    "participant": "Disclosed scripted human QA participant; actual peer reports authored by real native agents.",
+    "sourceHashReadback": {
+      "baseline": {
+        "protocolSha256": true,
+        "runnerSha256": true,
+        "scorerSha256": true
+      },
+      "candidate": {
+        "protocolSha256": true,
+        "runnerSha256": true,
+        "scorerSha256": true
+      },
+      "candidate-r247": {
+        "protocolSha256": true,
+        "runnerSha256": true,
+        "scorerSha256": true
+      }
+    },
+    "operatorAttestation": "No generated product artifact/canonical task repair, model coaching, reminder to consumer, or original-task replay was performed. Fixture setup, exact source read-only preservation, native-owner temporary probes, source changes and every failed attempt/intervention are retained. This is an operator action record, not proof that an arbitrary outside intervention is impossible."
+  },
+  "evidence": {
+    "sameSixHistories": true,
+    "independentAudit": "/aosp/development/lax-three-context-20261018-r01/qualification/standing-role-independent-audit-r246.json",
+    "canonicalFollowOnDelivery": "d09e49c8-00c3-5c9e-8091-7653de3e9103",
+    "canonicalRoleWorkEvent": "dfd8fa6d-d4cf-44d0-9c95-31a0835cbf51",
+    "canonicalPeerFactEvent": "83ddb359-4f7d-455c-b8ca-a2b5fe1c64df",
+    "originalSourceBytesIndependentlyRetainedAndHashMatched": true,
+    "realNativeCommandsAndHumanFinalVisible": true,
+    "nativeOwnerStrictCliProbe": true,
+    "inspectedRuntimeModuleSourceMatches": true
+  },
+  "retainedInfrastructureFailures": [
+    "First wheel build lacked setuptools; failed log retained. Independent locked-dependency wheel/venv builds succeeded under storage-build, disk only.",
+    "First substrate fixture changed direct audience without recipient; constraint rejection retained.",
+    "Second substrate fixture lacked an outer rollback transaction. Two setup namespaces persisted with0deliveries/services/models; exact retired setups and revoked credentials retained. Corrected outer rollback confirmed.",
+    "First candidate proved lower-level admission checks were insufficient: actual LAX RoleContext path failed. Source fix and actual-model requalification retained.",
+    "Original scorer conflates bool/int output types through Python equality; supplementary control/check disclosed, no retroactive frozen score correction."
+  ],
+  "limits": [
+    "One representative software-role scenario and one corrected actual-model candidate; no statistical reliability or causal superiority conclusion.",
+    "Only one ongoing role and one addressed-work engineering peer; not a many-autonomous-agent scale or cooperation-policy comparison.",
+    "Role prose remains semantic model input; provenance/version checks do not mechanically prove all relevance/intent judgments.",
+    "Role-initiated human questions/approvals reject until an explicit human decision-owner path is enrolled; evidence authors cannot be approval authority.",
+    "Private-source initiation requires an explicit sharing contract and currently rejects.",
+    "Role-origin canonical Goal route has substrate/source coverage, not an actual-model delegated Goal/cooperative-editing journey from this role work.",
+    "No production/default/phone change; general installation, multi-human/multi-host/enterprise/OZZZ business proof remain open.",
+    "Paused-placement settlement and historical receipt access release gaps from earlier research remain open."
+  ],
+  "nextExecutableSlice": "Implement explicit human decision ownership in the existing canonical role and native installation/administration flow. Prove role-triggered question/answer through the actual user API with a different human behind the source fact, preserving initial completion and author/audience boundaries. Then bind reviewed goal definitions and qualify role-origin native team work; no extra coordinator component.",
+  "productionReplacementReady": false,
+  "productionChanged": false,
+  "phoneOrNextCompChanged": false,
+  "allModelCohortsRetired": true,
+  "finalOwnedUnitPids": {
+    "baseline": {
+      "lax-agent-a207e59c-40af0e658621-reader.service": "0",
+      "lax-agent-a207e59c-40af0e658621-writer.service": "0",
+      "lax-agent-a207e59c-40af0e658621-responder.service": "0",
+      "lax-agent-a207e59c-c3f076453b7c-reader.service": "0",
+      "lax-agent-a207e59c-c3f076453b7c-writer.service": "0",
+      "lax-agent-a207e59c-c3f076453b7c-responder.service": "0",
+      "lax-host-a207e59c-8fd71f6d.service": "0",
+      "lax-collaboration-a207e59c-8fd71f6d.service": "0"
+    },
+    "candidate": {
+      "lax-agent-da1f3acd-ed4beba614c2-reader.service": "0",
+      "lax-agent-da1f3acd-ed4beba614c2-writer.service": "0",
+      "lax-agent-da1f3acd-ed4beba614c2-responder.service": "0",
+      "lax-agent-da1f3acd-a0ab14d4c71f-reader.service": "0",
+      "lax-agent-da1f3acd-a0ab14d4c71f-writer.service": "0",
+      "lax-agent-da1f3acd-a0ab14d4c71f-responder.service": "0",
+      "lax-host-da1f3acd-cfa3d053.service": "0",
+      "lax-collaboration-da1f3acd-cfa3d053.service": "0"
+    },
+    "candidate-r247": {
+      "lax-agent-d67905e0-7f3a49cad42b-reader.service": "0",
+      "lax-agent-d67905e0-7f3a49cad42b-writer.service": "0",
+      "lax-agent-d67905e0-7f3a49cad42b-responder.service": "0",
+      "lax-agent-d67905e0-cac6a5d2a6e0-reader.service": "0",
+      "lax-agent-d67905e0-cac6a5d2a6e0-writer.service": "0",
+      "lax-agent-d67905e0-cac6a5d2a6e0-responder.service": "0",
+      "lax-host-d67905e0-839294ef.service": "0",
+      "lax-collaboration-d67905e0-839294ef.service": "0"
+    }
+  }
+}

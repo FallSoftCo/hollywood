@@ -19,6 +19,8 @@ def current(store, c, actor, binding, p):
             or delivery["cancellation_requested"]):
         raise Conflict("Original work no longer admits execution")
     event = store.readable_event(c, actor, work["source"])
+    from .context_role_work import validate
+    validate(c, store, actor, event)
     store.room(c, actor, event["room"], "can_post")
     # Continuation observes the same native claim; it never creates a replacement
     # ownership generation for a subsequent writer turn.

@@ -58,7 +58,7 @@ class ContextCall(Input):
     runtimeProtocol: Literal["lax-purpose-runtime/v3"]
     operationId: str = Field(min_length=1, max_length=128)
     action: Literal["release_reservation", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "accept", "answer", "announce",
-                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "wait_goals", "peer_result", "amend", "activity", "response_material", "observe", "room_list", "room_history"]
+                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "wait_goals", "peer_result", "amend", "activity", "response_material", "observe", "initiative", "room_list", "room_history"]
     nativeThread: str = Field(min_length=1, max_length=128)
     nativeTurn: str = Field(min_length=1, max_length=128)
     value: dict = Field(default_factory=dict)

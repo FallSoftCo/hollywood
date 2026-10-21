@@ -106,7 +106,7 @@ def read(c, store, actor, purpose, binding, turn, value, *, track=True):
         raise ValueError("Continuation requires the original material revision")
     if reference == "role":
         row = c.execute(
-            "SELECT primary_role,purpose,revision FROM hb_agent_role WHERE principal=%s",
+            "SELECT primary_role,purpose,revision,native_goal_scope,home_room FROM hb_agent_role WHERE principal=%s",
             (actor["id"],)).fetchone()
         revision = row["revision"]
         material = {"agentId": str(actor["id"]), "role": json_value(row)}
@@ -145,9 +145,9 @@ def read(c, store, actor, purpose, binding, turn, value, *, track=True):
         raise ValueError("Material offset outside original content")
     stop = min(offset + CHUNK_CHARS, len(encoded))
     following = stop if stop < len(encoded) else None
-    if track and reference != "role" and row is not None and (purpose == "reader"
+    if track and (reference == "role" or row is not None and (purpose == "reader"
                                 or purpose == "responder" and row["state"] == "ready"
-                                or purpose == "writer" and row["kind"] == "work"):
+                                or purpose == "writer" and row["kind"] == "work")):
         reads = dict(binding["reads"])
         prior = reads.get(reference)
         if offset and prior != {"revision": revision, "turn": turn, "nextOffset": offset}:

@@ -87,6 +87,10 @@ def adopt(c, store, actor, binding, p):
         raise Conflict("Current reader batch full; retain new inputs for its next inference")
     for reference, revision in delivered.items():
         if reference == "role":
+            role = c.execute("SELECT revision FROM hb_agent_role WHERE principal=%s",
+                             (actor["id"],)).fetchone()
+            if role and role["revision"] == revision:
+                reads[reference] = {"revision": revision, "turn": p["nativeTurn"]}
             continue
         row = c.execute("SELECT * FROM hb_context_material WHERE id=%s AND agent=%s",
                         (reference, actor["id"])).fetchone()
