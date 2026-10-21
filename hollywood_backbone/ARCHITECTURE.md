@@ -62,7 +62,7 @@ writer ownership must be configured and verified under their actual identities.
 
 ## Operation and migration
 
-The schema is additive. Legacy native goal binding data and all canonical
+Migrations preserve canonical data. Legacy native goal binding data and all canonical
 history remain available for older receipts and controlled recovery. The old
 room-dependent context selector is not the current operating model.
 
@@ -83,3 +83,30 @@ restores routing only if current principal, root and grant authorization still
 passes. Principal deactivation, enrollment deletion and host movement retain
 permanent participation holds; migrations preserve existing holds until an
 administrator explicitly reselects through the normal CAS API.
+
+### Existing single-context agent enrollment
+
+New purpose enrollment is an explicit drained protocol transition under the same
+agent lock as legacy claims and execution-context binding. Legacy claim checks
+its layout after acquiring that lock. An old worker that was waiting during the
+transition cannot claim new work after the enrollment commits.
+
+Enrollment refuses claimed, running, cancellation-requested or unknown original
+deliveries, and any registered executor without verified stopped state. A
+terminal delivery alone is insufficient resource-drain evidence. Pending input
+is ingested only with generation zero, no claim/native thread/native turn, and
+no cancellation request; uncertain legacy effects require their own settlement.
+The original event/delivery IDs and legacy context/history are retained. Repeat
+configuration of the same enrolled system preserves the existing reconciliation
+contract; it does not start or restart any service.
+
+A migration rehearsal must use an identified private state copy. Installing
+filesystem services against a copy with production realm/agent IDs can collide
+with the real installation namespace and is not an isolated runtime test. The
+2026-10-21 copied-state proof preserves original rows and ACLs but does not imply
+production, physical client or generalized enterprise-installation readiness.
+Schema upgrades retain canonical data; they are not wholly reversible additive
+changes (schema 33 changes executor uniqueness). After purpose work is admitted,
+rollback must retain a compatible Hollywood API and original state, pause new
+execution and reconcile exact receipts. Do not restore an old database snapshot
+or old one-executor-per-generation runtime over new accepted work.

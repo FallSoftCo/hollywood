@@ -1,0 +1,21 @@
+{
+  "schema": "lax-live-migration-rehearsal-result/v1",
+  "at": 1792562050.5407498,
+  "sourceSchema": 21,
+  "cloneSchema": 34,
+  "originalTableCount": 51,
+  "originalRowCount": 137352,
+  "allOriginalColumnRowsPreserved": true,
+  "originalTableOwnersAndAclPreserved": true,
+  "repeatMigrationDataIdempotent": true,
+  "newPurposeSystems": 0,
+  "liveSchemaStill": 21,
+  "dumpSha256": "67c38bd73f28ad8904fe97910d35bce4b25784e6b0dcd4b52e15b0f5024376c0",
+  "protectedDump": "/var/lib/lax-live-promotion-preview-20261021-r260/live-snapshot.dump",
+  "protectedCloneConfig": "/var/lib/lax-live-promotion-preview-20261021-r260/database.json",
+  "cloneDatabase": "harness_native_preview_20261021_r260",
+  "modelsStarted": 0,
+  "listenersStarted": 0,
+  "scope": "Actual production state copy, original snapshot export and original-row/ACL hashes. Schema/data rehearsal only, not runtime/phone/rollback compatibility proof. No source database migrations/writes.",
+  "rollbackLimit": "Do not down-migrate/restore live after new accepted work. Schema33 executor uniqueness and old runtime behavior require separate explicit compatibility review."
+}

@@ -1,0 +1,41 @@
+{
+  "schema": "hollywood-native-adoption-pg/v1",
+  "modelsStarted": 0,
+  "servicesStarted": 0,
+  "scope": "Real PostgreSQL existing-agent transition, including competing legacy claim.\n\nRun only on an explicitly designated disposable database copy. Fixtures roll\nback; the final concurrency case commits the copied agent's metadata enrollment.\nNo filesystem installer, model, worker or live user operation is invoked.\n",
+  "checks": {
+    "reject-unsettled-claimed": true,
+    "reject-unsettled-running": true,
+    "reject-unsettled-cancel_requested": true,
+    "reject-unsettled-unknown": true,
+    "reject-tainted-pending-generation": true,
+    "reject-tainted-pending-claim": true,
+    "reject-tainted-pending-thread": true,
+    "reject-tainted-pending-turn": true,
+    "reject-tainted-pending-cancel": true,
+    "reject-undrained-terminal-executor-captured": true,
+    "reject-undrained-terminal-executor-live": true,
+    "reject-undrained-terminal-executor-unknown": true,
+    "clean-original-pending-ingested": true,
+    "same-enrollment-reconciles": true,
+    "legacy-history-retained": true,
+    "rollback-fixtures-removed": true,
+    "actual-legacy-claim-waits-for-enrollment": true,
+    "legacy-claim-rechecks-layout-after-commit": true,
+    "copy-enrollment-same-agent-three-contexts": true,
+    "legacy-history-unchanged-after-copy-commit": true
+  },
+  "competingClaim": {
+    "blockedOnEnrollment": true,
+    "waitQuery": "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+    "result": {
+      "conflict": "Purpose-context agent uses its native context runtime"
+    }
+  },
+  "passed": true,
+  "disposableDatabase": "harness_native_preview_20261021_r260",
+  "committedMetadataOnly": true,
+  "agentId": "2d4a0daa-0514-475e-be1e-71decacbd5bc",
+  "liveChanges": false,
+  "at": 1792564440.3885167
+}

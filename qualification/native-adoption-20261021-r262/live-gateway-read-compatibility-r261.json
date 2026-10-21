@@ -1,0 +1,89 @@
+{
+  "schema": "lax-live-gateway-copy-read-qualification/v1",
+  "at": 1792563297.387215,
+  "clientResult": {
+    "identityPreserved": true,
+    "authorityId": "e488f19b-0f60-46ca-bd48-4fe544f06757",
+    "principalId": "301c8b83-8cdb-5b9a-9d7f-3b2fa6f0b3f6",
+    "defaultRoomId": "3dd596b7-7a73-4828-969b-335c130551dc",
+    "catalogOriginalRoomCount": 12,
+    "roomHistoryChecks": [
+      {
+        "roomId": "3dd596b7-7a73-4828-969b-335c130551dc",
+        "originalCanonicalEventsMatched": 100,
+        "views": {
+          "conversation": 100,
+          "activity": 100
+        }
+      },
+      {
+        "roomId": "9371e2b5-8787-4495-a6af-e03a49bbb245",
+        "originalCanonicalEventsMatched": 100,
+        "views": {
+          "conversation": 39,
+          "activity": 100
+        }
+      }
+    ],
+    "attentionReadAvailable": true,
+    "liveBindingFileUnchanged": true,
+    "submittedMessages": 0,
+    "scope": "Actual deployed NextComp HollywoodClient and protected human binding, GET-only against migrated copy. No phone UI, new pairing, backend switch or write compatibility claim."
+  },
+  "allCanonicalDataUnchanged": true,
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/principals/301c8b83-8cdb-5b9a-9d7f-3b2fa6f0b3f6"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms/3dd596b7-7a73-4828-969b-335c130551dc/history"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms/3dd596b7-7a73-4828-969b-335c130551dc/history"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms/3dd596b7-7a73-4828-969b-335c130551dc/history"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms/3dd596b7-7a73-4828-969b-335c130551dc"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms/9371e2b5-8787-4495-a6af-e03a49bbb245/history"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms/9371e2b5-8787-4495-a6af-e03a49bbb245/history"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms/9371e2b5-8787-4495-a6af-e03a49bbb245/history"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms/9371e2b5-8787-4495-a6af-e03a49bbb245"
+    },
+    {
+      "method": "GET",
+      "path": "/hollywood/v3/rooms/3dd596b7-7a73-4828-969b-335c130551dc/attention"
+    }
+  ],
+  "modelsStarted": 0,
+  "liveServiceChanges": false,
+  "pairingChanged": false,
+  "listenerRetired": true,
+  "source": "Existing deployed alpha110-r03 HollywoodClient, not a hand-written client substitute"
+}

@@ -1,0 +1,38 @@
+{
+  "schema": "lax-live-global-metadata-rehearsal/v1",
+  "at": 1792562873.0409124,
+  "checks": {
+    "existing-real-global-is-active-admin-agent": true,
+    "actual-gateway-human-in-same-authority": true,
+    "private-pilot-human-cannot-be-reused-in-live-realm": true,
+    "explicit-live-owner-enrolled-with-same-global-and-home": true,
+    "disabled-placement-cannot-enroll-purpose-runtime": true,
+    "one-original-pending-input-ingested": true,
+    "observer-starts-at-current-head-not-historical-backlog": true,
+    "only-exact-pending-id-visible-no-historical-replay": true,
+    "unknown-delivery-preserved-and-not-reingested": true,
+    "same-enrollment-reconciles-without-new-contexts": true,
+    "legacy-context-and-native-thread-preserved": true,
+    "only-global-purpose-system-no-other-agent-conversion": true,
+    "outer-rollback-restores-owner-and-legacy-context": true,
+    "outer-rollback-removes-new-tokens-and-purpose-system": true
+  },
+  "passed": true,
+  "detail": {
+    "legacyContextId": "0d21e4bc8e1af2ab7babcab46209a8d52f1b5d09f9be1c537927fe074c201c03",
+    "legacyNativeThread": "01a13ffa-bd62-7a83-a15a-ad9c61cc945d",
+    "newPurposeContextIds": {
+      "reader": "344b68c8-4660-4fe9-9ffd-f135ca64bf59",
+      "writer": "94574276-dcd3-4bb9-ad8f-579a94e6037e",
+      "responder": "998c9818-c38e-4f89-aba4-0f6abdd6e7b5"
+    },
+    "newExecutionWorkspaceId": "2a7868fc-7606-46fb-84b1-0070d7f4bc37",
+    "sameExistingHostId": "ec32d149-b563-589f-87c9-d5f468df1e79",
+    "observerEnrollmentHead": 17854,
+    "originalCurrentPlacementEnabled": true,
+    "fixtureMeaning": "Only pending/unknown rows above are explicit synthetic rollback-only state facts. Actual copied production actors, roles, rooms, historical data and legacy context were used. No model or service was installed/started."
+  },
+  "modelsStarted": 0,
+  "liveChanges": false,
+  "scope": "Actual migrated copy, canonical administrative functions and rollback-only input-state facts. Not model behavior, host/provider readiness, physical client or live conversion."
+}

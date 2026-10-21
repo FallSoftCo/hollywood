@@ -1,0 +1,92 @@
+{
+  "schema": "lax-existing-realm-readiness-inventory/v1",
+  "at": 1792565032.9064543,
+  "modelsStarted": 0,
+  "servicesChanged": false,
+  "legacyGlobal": {
+    "file": "/var/lib/harness/e488f19b-0f60-46ca-bd48-4fe544f06757/global/connector.json",
+    "sha256": "eed4ae1f5965b7e20cf91b8c175fc1738885ba3febf7661db379c57cfc7d41aa",
+    "keys": [
+      "hollywoodUrl",
+      "token",
+      "agentId",
+      "hostId",
+      "state",
+      "binary",
+      "codexHome",
+      "workspace",
+      "model",
+      "effort",
+      "sandbox",
+      "requireAdministrator",
+      "instructions"
+    ],
+    "agentId": "2d4a0daa-0514-475e-be1e-71decacbd5bc",
+    "hostId": "ec32d149-b563-589f-87c9-d5f468df1e79",
+    "binary": "/opt/harness/production-core-20261015-r05/native/bin/codex",
+    "model": "gpt-6.1-sol",
+    "effort": "xhigh",
+    "state": "/var/lib/harness/e488f19b-0f60-46ca-bd48-4fe544f06757/global/state",
+    "workspace": "/var/lib/harness/e488f19b-0f60-46ca-bd48-4fe544f06757/global/work"
+  },
+  "units": {
+    "hollywood-backbone.service": {
+      "MainPID": "1342390",
+      "User": "harness-hollywood",
+      "Id": "hollywood-backbone.service",
+      "PartOf": "",
+      "RequiredBy": "",
+      "BoundBy": "",
+      "ConsistsOf": "",
+      "Triggers": "",
+      "ActiveState": "active",
+      "FragmentPath": "/etc/systemd/system/hollywood-backbone.service"
+    },
+    "lax-global-e488f19b0f60.service": {
+      "MainPID": "1342394",
+      "User": "hglobal-e488f19b0f60",
+      "Id": "lax-global-e488f19b0f60.service",
+      "PartOf": "",
+      "RequiredBy": "",
+      "BoundBy": "",
+      "ConsistsOf": "",
+      "Triggers": "",
+      "ActiveState": "active",
+      "FragmentPath": "/etc/systemd/system/lax-global-e488f19b0f60.service"
+    },
+    "harness-host-ec32d149b563.service": {
+      "MainPID": "0",
+      "User": "",
+      "Id": "harness-host-ec32d149b563.service",
+      "PartOf": "",
+      "RequiredBy": "",
+      "BoundBy": "",
+      "ConsistsOf": "",
+      "Triggers": "",
+      "ActiveState": "inactive",
+      "FragmentPath": ""
+    },
+    "nextcomp-native-core.service": {
+      "MainPID": "2583312",
+      "User": "aosp",
+      "Id": "nextcomp-native-core.service",
+      "PartOf": "",
+      "RequiredBy": "",
+      "BoundBy": "",
+      "ConsistsOf": "",
+      "Triggers": "",
+      "ActiveState": "active",
+      "FragmentPath": "/etc/systemd/system/nextcomp-native-core.service"
+    }
+  },
+  "existingProviderGithub": {
+    "exitCode": 0,
+    "verified": true,
+    "identity": "aiyer-commits"
+  },
+  "existingGlobalSudo": {
+    "exitCode": 0,
+    "verified": true,
+    "identity": "0"
+  }
+}

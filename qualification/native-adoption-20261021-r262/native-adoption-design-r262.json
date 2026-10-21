@@ -1,0 +1,24 @@
+{
+  "schema": "lax-native-adoption-design/v1",
+  "at": 1792564342.4778328,
+  "objective": "Existing-agent purpose enrollment must be an atomic drained protocol transition, retaining same principal, roles, rooms, original inputs and legacy history.",
+  "components": "Existing Hollywood context configure and legacy claim; no service, fourth context, ledger or new migration database.",
+  "changes": [
+    "Acquire existing agent admission lock inside context configure, after context lock, before placement/drain validation.",
+    "Recheck legacy claim protocol after the same agent lock, before any receipt/admission mutation.",
+    "Before new purpose enrollment reject claimed/running/cancel_requested/unknown deliveries and nonstopped registered executors, even for terminal delivery.",
+    "Only ingest original pending generation0 noncancelled inputs with no claim/native binding. Do not turn uncertain old execution into new work.",
+    "Preserve already-enrolled reconciliation behavior; legacy context/thread and completed receipts remain history."
+  ],
+  "validation": [
+    "Actual migrated production copy, rollback-only fixtures for each unresolved delivery, undrained executor, and tainted pending variant. Rejection must leave no purpose records/tokens.",
+    "One clean original pending input ingested; exact replay reconciles; legacy context/history preserved.",
+    "Real competing PostgreSQL transactions: old claim begins behind enrollment agent lock, enrollment commits, old claim must refuse new legacy admission. Preserve record of copied-realm metadata transition; no service install/model.",
+    "Verify production PIDs/schema/binding remain untouched and archive actual commands/failures."
+  ],
+  "scopeLimits": [
+    "Transactional migration substrate only; not new model behavior, installed environment, phone writes or production readiness.",
+    "Do not run FS installer against copied realm IDs; namespace would overlap real installation."
+  ],
+  "rollout": "Prepare same-realm Global-only installation after old workers drained, existing human owner and host/provider identities verified. Keep legacy product workers stopped. No live promotion from these tests alone."
+}

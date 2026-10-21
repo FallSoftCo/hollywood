@@ -39,6 +39,10 @@ def configure(store, actor_id, agent, payload, *, command=None):
 
 
 def configure_transaction(store,c,actor,agent,payload):
+    # Match purpose calls (context -> agent) and legacy claims/bindings (agent).
+    # A legacy claimant cannot cross the enrollment commit using a stale layout.
+    c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("context:"+agent,))
+    c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", (agent,))
     target = c.execute("""SELECT p.*,r.revision FROM hb_principal p
       JOIN hb_agent_role r ON r.principal=p.id
       JOIN hb_placement l ON l.agent=p.id AND l.enabled
@@ -46,7 +50,6 @@ def configure_transaction(store,c,actor,agent,payload):
       (agent, actor["authority"], payload["hostId"])).fetchone()
     if not target:
         raise Denied("Enrolled agent placement required")
-    c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))", ("context:"+agent,))
     old = c.execute("SELECT * FROM hb_context_system WHERE agent=%s", (agent,)).fetchone()
     if old:
         existing = configuration(store, str(actor["id"]), agent, connection=c)
@@ -61,6 +64,20 @@ def configure_transaction(store,c,actor,agent,payload):
         raise Conflict("Existing context system requires explicit migration")
     if payload.get("reconcilePendingDeliveryIds"):
         raise Conflict("Exact pending-input reconciliation requires an existing enrollment")
+    # An uncertain legacy effect is not an unhandled new input. Require exact
+    # original execution/resource settlement before changing runtime protocols.
+    if c.execute("""SELECT 1 FROM hb_delivery WHERE agent=%s
+            AND state IN ('claimed','running','cancel_requested','unknown') LIMIT 1""",
+            (agent,)).fetchone():
+        raise Conflict("Original legacy execution requires settlement before context enrollment")
+    if c.execute("SELECT 1 FROM hb_executor WHERE agent=%s AND state<>'stopped' LIMIT 1",
+                 (agent,)).fetchone():
+        raise Conflict("Original legacy executor requires verified drain before context enrollment")
+    if c.execute("""SELECT 1 FROM hb_delivery WHERE agent=%s AND state='pending'
+            AND (generation<>0 OR cancellation_requested OR claim_id IS NOT NULL
+                 OR native_thread IS NOT NULL OR native_turn IS NOT NULL) LIMIT 1""",
+            (agent,)).fetchone():
+        raise Conflict("Previously admitted pending work requires explicit legacy recovery")
     bindings = payload["bindings"]
     if {b["purpose"] for b in bindings} != PURPOSES or len(bindings) != 3:
         raise ValueError("Exactly three purpose bindings required")
