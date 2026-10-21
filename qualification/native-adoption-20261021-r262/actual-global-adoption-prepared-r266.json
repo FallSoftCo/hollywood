@@ -1,0 +1,38 @@
+{
+  "schema": "lax-existing-global-adoption-prepared/v1",
+  "at": 1792567460.371603,
+  "authorityId": "e488f19b-0f60-46ca-bd48-4fe544f06757",
+  "agentId": "2d4a0daa-0514-475e-be1e-71decacbd5bc",
+  "ownerHumanId": "301c8b83-8cdb-5b9a-9d7f-3b2fa6f0b3f6",
+  "globalRoomId": "3dd596b7-7a73-4828-969b-335c130551dc",
+  "sameHostId": "ec32d149-b563-589f-87c9-d5f468df1e79",
+  "legacyRoleRevision": 1,
+  "legacyNativeThread": "01a13ffa-bd62-7a83-a15a-ad9c61cc945d",
+  "modelAccountIdentityVerified": true,
+  "modelAndEffortPreserved": [
+    "gpt-6.1-sol",
+    "xhigh"
+  ],
+  "root": "/var/lib/lax-existing-global-adoption-20261021-r266",
+  "stagedFiles": {
+    "legacy-context-and-role.json": "2eccfae38b864b81bb05a4bdf931207f90115373093087049f6e6f32a9d18499",
+    "identity-intent.json": "0826a672d901259df1f9dbbde7a52389a733ca12fa2b29b396b1a2c6c2f3d714",
+    "administrator.json": "8d232c9b6009463b84aa3369c49ea1f318dfb56247c3ee5115845706e8272b66",
+    "context-enrollment-request.json": "2484342aeae6c5fed8b117bcac393f7f68e6458144a70e8606caef9d74b88f92",
+    "purpose-spec.json": "4a0608ebb060a2fc37b5edcacdb4312958a25aa374ee200ad1e6e2da987d1f38",
+    "preparation-intent.json": "d6f8d0d4b4b3ec0f7a1336aa5d0d1d4d82c0d80957f7c2050fac82744eb23215",
+    "role-owner-request.json": "855c5ad7bee450f0a1ba75c1ce9d2fcd703f980aded37a4dd659fa3eb4bd82a6"
+  },
+  "futureNativeContextIds": {
+    "reader": "2ae88041-de10-4522-8e4f-0c77e4151a09",
+    "writer": "470e0ada-4819-4e16-8852-2cf6690bedb5",
+    "responder": "cde47585-1fd2-42c1-a315-192002719f45"
+  },
+  "modelsStarted": 0,
+  "httpMutations": 0,
+  "servicesInstalledOrStarted": 0,
+  "liveSourceRoutesChanged": false,
+  "livePairingChanged": false,
+  "phase": "prepared-private-intents; not canonical enrollment or sealed runtime",
+  "next": "Use exact staged identity/spec only after controlled API upgrade, original work/executor drain, role owner CAS, same-realm context enrollment, native collaboration installation and actual UID environment readiness. Never run against the production-ID copied DB."
+}

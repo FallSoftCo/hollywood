@@ -65,3 +65,13 @@ client recovered the original command by GET. There was exactly one POST,
 one event/delivery and one reader input with generation0. The room catalog
 reported Pending1. No interpreter, model or executor acted on that fixture;
 this is receipt/reconnect integration, not completion/phone proof.
+
+The subsequent r266 preparation verifies the actual Global/admin token and
+paired-human identity against the live database in a read-only transaction,
+retains the existing host/room/role/native-history reference and approved
+model/effort, and records three new context identities in private root-owned
+intent files. Role-owner/context-enrollment payloads validate against the
+installed H83 API schema. No canonical enrollment, service installation or
+model activation occurred. Only the public hash/identity receipt and preparation
+source are archived here; actual credentials/specs stay in the protected
+/var/lib/lax-existing-global-adoption-20261021-r266 directory.
