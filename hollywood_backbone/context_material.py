@@ -110,6 +110,21 @@ def read(c, store, actor, purpose, binding, turn, value, *, track=True):
             (actor["id"],)).fetchone()
         revision = row["revision"]
         material = {"agentId": str(actor["id"]), "role": json_value(row)}
+    elif reference.startswith(("goal:","work:")):
+        if purpose=="responder":
+            raise Denied("Canonical execution context belongs to reader/writer retrieval")
+        from .work import goal_row,work_row
+        kind,identity=reference.split(":",1)
+        identity=str(UUID(identity))
+        if kind=="goal":
+            from .goal_contract import current
+            value=goal_row(store,c,actor,identity)
+            material={"goal":json_value(value),"contract":current(c,value)}
+        else:
+            value=work_row(store,c,actor,identity)
+            material={"work":json_value(value)}
+        revision=value["revision"]
+        row=None
     elif reference.startswith("event:"):
         if purpose!="reader":
             raise Denied("Room retrieval belongs to the reader")

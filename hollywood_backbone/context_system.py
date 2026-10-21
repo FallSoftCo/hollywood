@@ -33,6 +33,9 @@ CREATE TABLE IF NOT EXISTS hb_context_operation(
  digest text NOT NULL, result jsonb NOT NULL, PRIMARY KEY(agent,purpose,operation));
 """ + context_capacity.SCHEMA + """\nCREATE TABLE IF NOT EXISTS hb_context_observation_cursor(\n agent uuid PRIMARY KEY REFERENCES hb_context_system(agent), seq bigint NOT NULL CHECK(seq>=0));\n"""
 
+from .context_selection import SCHEMA as SELECTION_SCHEMA
+SCHEMA += SELECTION_SCHEMA
+
 def configure(store, actor_id, agent, payload, *, command=None):
     from .administrative import mutate
     return mutate(store,actor_id,"context_configure",[agent,payload],command)
@@ -132,6 +135,8 @@ def need_for(c, store, actor, source):
 
 def call(store, actor_id, token_digest, agent, purpose, p):
     with store.pool.connection() as c:
+        if p["action"]=="rebuild_snapshot":
+            c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
         actor=store.actor(c,actor_id)
         if str(actor["id"])!=agent or actor["kind"]!="agent" or purpose not in PURPOSES:
             raise Denied("Own native context required")
@@ -178,7 +183,7 @@ def call(store, actor_id, token_digest, agent, purpose, p):
             c.execute("UPDATE hb_purpose_context SET native_thread=%s WHERE agent=%s AND purpose=%s",
                       (p["nativeThread"],agent,purpose))
             result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose,
-                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1,"roleDecisionOwner":1}
+                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1,"roleDecisionOwner":1,"contextSelection":1,"contextRebuildSnapshot":1}
         elif p["nativeThread"]!=binding["native_thread"]:
             raise Conflict("Native context binding changed")
         else:
@@ -287,20 +292,36 @@ def perform(store,c,actor,purpose,binding,p):
         if not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]:
             raise Conflict("Original reader turn no longer admits delivery")
         return adopt(c, store, actor, binding, p)
+    if action in ("rebuild_snapshot","rebuild_installed"):
+        from .context_selection import snapshot as rebuild_snapshot, installed
+        return (rebuild_snapshot if action=="rebuild_snapshot" else installed)(c,store,actor,purpose,binding,p)
     if action == "activity":
         # Recovery may append this immutable log after the original turn closes.
         # It neither admits callbacks nor changes execution/work settlement.
         from .context_execution import append_activity
         return append_activity(c, store, actor, purpose, binding, p)
+    if (action in ("selection","select","rebuild_request") and binding["active_turn"] is None
+            and p["nativeTurn"]=="context-maintenance"):
+        from .context_selection import selected,mark,request
+        if action=="selection":
+            return selected(c,actor,purpose,binding)
+        return (mark(c,store,actor,purpose,binding,p) if action=="select"
+                else request(c,actor,purpose,binding,p))
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
-      "reader":{"pending","snapshot","read","accept","answer","announce","peer_result","amend","directory","observe","initiative","room_list","room_history"},
-      "writer":{"pending","snapshot","read","progress","complete","announce","peer_request","wait_peers","wait_goals","directory","response_material"},
-      "responder":{"pending","snapshot","read","publish","suppress"},
+      "reader":{"pending","selection","select","rebuild_request","snapshot","read","accept","answer","announce","peer_result","amend","directory","observe","initiative","room_list","room_history"},
+      "writer":{"pending","selection","select","rebuild_request","snapshot","read","progress","complete","announce","peer_request","wait_peers","wait_goals","directory","response_material"},
+      "responder":{"pending","selection","select","rebuild_request","snapshot","read","publish","suppress"},
     }
     if action not in permitted[purpose]:
         raise Denied("Tool does not belong to this context purpose")
+    if action in ("selection","select","rebuild_request","rebuild_request"):
+        from .context_selection import selected,mark,request
+        if action=="selection":
+            return selected(c,actor,purpose,binding)
+        return (mark(c,store,actor,purpose,binding,p) if action=="select"
+                else request(c,actor,purpose,binding,p))
     if action in ("room_list","room_history"):
         from . import context_room_reads
         return (context_room_reads.rooms if action=="room_list" else context_room_reads.history)(c,store,actor,v)
@@ -368,7 +389,7 @@ def perform(store,c,actor,purpose,binding,p):
                   coalesce((m.value->'execution'->>'resumeRevision')::bigint,-1))
           ORDER BY m.created_at,m.id LIMIT 100""",
           (actor["id"],kind,binding["work_scheduling"],binding["active_material"])).fetchall()
-        return {"pending":json_value(rows)}
+        return {"pending":json_value(rows),"contextRebuild":{"requestedOperationId":binding["rebuild_requested"],"generation":binding["rebuild_generation"],"selectionRevision":binding["selection_revision"]}}
     if action in ("snapshot", "read"):
         from .context_material import index, read
         retrieve = index if action == "snapshot" else read
