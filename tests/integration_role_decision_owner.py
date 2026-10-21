@@ -1,13 +1,17 @@
 """Real PG routing invariants with explicit frozen role-work facts; full rollback."""
-import json,time,hashlib
+import argparse,json,time,hashlib
 from pathlib import Path
 from uuid import uuid4
 from psycopg.types.json import Jsonb
 from hollywood_backbone.store import Store,digest,json_value,Conflict,Denied
 from hollywood_backbone.attention import human_owner
-root=Path('/var/lib/lax-role-decision-owner-20261020-r251');base=root/'role-owner'
+parser=argparse.ArgumentParser()
+parser.add_argument('--database-config',type=Path,required=True)
+parser.add_argument('--cohort-directory',type=Path,required=True,help='Explicit disposable enrolled two-human fixture, all mutations roll back')
+parser.add_argument('--output',type=Path,required=True)
+args=parser.parse_args();base=args.cohort_directory
 a=json.loads((base/'public.json').read_text());plan=json.loads((base/'installation-intent.json').read_text());b=json.loads((base/'source-human.json').read_text())
-s=Store(json.loads((root/'database.json').read_text()));checks={}
+s=Store(json.loads((args.database_config).read_text()));checks={}
 def mark(name,value):assert value,name;checks[name]=bool(value)
 try:
  with s.pool.connection() as c:
@@ -54,5 +58,5 @@ try:
   after=c.execute('SELECT count(*) AS n FROM hb_event WHERE authority=%s',(a['authority'],)).fetchone()['n']
   mark('all-frozen-routing-facts-rolled-back',before==after)
  proof={'at':time.time(),'checks':checks,'scope':'Real PostgreSQL, explicit frozen RoleWork facts, not actual model behavior or new Attention creation','modelsStarted':0}
- Path('/aosp/development/lax-three-context-20261018-r01/qualification/role-decision-routing-invariants-r252.json').write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof))
+ args.output.write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof))
 finally:s.close()

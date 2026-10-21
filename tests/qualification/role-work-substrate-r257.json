@@ -1,0 +1,29 @@
+{
+  "at": 1792558101.4844892,
+  "mode": "Real authenticated HTTP/PostgreSQL; frozen native-turn facts; no model/actual execution claim",
+  "checks": {
+    "unread-role-denied": true,
+    "stale-role-revision-denied": true,
+    "work-scoped-role-cannot-initiate": true,
+    "private-source-does-not-expand": true,
+    "stopped-placement-denies-initiative": true,
+    "closed-reader-turn-denies-initiative": true,
+    "cancelled-source-denies-initiative": true,
+    "native-initiative-accepted": true,
+    "original-operation-receipt-deduplicated": true,
+    "different-operation-cannot-reconsume-observation": true,
+    "changed-original-operation-denied": true,
+    "not-human-or-self-request": true,
+    "private-role-not-automatically-published": true,
+    "one-native-delivery-work-result": true,
+    "no-synthetic-reader-input": true,
+    "role-origin-supported-by-existing-goals": true,
+    "real-context-api-and-lax-capture-admit-only-native-role-origin": true,
+    "missing-role-origin-proof-rejected": true,
+    "fresh-global-explicit-bootstrap-owner-routes-role-question": true,
+    "queued-role-work-fenced-on-role-revision": true,
+    "writer-cannot-initiate-as-reader": true,
+    "fresh-namespace-fully-rolled-back": true
+  },
+  "modelsStarted": 0
+}

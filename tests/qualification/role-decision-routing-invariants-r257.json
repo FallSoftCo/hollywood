@@ -1,0 +1,15 @@
+{
+  "at": 1792558103.8325267,
+  "checks": {
+    "captured-role-owner-A-not-source-human-B": true,
+    "ordinary-human-B-request-still-targets-B": true,
+    "captured-original-owner-does-not-follow-current-reassignment": true,
+    "old-ownerless-snapshot-does-not-infer-fallback": true,
+    "inactive-owner-denied-without-fallback-B": true,
+    "owner-missing-room-rights-denied": true,
+    "agent-cannot-be-enrolled-as-human-owner": true,
+    "all-frozen-routing-facts-rolled-back": true
+  },
+  "scope": "Real PostgreSQL, explicit frozen RoleWork facts, not actual model behavior or new Attention creation",
+  "modelsStarted": 0
+}

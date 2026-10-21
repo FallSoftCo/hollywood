@@ -3,7 +3,7 @@
 All fresh namespace writes roll back. No model or execution is claimed here;
 the separate r242 live journey qualifies behavior and actual native admission.
 """
-import asyncio,contextlib,hashlib,json,secrets,time
+import argparse,asyncio,contextlib,hashlib,json,secrets,time
 from pathlib import Path
 from uuid import uuid4
 from aiohttp import ClientSession
@@ -13,7 +13,11 @@ from hollywood_backbone.store import Store,digest
 from hollywood_backbone.server import application
 from hollywood_backbone import context_system,context_room_observations,context_role_work
 
-cfg=json.loads(Path('/var/lib/harness-deployments/ozzz-native-20261019-r01/database.json').read_text())
+parser=argparse.ArgumentParser()
+parser.add_argument('--database-config',type=Path,required=True)
+parser.add_argument('--output',type=Path,required=True)
+args=parser.parse_args()
+cfg=json.loads(args.database_config.read_text())
 store=Store(cfg)
 async def check(c):
  aid,gid,hid,room,host=[str(uuid4()) for _ in range(5)]
@@ -104,9 +108,9 @@ async def check(c):
    else:raise AssertionError('Role flag without native origin proof admitted')
 
    from hollywood_backbone.attention import human_owner
-   try:human_owner(c,e)
-   except Exception as err:mark('evidence-human-is-not-role-decision-owner',type(err).__name__=='Conflict')
-   else:raise AssertionError('Evidence author selected as role-work decision owner')
+   mark('fresh-global-explicit-bootstrap-owner-routes-role-question',str(human_owner(c,e))==hid)
+   # This source happens to be the same human. Distinct-evidence-human and old
+   # ownerless snapshot behavior are tested in integration_role_decision_owner.
 
    with c.transaction(force_rollback=True):
     c.execute("UPDATE hb_agent_role SET revision=revision+1 WHERE principal=%s",(gid,))
@@ -126,5 +130,5 @@ try:
    proof,aid=asyncio.run(check(c))
   assert not c.execute('SELECT 1 FROM hb_authority WHERE id=%s',(aid,)).fetchone()
   proof['checks']['fresh-namespace-fully-rolled-back']=True
-  Path('/aosp/development/lax-three-context-20261018-r01/qualification/role-work-substrate-r243.json').write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof))
+  args.output.write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof))
 finally:store.close()
