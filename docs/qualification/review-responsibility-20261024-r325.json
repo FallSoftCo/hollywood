@@ -53,7 +53,48 @@
     "nativeOrModelCalls": 0,
     "scope": "Actual captured native wait state plus explicit rollback-only machine counterfactuals. No semantic/model, production or unassisted fresh-system claim."
   },
-  "nativeQualificationOfThisVersion": false,
+  "nativeQualificationOfThisVersion": true,
   "productionChanged": false,
-  "priorH117NativeDelivery": "docs/qualification/goal-cancel-planner-feedback-20261024-r324.json"
+  "priorH117NativeDelivery": "docs/qualification/goal-cancel-planner-feedback-20261024-r324.json",
+  "freshNativeEvidence": {
+    "at": 1792836475.0733364,
+    "state": "fresh_bounded_native_qualification_passed_and_stopped",
+    "passed": true,
+    "checks": 14,
+    "qualifiedOriginalGoalWaits": 2,
+    "modelAgents": 2,
+    "nativePurposeContexts": 6,
+    "originalHumanEvent": "ee3ea8af-dd2b-47cf-9bdf-33c4f7830aa4",
+    "sourceInterventions": 0,
+    "operatorFollowupMessages": 0,
+    "goalState": "accepted",
+    "artifact": {
+      "path": "/var/lib/harness/277e6fcb-76b4-44be-bc1e-c11dc81e3449/purpose-agents/d4419ed7-1a26-4d3b-b074-bf2d4949aad3/home/work/OPERATING-SEMANTICS.md",
+      "sha256": "55340dfb798c5892ef79c223196a652426d5c4d1d526af411c84624cef2d3f6a",
+      "bytes": 10644
+    },
+    "quiescence": "/var/lib/lax-native-review-responsibility-20261024-r326/final-quiescence-r01/result.json",
+    "stoppedUnits": 9,
+    "persistentUnitsDisabled": 8,
+    "productionChanged": false,
+    "broadGoalComplete": false,
+    "nativeHistoryCrossVersionRollbackQualified": false,
+    "next": "Inspect confirmed source-review finding about accepting a Goal with an unadopted newer proposal. Keep native history cross-version continuity as explicit migration gate; thread/read metadata result is insufficient. Do not restart completed R323/R326 authorities or repeat any inputs."
+  },
+  "nativeAuditChecks": {
+    "two_agents_six_independent_native_contexts": true,
+    "one_original_authentic_human_request": true,
+    "distinct_nonadmin_readonly_verifier": true,
+    "developed_adopted_goal_and_selected_current_plan": true,
+    "native_author_substantive_artifact_with_source_references": true,
+    "all_supplied_sources_and_manifest_unchanged": true,
+    "administrator_waited_on_original_goal_for_assigned_verifier": true,
+    "designated_verifier_authored_actual_work_acceptance": true,
+    "goal_and_accepted_current_work_complete": true,
+    "original_and_all_finite_responsibilities_complete": true,
+    "sourced_final_global_response": true,
+    "idle_no_unsettled_native_edits_or_deliveries": true,
+    "original_production_pids_preserved": true,
+    "older_completed_qa_stays_stopped": true
+  }
 }
