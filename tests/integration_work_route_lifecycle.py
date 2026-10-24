@@ -30,7 +30,7 @@ try:
    ('wrong_context',[("UPDATE hb_work_resource SET context_id=context_id||'-changed' WHERE work=%s",(work,))],'held','held'),
    ('wrong_work_revision',[("UPDATE hb_work_resource SET work_revision=work_revision+1 WHERE work=%s",(work,))],'held','held'),
    ('inactive_principal',[("UPDATE hb_principal SET active=false WHERE id=%s",(agent,))],'held','held'),
-   ('write_revoked',[("UPDATE hb_physical_agent_grant SET can_write=false WHERE workspace=%s AND principal=%s",(workspace,agent))],'held','held'),
+   ('write_revoked',[("UPDATE hb_physical_agent_grant SET can_write=false WHERE workspace=%s AND principal=%s",(workspace,agent))],'held','selected'),
    ('grant_revised',[("UPDATE hb_physical_agent_grant SET revision=revision+1 WHERE workspace=%s AND principal=%s",(workspace,agent))],'held','held'),
    ('root_revised',[("UPDATE hb_physical_workspace SET revision=revision+1 WHERE id=%s",(workspace,))],'held','held')]
   results=[]

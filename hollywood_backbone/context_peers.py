@@ -71,10 +71,16 @@ def queue(c, store, actor, binding, p):
     body = v["body"]
     if not isinstance(body, str) or not body.strip() or len(body.encode()) > 6000:
         raise ValueError("A bounded peer specification is required")
+    evidence = v.get("evidenceReferences")
+    if evidence is not None:
+        from .execution_evidence import snapshot
+        snapshot(c, store, actor, evidence)  # Validate now; recheck before publication.
     need_id = str(uuid5(UUID(str(work["id"])), p["operationId"]))
     value = {"kind": "request", "required": True, "parentWorkId": str(work["id"]),
              "material": body, "prerequisites": [], "target": {
                  "roomId": room_id, "recipientId": recipient, "audience": original["audience"]}}
+    if evidence is not None:
+        value["evidenceReferences"] = evidence
     c.execute("""INSERT INTO hb_context_material(id,agent,kind,source,state,value)
       VALUES(%s,%s,'need',%s,'ready',%s)""",
               (need_id, actor["id"], work["source"], Jsonb(value)))
@@ -111,6 +117,8 @@ def publish(c, store, actor, need, provenance, supplied_body):
     payload = {"kind": "request", "body": value["material"], "expectsReply": True,
                "recipientId": target["recipientId"], "audience": target["audience"],
                "sourceEventId": str(need["source"])}
+    if value.get("evidenceReferences") is not None:
+        payload["evidenceReferences"] = value["evidenceReferences"]
     wire = {"method": "POST", "path": "rooms/" + target["roomId"] + "/messages",
             "body": {"operationId": operation, **payload}}
     result = store.post_in_transaction(c, actor, target["roomId"], operation, payload,

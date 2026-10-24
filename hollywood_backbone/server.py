@@ -34,6 +34,13 @@ class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class EvidenceReferences(Input):
+    version: int = Field(strict=True, ge=1, le=1)
+    deliveryId: UUID
+    eventIds: list[UUID] = Field(max_length=8)
+    contextOperationIds: list[str] = Field(max_length=8)
+
+
 class Message(Input):
     operationId: str = Field(min_length=1, max_length=128)
     kind: Literal["message", "request"]
@@ -42,6 +49,7 @@ class Message(Input):
     recipientId: UUID | None = None
     sourceEventId: UUID | None = None
     expectsReply: bool = False
+    evidenceReferences: EvidenceReferences | None = None
 
 
 class ContextBinding(Input):
@@ -60,6 +68,7 @@ class ContextSystemConfiguration(Input):
 
 class ContextCall(Input):
     runtimeProtocol: Literal["lax-purpose-runtime/v3"]
+    requiredCapability: Literal["scoped-execution-evidence/v1"] | None = None
     operationId: str = Field(min_length=1, max_length=256)
     action: Literal["action_prepare", "action_commit", "selection", "select", "rebuild_request", "rebuild_snapshot", "rebuild_installed", "active_snapshot", "active_installed", "active_terminal", "release_reservation", "resume_interrupted", "resume_failed_preturn", "resume_unsettled", "acknowledge_provider_rejection", "observe_writer_outcome", "review_writer_outcome", "writer_evidence_available", "writer_evidence_authorize", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "read_complete", "accept", "answer", "announce",
                     "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "wait_goals", "peer_result", "amend", "activity", "response_material", "observe", "initiative", "room_list", "room_history"]
@@ -879,7 +888,7 @@ async def post(request):
         "post",
         str(UUID(request.match_info["room"])),
         p.operationId,
-        p.model_dump(mode="json", exclude={"operationId"} | ({"expectsReply"} if not p.expectsReply else set())),
+        p.model_dump(mode="json", exclude={"operationId"} | ({"expectsReply"} if not p.expectsReply else set()) | ({"evidenceReferences"} if p.evidenceReferences is None else set())),
     )
 
 
@@ -1094,6 +1103,17 @@ async def native_control_update(request):
 async def cancel(request):
     # Idempotent desired state. It cannot claim that an admitted effect was undone.
     return await invoke(request, "cancel", str(UUID(request.match_info["delivery"])))
+
+
+async def execution_evidence(request):
+    if set(request.query) - {"after", "afterOperation"}:
+        raise ValueError("Unknown execution evidence query")
+    after = int(request.query.get("after", "0"))
+    operation = request.query.get("afterOperation", "")
+    if not 0 <= after <= 9007199254740991 or len(operation) > 128:
+        raise ValueError("Invalid original evidence cursor")
+    return await invoke(request, "execution_evidence",
+                        str(UUID(request.match_info["delivery"])), after, operation)
 
 
 async def delivery(request):
@@ -1479,7 +1499,7 @@ async def context_call(request):
         raise ValueError("Context material exceeds bound")
     return await invoke(request, "context_call", request["tokenDigest"],
                         str(UUID(request.match_info["agent"])), request.match_info["purpose"],
-                        p.model_dump(mode="json", exclude={"runtimeProtocol"}))
+                        p.model_dump(mode="json", exclude={"runtimeProtocol", "requiredCapability"}))
 
 
 def application(store):
@@ -1583,6 +1603,7 @@ def application(store):
             ),
             web.post("/hollywood/v3/connector/native-controls/{control}", native_control_update),
             web.post("/hollywood/v3/deliveries/{delivery}/cancel", cancel),
+            web.get("/hollywood/v3/deliveries/{delivery}/evidence", execution_evidence),
             web.get("/hollywood/v3/deliveries/{delivery}", delivery),
             web.get("/hollywood/v3/agents/{agent}/context", agent_context),
             web.put("/hollywood/v3/agents/{agent}/communication", communication_set),

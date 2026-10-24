@@ -969,6 +969,9 @@ class Store:
                 ).fetchall()
                 if len(goals) == 1:
                     data["goalReferenceId"] = str(goals[0]["id"])
+        if payload.get("evidenceReferences") is not None:
+            from .execution_evidence import snapshot
+            data["executionEvidence"] = snapshot(c, self, a, payload["evidenceReferences"])
         event = self.event(
             c,
             a,
@@ -1392,6 +1395,10 @@ class Store:
             if not a["administrator"] and a["id"] not in (e["author"], d["agent"]):
                 raise Denied("Delivery receipt audience denied")
             return self.claim_receipt(c, identity)
+
+    def execution_evidence(self, actor_id, identity, after=0, after_operation=""):
+        from .execution_evidence import index
+        return index(self, actor_id, identity, after, after_operation)
 
     def execution_context(self, actor_id, identity):
         with self.pool.connection() as c:

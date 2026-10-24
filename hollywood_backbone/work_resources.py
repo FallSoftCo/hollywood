@@ -41,7 +41,7 @@ def snapshot(c, authority, identity):
             grant = c.execute("SELECT * FROM hb_physical_agent_grant WHERE workspace=%s AND principal=%s",
                               (row["workspace"], work["owner"])).fetchone()
             if (not root or not grant or root["state"] != "active" or grant["state"] != "active"
-                    or not grant["can_read"] or not grant["can_write"]
+                    or not grant["can_read"]
                     or root["host"] != host or grant["execution_host"] != host
                     or root["revision"] != row["workspace_revision"] or grant["revision"] != row["grant_revision"]):
                 state, reason = "held", "resource-access-revisions-changed"
@@ -97,7 +97,7 @@ def select(c, actor, identity, value):
         grant = c.execute("SELECT * FROM hb_physical_agent_grant WHERE workspace=%s AND principal=%s",
                           (workspace, work["owner"])).fetchone()
         if (not root or not grant or root["state"] != "active" or grant["state"] != "active"
-                or not grant["can_read"] or not grant["can_write"]
+                or not grant["can_read"]
                 or root["host"] != context["host"] or grant["execution_host"] != context["host"]):
             raise Denied("Explicit authorized local Work resource required")
         if (root["revision"], grant["revision"]) != (value["workspaceRevision"], value["grantRevision"]):
