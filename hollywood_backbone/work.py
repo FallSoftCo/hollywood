@@ -409,7 +409,9 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
             elif action == "work.revise":
                 # Rework is new intent after completed, independently rejected work.
                 if work["state"] != "rejected" or not work["delivery"]:
-                    raise Conflict("Rework requires independently rejected completed work")
+                    raise goal_contract.ContractConflict("WORK_REVISE_REQUIRES_REJECTED_COMPLETED",
+                        "Rework requires independently rejected completed work",
+                        next_action='Read the current Goal and original Work/delivery first. For obsolete unfinished intent, use hollywood_work_cancel, observe known cancellation settlement, then create current criterion-bound Work, select its strategy frontier and separately assign it. Retain the old cancelled attempt and any effects; do not replay it. hollywood_work_revise is for completed independently rejected attempts. Active or unknown effects remain fenced; cancellation is not proof they stopped.')
                 original = c.execute(
                     "SELECT * FROM hb_delivery WHERE id=%s FOR SHARE", (work["delivery"],)
                 ).fetchone()

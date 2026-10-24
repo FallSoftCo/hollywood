@@ -27,10 +27,13 @@ def snapshot(c, authority, identity):
         state = row["state"]
         placed = c.execute("SELECT l.revision FROM hb_placement l JOIN hb_principal p ON p.id=l.agent WHERE l.agent=%s AND l.host=%s AND l.enabled AND p.active",
                            (work["owner"], host)).fetchone() if host else None
+        # Placement revisions also track pause/resume. Durable source intent is
+        # bound to the same current owner/context/host/work and root/grant below;
+        # live admission must be enabled. Native mutation permits keep their own
+        # strict lifecycle fences and are never revived by this projection.
         if (not context or str(row["principal"]) != str(work["owner"])
                 or row["context_id"] != context["context_id"] or row["execution_host"] != context["host"]
-                or row["work_revision"] != work["revision"] or not placed
-                or row["placement_revision"] != placed["revision"]):
+                or row["work_revision"] != work["revision"] or not placed):
             state, reason = "held", "work-participation-changed"
         elif state == "selected":
             root = c.execute("SELECT * FROM hb_physical_workspace WHERE id=%s AND authority=%s",

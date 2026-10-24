@@ -9,7 +9,7 @@ from uuid import UUID
 
 from aiohttp import web
 from psycopg import errors as pg_errors
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from .store import Conflict, Denied, Store, digest
 from . import native_effects
@@ -26,6 +26,7 @@ from .artifact_roots import ArtifactRoot
 from .activity_models import Activity, normalize as normalize_activity
 from .goal_contract import ContractConflict
 from .context_assignments import AssignmentConflict
+from .context_system import ContextOperationNotFound
 from .context_material import MaterialReadConflict
 
 
@@ -59,12 +60,21 @@ class ContextSystemConfiguration(Input):
 
 class ContextCall(Input):
     runtimeProtocol: Literal["lax-purpose-runtime/v3"]
-    operationId: str = Field(min_length=1, max_length=128)
-    action: Literal["selection", "select", "rebuild_request", "rebuild_snapshot", "rebuild_installed", "release_reservation", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "read_complete", "accept", "answer", "announce",
+    operationId: str = Field(min_length=1, max_length=256)
+    action: Literal["action_prepare", "action_commit", "selection", "select", "rebuild_request", "rebuild_snapshot", "rebuild_installed", "active_snapshot", "active_installed", "active_terminal", "release_reservation", "resume_interrupted", "resume_failed_preturn", "resume_unsettled", "acknowledge_provider_rejection", "observe_writer_outcome", "review_writer_outcome", "writer_evidence_available", "writer_evidence_authorize", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "read_complete", "accept", "answer", "announce",
                     "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "wait_goals", "peer_result", "amend", "activity", "response_material", "observe", "initiative", "room_list", "room_history"]
-    nativeThread: str = Field(min_length=1, max_length=128)
-    nativeTurn: str = Field(min_length=1, max_length=128)
+    nativeThread: str = Field(min_length=1, max_length=256)
+    nativeTurn: str = Field(min_length=1, max_length=256)
     value: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def context_identity_bounds(self):
+        active = self.action in ("active_snapshot", "active_installed")
+        for value in (self.operationId, self.nativeThread, self.nativeTurn):
+            if (active and len(value.encode("utf-8")) > 256
+                    or not active and len(value) > 128):
+                raise ValueError("Context identity exceeds its original action bound")
+        return self
 
 
 class NativeControlScope(Input):
@@ -177,7 +187,8 @@ class RuntimeObservation(Input):
     runtimeProtocol: Literal["lax-purpose-runtime/v3"]
     availableCapabilities: list[Literal["native-peer-provisioning/v1",
         "purpose-human-continuations/v1","reader-work-updates/v1","purpose-native-collaboration/v1",
-        "causal-peer-updates/v1","native-plan-tool/v1"]] = Field(min_length=1,max_length=6)
+        "causal-peer-updates/v1","native-plan-tool/v1",
+        "canonical_context_window_refill/v1"]] = Field(min_length=1,max_length=7)
     workId: UUID
     workRevision: int = Field(ge=1)
     priorNativeTurn: str = Field(min_length=1,max_length=128)
@@ -519,10 +530,18 @@ async def boundary(request, handler):
         return await handler(request)
     except web.HTTPRequestEntityTooLarge:
         return web.json_response({"error": "Request body exceeds limit; nothing admitted"}, status=413)
+    except ContextOperationNotFound:
+        return web.json_response({
+            "error": "Original context operation has no committed receipt",
+            "code": "CONTEXT_OPERATION_NOT_FOUND",
+            "scope": "canonical_context_receipt",
+            "mayApply": False,
+        }, status=404)
     except Denied:
         return web.json_response({"error": "Access denied"}, status=403)
     except (ContractConflict,AssignmentConflict,MaterialReadConflict) as error:
-        return web.json_response({"error": str(error), "code": error.code}, status=409)
+        return web.json_response({"error": str(error), "code": error.code,
+            **({"next": error.next_action} if getattr(error, "next_action", None) else {})}, status=409)
     except (Conflict, pg_errors.UniqueViolation, pg_errors.SerializationFailure):
         return web.json_response({"error": "Identity, revision or operation conflict"}, status=409)
     except (ValidationError, ValueError, TypeError, KeyError):

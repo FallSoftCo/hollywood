@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import secrets
+import subprocess
 from pathlib import Path
 from uuid import uuid4
 
@@ -29,8 +30,13 @@ async def main():
     assert Path(hollywood_backbone.__file__).resolve().is_relative_to(source)
     out = Path(os.environ['CANONICAL_TEST_OUTPUT'])
     config = json.loads(Path(os.environ['CANONICAL_TEST_DATABASE']).read_text())
-    assert out.is_relative_to(Path('/dev/shm')) and config['host'].startswith('/dev/shm/')
-    assert config['dbname'] == 'canonical_collaboration_fixture'
+    # New qualification uses only an explicit disposable schema on disk.
+    namespace = os.environ['CANONICAL_TEST_SCHEMA']
+    assert namespace.startswith('lax_claim_inspection_') and namespace.isidentifier()
+    assert config.get('options', '').split()[-2:] == ['-c', 'search_path=' + namespace]
+    assert out.is_absolute() and out.exists()
+    filesystem = subprocess.check_output(['findmnt','-n','-o','FSTYPE','-T',str(out)],text=True).strip()
+    assert filesystem not in ('tmpfs','ramfs'), 'Disk-backed qualification output required'
     store = Store(config)
     store.migrate()
     ids = {name: identity() for name in ('authority', 'room', 'goal', 'host1', 'host2', 'workspace1', 'workspace2')}
@@ -193,6 +199,26 @@ async def main():
                        {'X-Hollywood-Native-Source': json.dumps(a['source'])})
             await call(a, body={**spoofed, 'hostId': ids['host1']}, status=400)
             checks.append('Explicit bridge enrollment; worker bearer plus complete source fields, wrong controller and model physical identity rejected')
+
+            # A read must reveal a revision, not demand that the caller guess it.
+            probe = await call(a, command(a, relativePath='src/inspection.py'))
+            probe_id = probe['claim']['id']
+            renewed = await call(a, command(a, 'renew', probe_id, 1))
+            assert renewed['claim']['revision'] == 2
+            before_inspection = sql('SELECT * FROM hb_path_claim WHERE id=%s', (probe_id,))
+            read_wire = envelope(a, command(a, 'inspect', probe_id, 0))
+            inspected = await call(a, body=read_wire)
+            assert inspected['claim'] == json.loads(json.dumps(before_inspection, default=str))
+            assert inspected['patchPermitIssued'] is False and inspected['newExecutionAdmitted'] is False
+            assert sql('SELECT * FROM hb_path_claim WHERE id=%s', (probe_id,)) == before_inspection
+            await call(a, command(a, 'renew', probe_id, 1), status=409)
+            assert sql('SELECT * FROM hb_path_claim WHERE id=%s', (probe_id,)) == before_inspection
+            await call(b, command(b, 'inspect', probe_id, 0), status=403)
+            await call(c, command(c, 'inspect', probe_id, 0), status=403)
+            await call(a, command(a, 'release', probe_id, 2))
+            assert await call(a, body=read_wire) == inspected
+            assert sql('SELECT state FROM hb_path_claim WHERE id=%s', (probe_id,))['state'] == 'released'
+            checks.append('Inspection reveals current revision without claim CAS; no claim mutation, stale mutation still409, foreign owner/workspace403, original inspection receipt remains historical')
 
             original = envelope(a, command(a))
             receipt = await call(a, body=original)

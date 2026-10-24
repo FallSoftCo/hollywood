@@ -10,6 +10,8 @@ def apply(c,store,actor,binding,p):
     if set(v)!={"inputId","workId","workRevision","body"}:
         raise ValueError("Exact interpreted input and original work revision required")
     source=item(c,store,actor,v["inputId"],"input")
+    if source["value"].get("writerOutcome"):
+        raise Conflict("Native outcome requires original-work review; causal human authorship must not be reused")
     from .context_assignments import require_separate
     require_separate(c,actor,source)
     work=item(c,store,actor,v["workId"],"work")

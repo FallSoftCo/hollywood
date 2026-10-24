@@ -251,7 +251,9 @@ def apply(store, c, actor, source, binding, work, goal, command):
     if (not claim or str(claim["authority"]) != namespace[0] or str(claim["host"]) != namespace[1]
             or str(claim["workspace_id"]) != namespace[2]):
         raise Denied("Claim differs from actual physical workspace")
-    if claim["revision"] != command["claimRevision"]:
+    # Inspection reveals the current revision; it must not require knowing it.
+    # Scope/owner checks still apply, and every ownership mutation retains CAS.
+    if action != "inspect" and claim["revision"] != command["claimRevision"]:
         raise Conflict("Claim revision changed")
     if action == "accept":
         if claim["state"] != "handoff" or claim["target_work"] != work["id"]:

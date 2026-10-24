@@ -19,19 +19,26 @@ CREATE TABLE IF NOT EXISTS hb_context_selection(
  FOREIGN KEY(agent,purpose) REFERENCES hb_purpose_context(agent,purpose));
 INSERT INTO hb_schema VALUES(36) ON CONFLICT DO NOTHING;
 """
+from .context_native_action_selection import SCHEMA as NATIVE_SELECTION_SCHEMA
+SCHEMA += NATIVE_SELECTION_SCHEMA
+
 MAX_MARKS=16
 MAX_MANIFEST_BYTES=98304
 TERMINAL=["handled","complete","cancelled","superseded","published","suppressed"]
 
 
 def selected(c,actor,purpose,binding):
-    rows=c.execute("SELECT reference,reason,selected_revision FROM hb_context_selection WHERE agent=%s AND purpose=%s ORDER BY reference",
+    rows=c.execute("SELECT reference,reason,selected_revision,native_action FROM hb_context_selection WHERE agent=%s AND purpose=%s ORDER BY reference",
                    (actor["id"],purpose)).fetchall()
+    rows=[{k:v for k,v in row.items() if k!="native_action" or v is not None} for row in rows]
     return json_value({"selectionRevision":binding["selection_revision"],"marks":rows,
         "policy":"Follow current authorized revisions at rebuild. Selection is relevance metadata, never a permission or comprehension certificate."})
 
 
 def material(c,store,actor,purpose,binding,turn,reference):
+    if reference.startswith("exec:"):
+        from .context_native_action_selection import record
+        return record(c,store,actor,purpose,binding,reference)
     chunks=[];offset=0;revision=None
     while True:
         chunk=context_material.read(c,store,actor,purpose,binding,turn,
@@ -59,11 +66,13 @@ def mark(c,store,actor,purpose,binding,p):
         raise Conflict("Context selection revision changed")
     if reference=="role":
         raise Conflict("Canonical role is mandatory and cannot be removed or replaced")
+    if reference.startswith("exec:") and value["keep"]:
+        raise Conflict("Use native whole-item pin/preflight adoption for execution evidence")
     if value["keep"]:
         current=material(c,store,actor,purpose,binding,p["nativeTurn"],reference)
         if current["revision"]!=value["materialRevision"]:
             raise Conflict("Selected material revision changed; read its current content")
-        c.execute("""INSERT INTO hb_context_selection VALUES(%s,%s,%s,%s,%s)
+        c.execute("""INSERT INTO hb_context_selection(agent,purpose,reference,reason,selected_revision) VALUES(%s,%s,%s,%s,%s)
           ON CONFLICT(agent,purpose,reference) DO UPDATE SET reason=EXCLUDED.reason,
           selected_revision=EXCLUDED.selected_revision""",
           (actor["id"],purpose,reference,value["reason"],current["revision"]))
@@ -82,15 +91,38 @@ def mark(c,store,actor,purpose,binding,p):
 def request(c,actor,purpose,binding,p):
     if p["value"]:
         raise ValueError("Rebuild request takes no mutable payload")
+    if binding["rebuild_requested"] and binding["rebuild_requested"] != p["operationId"]:
+        raise Conflict("Original context rebuild already pending; inspect its original receipt")
+    # A rebuild is an explicit continuation of only its captured unfinished Work.
+    # Its revision is consumed by the current inference, not by Work completion.
+    # New inference remains fenced by rebuild_requested until installation.
+    continued=[]
+    if (purpose=="writer" and binding["work_scheduling"]==2
+            and binding["active_turn"]==p["nativeTurn"]):
+        continued=c.execute("""UPDATE hb_context_material m SET
+          value=value || jsonb_build_object('resumeRevision',
+            coalesce((value->>'resumeRevision')::bigint,0)+1),
+          revision=revision+1,updated_at=clock_timestamp()
+          WHERE agent=%s AND kind='work' AND id=ANY(%s::uuid[])
+            AND state IN ('pending','running')
+            AND value->'execution'->>'nativeThread'=%s
+            AND value->'execution'->>'nativeTurn'=%s
+            AND NOT EXISTS(SELECT 1 FROM hb_delivery d WHERE d.agent=m.agent
+              AND d.event=m.source AND d.cancellation_requested)
+          RETURNING id""",(actor["id"],binding["active_material"],p["nativeThread"],p["nativeTurn"])).fetchall()
     c.execute("UPDATE hb_purpose_context SET rebuild_requested=%s WHERE agent=%s AND purpose=%s",
               (p["operationId"],actor["id"],purpose))
     return {"requested":True,"requestOperationId":p["operationId"],
             "contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],
+            "continuationMaterialIds":[str(row["id"]) for row in continued],
             "resetPerformed":False,"modelCalls":0}
 
 
 def installed(c,store,actor,purpose,binding,p):
     value=p["value"]
+    if value.get("schema") == "lax-native-idle-context-installed/v1":
+        from .context_native_idle import installed as native_installed
+        return native_installed(c,store,actor,purpose,binding,p)
     if set(value)!={"snapshotOperationId","sha256","checkpointTurnId","nativeHistorySha256","nativeHistoryBytes","nativeActionsSha256"}:
         raise ValueError("Exact original snapshot/native checkpoint receipt required")
     if binding["active_turn"] is not None or binding["accepting"]:
@@ -122,12 +154,12 @@ def installed(c,store,actor,purpose,binding,p):
         "effectsReplayed":0,"semanticSufficiencyProved":False}
 
 
-def snapshot(c,store,actor,purpose,binding,p):
+def snapshot(c,store,actor,purpose,binding,p,*,preflight=False):
     # call() chooses REPEATABLE READ before any statement. A manifest is one
     # consistent database read point; later source changes remain observable.
-    if binding["active_turn"] is not None or binding["accepting"]:
+    if not preflight and (binding["active_turn"] is not None or binding["accepting"]):
         raise Conflict("Rebuild snapshot requires the original native inference to be settled")
-    if c.execute("""SELECT 1 FROM hb_context_permit WHERE agent=%s AND purpose=%s
+    if not preflight and c.execute("""SELECT 1 FROM hb_context_permit WHERE agent=%s AND purpose=%s
         AND state IN ('reserved','running') LIMIT 1""",(actor["id"],purpose)).fetchone():
         raise Conflict("An original native inference reservation remains unsettled")
     if set(p["value"])!={"materialIds"}:
@@ -157,7 +189,17 @@ def snapshot(c,store,actor,purpose,binding,p):
         raise Denied("Next material is not a current accessible obligation")
     marks=selected(c,actor,purpose,binding)
     references=sorted(set(["role",*ids,*[m["reference"] for m in marks["marks"]]]))
-    records=[material(c,store,actor,purpose,binding,p["nativeTurn"],reference) for reference in references]
+    records=[]
+    mandatory={"role",*ids}
+    for reference in references:
+        try:
+            record=material(c,store,actor,purpose,binding,p["nativeTurn"],reference)
+        except Denied:
+            if reference in mandatory:
+                raise
+            record={"reference":reference,"access":"unavailable",
+                    "meaning":"Retained reference is no longer visible to this purpose. No content or authority was restored."}
+        records.append(record)
     content=json_value({"schema":"lax-context-rebuild/v1","agentId":actor["id"],
         "contextId":binding["context_id"],"purpose":purpose,"nativeThread":p["nativeThread"],
         "selection":marks,"nextMaterialIds":ids,"obligations":obligations,"records":records,

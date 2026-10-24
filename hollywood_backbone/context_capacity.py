@@ -47,6 +47,8 @@ def reserve(store,c,actor,purpose,binding,p):
         raise ValueError("Bounded purpose material required")
     if binding["active_turn"] is not None:
         raise Conflict("Original native turn unsettled")
+    if binding["rebuild_requested"]:
+        raise Conflict("Original context rebuild is not installed; inference remains held")
     system=c.execute("SELECT * FROM hb_context_system WHERE agent=%s AND enabled",(actor["id"],)).fetchone()
     if not system:
         raise Denied("Installed purpose system required")
@@ -69,13 +71,18 @@ def reserve(store,c,actor,purpose,binding,p):
         store.room(c,actor,e["room"],"can_read" if observation else "can_post")
         d=c.execute("SELECT * FROM hb_delivery WHERE event=%s AND agent=%s",
                     (m["source"],actor["id"])).fetchone()
-        if (not d and not observation) or d and d["cancellation_requested"]:
+        # An optional, canonical communication may originate from an observed
+        # fact, not an assigned task. Its room/read/post checks above still apply.
+        optional_communication=(purpose=="responder" and m["kind"]=="need"
+                                and m["value"].get("required") is False)
+        if (not d and not (observation or optional_communication)) or d and d["cancellation_requested"]:
             raise Conflict("Original request cancelled")
         if purpose=="writer" and (d["state"] not in ("claimed","running") or not c.execute(
                 "SELECT 1 FROM hb_claim WHERE agent=%s AND delivery=%s AND operation=%s",
                 (actor["id"],d["id"],d["claim_id"])).fetchone()):
             raise Conflict("Writer requires original native work claim")
-        interactive=interactive or e["data"].get("authorKind")=="human"
+        interactive=interactive or (not m["value"].get("writerOutcome")
+                                    and e["data"].get("authorKind")=="human")
     interactive=interactive and bool(c.execute("SELECT 1 FROM hb_host_control_agent WHERE host=%s AND agent=%s",
                                                (host,actor["id"])).fetchone())
     scope={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"materialIds":ids,
@@ -127,6 +134,7 @@ def reserve(store,c,actor,purpose,binding,p):
             WHERE q.host=%s AND q.state='queued' AND q.queue_class=%s
               AND b.context_id=q.context_id AND b.native_thread=q.native_thread
               AND b.active_turn IS NULL
+              AND b.rebuild_requested IS NULL
               AND NOT EXISTS(SELECT 1 FROM hb_context_permit busy
                 WHERE busy.agent=q.agent AND busy.purpose=q.purpose AND busy.state IN ('reserved','running'))
               AND b.observed_at>clock_timestamp()-(%s * interval '1 second')
@@ -135,7 +143,8 @@ def reserve(store,c,actor,purpose,binding,p):
                 LEFT JOIN hb_delivery d ON d.event=m.source AND d.agent=q.agent
                 LEFT JOIN hb_event e ON e.id=m.source
                 WHERE m.id IS NULL OR (d.id IS NULL AND NOT
-                    (q.purpose='reader' AND m.value->>'roomObservation'='true'))
+                    (q.purpose='reader' AND m.value->>'roomObservation'='true'
+                     OR q.purpose='responder' AND m.kind='need' AND m.value->'required'='false'::jsonb))
                   OR d.cancellation_requested
                   OR m.kind<>CASE q.purpose WHEN 'reader' THEN 'input' WHEN 'writer' THEN 'work' ELSE 'need' END
                   OR NOT (m.state=ANY(CASE q.purpose WHEN 'reader' THEN ARRAY['pending']

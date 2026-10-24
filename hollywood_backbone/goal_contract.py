@@ -6,9 +6,10 @@ CAPABILITY="goal-definition-strategy/v1"
 
 class ContractConflict(Conflict):
     """Actionable, authenticated contract preconditions; never SQL diagnostics."""
-    def __init__(self, code, message):
+    def __init__(self, code, message, *, next_action=None):
         super().__init__(message)
         self.code=code
+        self.next_action=next_action
 
 def current(c, goal):
     definition=c.execute("SELECT * FROM hb_goal_definition WHERE goal=%s AND revision=%s",
@@ -65,7 +66,8 @@ def mutate(store,c,actor,goal,action,payload):
         work=c.execute("SELECT * FROM hb_work WHERE id=%s AND goal=%s",
                        (identity,goal["id"])).fetchone()
         if not work or work["goal_definition_revision"]!=goal["adopted_definition_revision"]:
-            raise ContractConflict('GOAL_FRONTIER_STALE','Strategy frontier requires Work for this adopted definition')
+            raise ContractConflict('GOAL_FRONTIER_STALE','Strategy frontier requires Work for this adopted definition',
+                next_action='Read the current Goal and original Work/delivery first. For obsolete unfinished intent, use hollywood_work_cancel, observe known cancellation settlement, then create current criterion-bound Work, select its strategy frontier and separately assign it. Retain the old cancelled attempt and any effects; do not replay it. hollywood_work_revise is for completed independently rejected attempts. Active or unknown effects remain fenced; cancellation is not proof they stopped.')
         store.room(c,actor,work["room"])
     number=goal["plan_revision"]+1
     c.execute("""INSERT INTO hb_goal_strategy(goal,revision,definition_revision,strategy,digest,actor,source)
@@ -89,7 +91,8 @@ def bind_work(c,goal,work,criterion_ids=None,*,assign=False):
         c.execute("UPDATE hb_work SET goal_definition_revision=%s,criterion_ids=%s WHERE id=%s",
                   (goal["adopted_definition_revision"],Jsonb(criterion_ids),work["id"]))
     elif work["goal_definition_revision"]!=goal["adopted_definition_revision"]:
-        raise ContractConflict('WORK_DEFINITION_SUPERSEDED','Work belongs to a superseded Goal definition; explicitly prepare current work')
+        raise ContractConflict('WORK_DEFINITION_SUPERSEDED','Work belongs to a superseded Goal definition; explicitly prepare current work',
+            next_action='Read the current Goal and original Work/delivery first. For obsolete unfinished intent, use hollywood_work_cancel, observe known cancellation settlement, then create current criterion-bound Work, select its strategy frontier and separately assign it. Retain the old cancelled attempt and any effects; do not replay it. hollywood_work_revise is for completed independently rejected attempts. Active or unknown effects remain fenced; cancellation is not proof they stopped.')
     if assign:
         plan=c.execute("SELECT * FROM hb_goal_strategy WHERE goal=%s AND revision=%s",
                        (goal["id"],goal["plan_revision"])).fetchone()

@@ -30,10 +30,10 @@ async def main():
     data=await r.json();trace.append({"method":method,"path":path,"who":who,"status":r.status,"response":data})
     save("trace.json",trace);assert r.status==status,(path,r.status,data)
     return data
-  async def ctx(purpose,action,value=None,operation=None,status=200,who=None):
+  async def ctx(purpose,action,value=None,operation=None,status=200,who=None,native_turn="context-maintenance"):
    return await call("POST",f"agents/{agent}/contexts/{purpose}",{
     "runtimeProtocol":"lax-purpose-runtime/v3","operationId":operation or str(uuid4()),
-    "action":action,"nativeThread":"mechanical-"+purpose,"nativeTurn":"context-maintenance",
+    "action":action,"nativeThread":"mechanical-"+purpose,"nativeTurn":native_turn,
     "value":value or {}},who or purpose,status)
   try:
    await call("POST","placements",{"hostId":ids["host"],"name":"Disposable context test host","identityFingerprint":"synthetic-not-a-real-host","capabilities":{},"agentId":agent})
@@ -99,7 +99,94 @@ async def main():
     assert c.execute("SELECT state FROM hb_delivery WHERE event=%s AND agent=%s",(event,agent)).fetchone()["state"]=="pending"
     assert c.execute("SELECT rebuild_requested FROM hb_purpose_context WHERE agent=%s AND purpose='writer'",(agent,)).fetchone()["rebuild_requested"] is None
    checks.append("generation receipt preserves original pending delivery; native proof remains explicitly host-reported")
-   save("result.json",{"at":time.time(),"passed":True,"checks":checks,"modelCalls":0,"nativeCheckpoint":"Not exercised here; installed receipt used disclosed synthetic metadata","lifecycleFixtures":"Only one synthetic context Work and concurrent role/material update; no native execution or delivery completion fabricated"})
+   # Real HTTP/PG receipt protocol with DISCLOSED synthetic native metadata.
+   # No native process/file or model is being attested by this fixture.
+   context_id=next(x["contextId"] for x in bindings if x["purpose"]=="writer")
+   def native_proof(snapshot,operation):
+    native={"threadId":"mechanical-writer","turnId":"synthetic-original-turn",
+      "operationId":operation,"contextId":context_id,"purpose":"writer",
+      "snapshotOperationId":operation,"snapshotReadPoint":snapshot["snapshotReadPoint"],
+      "snapshotSha256":snapshot["sha256"],"nativeActionsSha256":hashlib.sha256(b"[]").hexdigest(),
+      "selectionRevision":snapshot["selectionRevision"],"totalBytes":snapshot["totalBytes"],
+      "previousWindowId":"019c0000-0000-7000-8000-000000000001",
+      "windowId":"019c0000-0000-7000-8000-000000000002",
+      "nativeHistoryBytes":10000,"nativeHistorySha256":"a"*64}
+    preflight={"operationId":operation,"packetSha256":"b"*64,"replacementSha256":"c"*64,
+      "prefixItemCount":3,"replacementItemCount":8,"replacementWireBytes":2000,
+      "state":{"threadId":native["threadId"],"contextId":context_id,"purpose":"writer",
+       "windowId":native["previousWindowId"],"historyVersion":12,
+       "lastStartedTurnId":native["turnId"],"activeTurnId":None,"idle":True,"heldOperationId":None}}
+    return {"schema":"lax-native-idle-context-installed/v1",
+      "snapshotOperationId":"snapshot-native-idle-original",
+      "nativeReceipt":native,"preflight":preflight}
+   await ctx("writer","rebuild_request",operation="request-native-idle")
+   native_snapshot=await ctx("writer","rebuild_snapshot",{"materialIds":[ids["work"]]},
+     operation="snapshot-native-idle-original")
+   proof=native_proof(native_snapshot,"synthetic-native-operation-original")
+   await ctx("writer","rebuild_installed",proof,status=403,native_turn="synthetic-original-turn")
+   contract=await ctx("writer","bind",{"runtimeProtocol":"lax-purpose-runtime/v3",
+     "workScheduling":2,"nativeActionRetention":1})
+   assert contract["nativeIdleContextReplacement"]==1
+   await ctx("writer","rebuild_installed",proof,who="reader",status=403,
+     native_turn="synthetic-original-turn")
+   changed=json.loads(json.dumps(proof));changed["preflight"]["state"]["idle"]=False
+   await ctx("writer","rebuild_installed",changed,status=409,native_turn="synthetic-original-turn")
+   changed=json.loads(json.dumps(proof));changed["nativeReceipt"]["contextId"]=str(uuid4())
+   await ctx("writer","rebuild_installed",changed,status=409,native_turn="synthetic-original-turn")
+   checks.append("versioned idle receipt requires paired Writer, original purpose token and exact idle native cut")
+   with store.pool.connection() as c:
+    c.execute("UPDATE hb_context_material SET revision=revision+1,value=value || %s WHERE id=%s",
+      (Jsonb({"progress":["Source changed after snapshot; stale native proof must refuse"]}),ids["work"]))
+   await ctx("writer","rebuild_installed",proof,status=409,native_turn="synthetic-original-turn")
+   checks.append("native installation reauthorizes exact current selected source revision")
+   native_snapshot=await ctx("writer","rebuild_snapshot",{"materialIds":[ids["work"]]},
+     operation="snapshot-native-idle-fresh")
+   proof=native_proof(native_snapshot,"synthetic-native-operation-fresh")
+   proof["snapshotOperationId"]="snapshot-native-idle-fresh"
+   installed_native=await ctx("writer","rebuild_installed",proof,
+     operation="installed-native-idle-original",native_turn="synthetic-original-turn")
+   assert installed_native["schema"]==proof["schema"] and installed_native["status"]=="recorded"
+   assert installed_native["nativeReceipt"]==proof["nativeReceipt"]
+   assert installed_native["preflight"]==proof["preflight"] and installed_native["generation"]==2
+   assert "checkpointTurnId" not in installed_native
+   assert "not host filesystem attestation" in installed_native["verification"]
+   assert await ctx("writer","rebuild_installed",proof,operation="installed-native-idle-original",
+     native_turn="synthetic-original-turn")==installed_native
+   original_native=await call("GET",
+     f"agents/{agent}/contexts/writer/operations/installed-native-idle-original",who="writer")
+   assert original_native==installed_native
+   changed=json.loads(json.dumps(proof));changed["nativeReceipt"]["nativeHistorySha256"]="d"*64
+   await ctx("writer","rebuild_installed",changed,operation="installed-native-idle-original",
+     status=409,native_turn="synthetic-original-turn")
+   with store.pool.connection() as c:
+    native_binding=c.execute("SELECT rebuild_requested,rebuild_generation FROM hb_purpose_context "
+      "WHERE agent=%s AND purpose='writer'",(agent,)).fetchone()
+    assert native_binding["rebuild_requested"] is None and native_binding["rebuild_generation"]==2
+    assert c.execute("SELECT state FROM hb_delivery WHERE event=%s AND agent=%s",
+      (event,agent)).fetchone()["state"]=="pending"
+   checks.append("truthful native-window receipt dedup/readback clears rebuild once and leaves pending Work untouched")
+
+   # Mechanical lifecycle fixture: a marked optional response later becomes
+   # suppressed. Its pointer survives; its old body is no longer responder input.
+   need_id=str(uuid4())
+   with store.pool.connection() as c:
+    c.execute("INSERT INTO hb_context_material(id,agent,kind,source,state,value) VALUES(%s,%s,'need',%s,'ready',%s)",
+      (need_id,agent,event,Jsonb({"body":"RETIRED_RESPONSE_CONTENT_MUST_NOT_RETURN"})))
+   await ctx("responder","select",{"selectionRevision":0,"reference":need_id,"materialRevision":1,
+      "keep":True,"reason":"Retain actual lifecycle fixture before suppression"})
+   with store.pool.connection() as c:
+    c.execute("UPDATE hb_context_material SET state='suppressed',revision=revision+1 WHERE id=%s",(need_id,))
+   await ctx("responder","rebuild_request")
+   retained=await ctx("responder","rebuild_snapshot",{"materialIds":[]})
+   retained_content=json.loads("".join(x["content"] for x in retained["chunks"]))
+   marked=next(x for x in retained_content["records"] if x["reference"]==need_id)
+   assert marked=={"reference":need_id,"access":"unavailable",
+      "meaning":"Retained reference is no longer visible to this purpose. No content or authority was restored."}
+   assert "RETIRED_RESPONSE_CONTENT_MUST_NOT_RETURN" not in json.dumps(retained)
+   assert any(x["reference"]==need_id for x in retained_content["selection"]["marks"])
+   await ctx("responder","rebuild_snapshot",{"materialIds":[need_id]},status=403)
+   checks.append("suppressed retained response preserves unavailable pointer, not content or mandatory-next authority")
+   save("result.json",{"at":time.time(),"passed":True,"checks":checks,"modelCalls":0,"nativeCheckpoint":"Not exercised here; legacy and native-window receipts used disclosed synthetic metadata","lifecycleFixtures":"Only one synthetic context Work and concurrent role/material update; no native execution or delivery completion fabricated"})
    print(json.dumps({"passed":True,"checks":len(checks),"modelCalls":0}))
   finally:
    await runner.cleanup();store.close()

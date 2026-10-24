@@ -7,6 +7,15 @@ from . import context_capacity
 
 PURPOSES = {"reader", "writer", "responder"}
 
+
+class ContextOperationNotFound(LookupError):
+    """No committed own-purpose metadata receipt at this read.
+
+    This is not execution absence or authority to repeat an external effect.
+    """
+
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS hb_context_system(
  agent uuid PRIMARY KEY REFERENCES hb_principal(id), authority uuid NOT NULL,
@@ -20,6 +29,7 @@ CREATE TABLE IF NOT EXISTS hb_purpose_context(
 ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS active_turn text;
 ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS active_material uuid[] NOT NULL DEFAULT '{}';
 ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS accepting boolean NOT NULL DEFAULT false;
+ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS tool_completion smallint NOT NULL DEFAULT 0 CHECK(tool_completion IN (0,1));
 ALTER TABLE hb_purpose_context ADD COLUMN IF NOT EXISTS work_scheduling smallint NOT NULL DEFAULT 1 CHECK(work_scheduling IN (1,2));
 CREATE TABLE IF NOT EXISTS hb_context_material(
  id uuid PRIMARY KEY, agent uuid NOT NULL REFERENCES hb_context_system(agent),
@@ -134,8 +144,26 @@ def need_for(c, store, actor, source):
     return item(c,store,actor,str(uuid5(UUID(str(source)),"response")),"need")
 
 def call(store, actor_id, token_digest, agent, purpose, p):
+    from psycopg.errors import SerializationFailure
+    import logging
+    import time
+    for attempt in range(3):
+        try:
+            return transaction(store, actor_id, token_digest, agent, purpose, p)
+        except SerializationFailure:
+            if attempt == 2:
+                raise
+            logging.getLogger(__name__).info(
+                "Retrying rolled-back context transaction sqlstate=40001 attempt=%s", attempt + 1)
+            time.sleep(0.005 * (attempt + 1))
+
+
+def transaction(store, actor_id, token_digest, agent, purpose, p):
     with store.pool.connection() as c:
-        if p["action"] in ("rebuild_snapshot","read_complete"):
+        if (p["action"] in ("rebuild_snapshot","read_complete","active_snapshot","active_installed","active_terminal","action_prepare","action_commit")
+                or p["action"] == "rebuild_installed" and p["value"].get("schema")
+                    == "lax-native-idle-context-installed/v1"
+                or p["action"] == "begin" and p["value"].get("primaryInput") == 1):
             c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
         actor=store.actor(c,actor_id)
         if str(actor["id"])!=agent or actor["kind"]!="agent" or purpose not in PURPOSES:
@@ -164,15 +192,30 @@ def call(store, actor_id, token_digest, agent, purpose, p):
         old=c.execute("SELECT * FROM hb_context_operation WHERE agent=%s AND purpose=%s AND operation=%s",
                       (agent,purpose,op)).fetchone()
         if old:
+            if p["action"]=="bind" and binding.get("tool_completion", 0)==1 and p["value"].get("toolCompletion", 0)!=1:
+                raise Conflict("Explicit paired tool-completion downgrade required")
             if p["action"]=="bind" and binding["work_scheduling"]==2 and p["value"].get("workScheduling",1)!=2:
                 raise Conflict("Explicit drained work-scheduling downgrade required")
             if old["digest"]!=fingerprint:
                 raise Conflict("Original context operation changed")
+            if p["action"] in ("active_snapshot", "active_installed"):
+                from .context_automatic_refill import observe
+                observe(c,store,actor,purpose,binding,p,old["result"])
             return old["result"]
         if p["action"]=="bind":
-            if p["value"] not in ({"runtimeProtocol":"lax-purpose-runtime/v3"},
-                    {"runtimeProtocol":"lax-purpose-runtime/v3","workScheduling":2}):
+            if {k:v for k,v in p["value"].items() if k!="nativeActionRetention"} not in ({"runtimeProtocol":"lax-purpose-runtime/v3"},
+                    {"runtimeProtocol":"lax-purpose-runtime/v3","workScheduling":2},
+                    {"runtimeProtocol":"lax-purpose-runtime/v3","workScheduling":2,"toolCompletion":1}):
                 raise Conflict("Native work and inference admission runtime required")
+            from .context_native_action_selection import bind as bind_retention
+            retention=bind_retention(c,actor,purpose,binding,p["value"])
+            completion=p["value"].get("toolCompletion",0)
+            if binding.get("tool_completion",0)==1 and completion!=1:
+                raise Conflict("Explicit paired tool-completion downgrade required")
+            if completion!=binding.get("tool_completion",0) and binding["active_turn"] is not None:
+                raise Conflict("Drain original inference before changing tool-completion contract")
+            c.execute("UPDATE hb_purpose_context SET tool_completion=%s WHERE agent=%s AND purpose=%s",
+                      (completion,agent,purpose))
             scheduling=p["value"].get("workScheduling",1)
             if binding["work_scheduling"]==2 and scheduling==1:
                 raise Conflict("Explicit drained work-scheduling downgrade required")
@@ -183,11 +226,15 @@ def call(store, actor_id, token_digest, agent, purpose, p):
             c.execute("UPDATE hb_purpose_context SET native_thread=%s WHERE agent=%s AND purpose=%s",
                       (p["nativeThread"],agent,purpose))
             result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose,
-                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1,"roleDecisionOwner":1,"contextSelection":1,"contextRebuildSnapshot":1,"completeMaterialRead":1,"goalReviewFrontier":1}
+                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1,"roleDecisionOwner":1,"contextSelection":1,"contextRebuildSnapshot":1,"completeMaterialRead":1,"goalReviewFrontier":1,"activeContextRefill":1,"interruptedContinuation":1,"toolCompletion":completion,"failedPreModelRefillRecovery":1,"explicitUnsettledContinuation":1,"providerRejectionRecovery":1,"writerOutcomeReview":2,"writerEvidenceRead":1,"primaryInput":1,"nativeActionRetention":retention}
+            if retention == 1:
+                result["nativeIdleContextReplacement"] = 1
         elif p["nativeThread"]!=binding["native_thread"]:
             raise Conflict("Native context binding changed")
         else:
             result=perform(store,c,actor,purpose,binding,p)
+            from .context_turn_completion import settle
+            result=settle(c,actor,purpose,binding,p,result)
         if p["action"] == "reserve" and result["permit"]["state"] == "queued":
             return json_value(result)
         if p["action"] == "admit" and result.get("delivery") is None:
@@ -226,8 +273,14 @@ def lifecycle(c, store, actor, purpose, binding, p):
                   (turn, ids, actor["id"], purpose))
         from .context_execution import capture
         scopes = capture(c, store, actor, purpose, binding, p, ids)
-        return {"nativeTurn": turn, "state": "running", "materialIds": ids,
-                "executionScopes": scopes}
+        result = {"nativeTurn": turn, "state": "running", "materialIds": ids,
+                  "executionScopes": scopes}
+        if "primaryInput" in p["value"]:
+            if type(p["value"]["primaryInput"]) is not int or p["value"]["primaryInput"] != 1:
+                raise ValueError("Exact primary-input protocol version required")
+            from .context_primary_input import prepare
+            result["primaryInput"] = prepare(c, store, actor, purpose, binding, p, ids)
+        return result
     if binding["active_turn"] not in (None, turn):
         raise Conflict("Another native turn owns this context")
     if action == "close":
@@ -243,8 +296,12 @@ def lifecycle(c, store, actor, purpose, binding, p):
         delivery = c.execute("SELECT cancellation_requested FROM hb_delivery WHERE event=%s AND agent=%s",
                              (row["source"], actor["id"])).fetchone()
         cancelled = delivery and delivery["cancellation_requested"]
-        if row["kind"] == "work" and row["state"] not in ("complete", "cancelled"):
-            change(c, row, "cancelled" if cancelled else "waiting" if row["state"]=="waiting" else "pending",
+        if row["kind"] == "work":
+            # Record the actual inference end even when Work settled earlier.
+            # Preserve terminal Work; a native end is a separate lifetime.
+            state = row["state"] if row["state"] in ("complete", "cancelled") else (
+                "cancelled" if cancelled else "waiting" if row["state"] == "waiting" else "pending")
+            change(c, row, state,
                    {**row["value"], "execution": {"nativeThread": p["nativeThread"],
                     "nativeTurn": turn, "status": status,
                     "resumeRevision":row["value"].get("execution",{}).get("resumeRevision",row["value"].get("resumeRevision",0))}})
@@ -272,6 +329,27 @@ def lifecycle(c, store, actor, purpose, binding, p):
 
 def perform(store,c,actor,purpose,binding,p):
     action,v=p["action"],p["value"]
+    if action == "active_terminal":
+        from .context_terminal_refill import terminal
+        return terminal(c, store, actor, purpose, binding, p)
+    if action == "resume_failed_preturn":
+        from .context_work_frontier import resume_failed_preturn
+        return resume_failed_preturn(store, c, actor, purpose, binding, p)
+    if action == "acknowledge_provider_rejection":
+        from .context_provider_recovery import acknowledge
+        return acknowledge(store, c, actor, purpose, binding, p)
+    if action == "writer_evidence_available":
+        from .context_writer_evidence import available
+        return available(c,store,actor,purpose,binding,p)
+    if action == "observe_writer_outcome":
+        from .context_writer_outcomes import observe
+        return observe(store,c,actor,purpose,binding,p)
+    if action == "resume_unsettled":
+        from .context_work_frontier import resume_unsettled
+        return resume_unsettled(store, c, actor, purpose, binding, p)
+    if action == "resume_interrupted":
+        from .context_work_frontier import resume_interrupted
+        return resume_interrupted(store, c, actor, purpose, binding, p)
     if action == "release_reservation":
         return context_capacity.release_unused(c,actor,purpose,binding,p)
     if action == "reserve":
@@ -292,6 +370,9 @@ def perform(store,c,actor,purpose,binding,p):
         if not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]:
             raise Conflict("Original reader turn no longer admits delivery")
         return adopt(c, store, actor, binding, p)
+    if action in ("active_snapshot", "active_installed"):
+        from .context_automatic_refill import snapshot as active_snapshot, installed as active_installed
+        return (active_snapshot if action=="active_snapshot" else active_installed)(c,store,actor,purpose,binding,p)
     if action in ("rebuild_snapshot","rebuild_installed"):
         from .context_selection import snapshot as rebuild_snapshot, installed
         return (rebuild_snapshot if action=="rebuild_snapshot" else installed)(c,store,actor,purpose,binding,p)
@@ -300,6 +381,12 @@ def perform(store,c,actor,purpose,binding,p):
         # It neither admits callbacks nor changes execution/work settlement.
         from .context_execution import append_activity
         return append_activity(c, store, actor, purpose, binding, p)
+    if action in ("action_prepare","action_commit"):
+        if not ((binding["active_turn"] is None and p["nativeTurn"]=="context-maintenance")
+                or binding["accepting"] and binding["active_turn"]==p["nativeTurn"]):
+            raise Conflict("Original native turn no longer admits retention callbacks")
+        from .context_native_action_selection import prepare,commit
+        return (prepare if action=="action_prepare" else commit)(c,store,actor,purpose,binding,p)
     if (action in ("selection","select","rebuild_request") and binding["active_turn"] is None
             and p["nativeTurn"]=="context-maintenance"):
         from .context_selection import selected,mark,request
@@ -310,7 +397,7 @@ def perform(store,c,actor,purpose,binding,p):
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
-      "reader":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","accept","answer","announce","peer_result","amend","directory","observe","initiative","room_list","room_history"},
+      "reader":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","accept","answer","announce","peer_result","amend","directory","observe","initiative","room_list","room_history","review_writer_outcome","writer_evidence_authorize"},
       "writer":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","progress","complete","announce","peer_request","wait_peers","wait_goals","directory","response_material"},
       "responder":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","publish","suppress"},
     }
@@ -340,6 +427,14 @@ def perform(store,c,actor,purpose,binding,p):
     if action=="response_material":
         from .context_peer_updates import response_material
         return response_material(c,store,actor,binding,p)
+    if action=="writer_evidence_authorize":
+        from .context_writer_evidence import authorize
+        return authorize(c,store,actor,purpose,binding,p)
+    if action=="review_writer_outcome":
+        if v.get("inputId") not in {str(x) for x in binding["active_material"]}:
+            raise Denied("Native outcome does not belong to this Reader batch")
+        from .context_writer_outcomes import review
+        return review(c,store,actor,binding,p)
     if action=="amend":
         if purpose!="reader":
             raise Denied("Only the reader interprets work updates")
@@ -403,6 +498,8 @@ def perform(store,c,actor,purpose,binding,p):
         if action=="answer":
             from .context_assignments import require_separate
             require_separate(c,actor,source)
+        if source["value"].get("writerOutcome"):
+            raise Conflict("Internal native outcome requires review_writer_outcome; no new human input or answer")
         if source["value"].get("roomObservation"):
             raise Conflict("Observation is not an assigned request or required answer; use record_room_observation")
         if source["value"].get("peerCompletion"):
@@ -555,7 +652,13 @@ def receipt(store, actor_id, token_digest, agent, purpose, operation):
                              (agent,purpose,operation)).fetchone()
             if permit:
                 return {"permit":json_value(permit),"admission":{"reason":"original_permit_observation"}}
-            raise Denied("Original operation receipt unavailable")
+            raise ContextOperationNotFound("Original context operation receipt unavailable")
+        if row["result"].get("schema") in ("lax-active-context-snapshot/v1", "lax-active-context-installed/v1"):
+            from .context_automatic_refill import lookup
+            binding=c.execute("""SELECT * FROM hb_purpose_context
+                WHERE agent=%s AND purpose=%s AND token_digest=%s""",
+                (agent,purpose,token_digest)).fetchone()
+            return lookup(c,store,actor,purpose,binding,row["result"])
         result=dict(row["result"])
         if isinstance(result.get("permit"),dict):
             current=c.execute("""SELECT * FROM hb_context_permit WHERE id=%s AND agent=%s

@@ -316,12 +316,12 @@ def call(store, actor_id, payload):
             patch_actions=PATCH_ACTIONS)
         profile = claims.bridge(c, relay, source["hostId"], payload["bridgeRevision"])
         need(profile["protocol"] == CAPABILITY, "capability_missing", "Explicit edit-plan bridge profile required")
-        cleanup = command["action"] in ("revoke", "reconcile") or command["action"] == "consent" and command["settlementDigest"] is not None
+        cleanup = command["action"] in ("revoke", "withdraw", "reconcile") or command["action"] == "consent" and command["settlementDigest"] is not None
         work, goal = claims.work_scope(store, c, actor, command["workId"], cleanup=cleanup)
         need(cleanup or str(work["delivery"]) == source["deliveryId"], "source_changed", "Current original owned work admission required")
         claims.decisions(c, work, command)
         from .physical_workspaces import attest
-        binding = attest(c, relay, source, binding, payload, cleanup=command["action"] == "revoke")
+        binding = attest(c, relay, source, binding, payload, cleanup=command["action"] in ("revoke", "withdraw"))
         need(command["note"].strip(), "invalid_request", "Specific note required")
         old = original_command(c, actor, payload, PATH)
         if old:

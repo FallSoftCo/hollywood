@@ -152,7 +152,7 @@ def read(c, store, actor, purpose, binding, turn, value, *, track=True):
         event = store.readable_event(c, actor, row["source"])
         revision = row["revision"]
         material = json_value(row)
-        if purpose == "reader" and row["kind"] == "input":
+        if purpose == "reader" and row["kind"] == "input" and not row["value"].get("writerOutcome"):
             material["event"] = json_value(event)
             from .context_assignments import current
             assignment=current(c,actor,row)
