@@ -1,0 +1,34 @@
+{
+  "at": 1792842845.1871796,
+  "passed": true,
+  "actualCopiedProductionContexts": [
+    {
+      "purpose": "reader",
+      "completedTurnsRestored": 10,
+      "originalThreadAndContext": true,
+      "usageMatchesOriginal": true
+    },
+    {
+      "purpose": "writer",
+      "completedTurnsRestored": 7,
+      "originalThreadAndContext": true,
+      "usageMatchesOriginal": true
+    },
+    {
+      "purpose": "responder",
+      "completedTurnsRestored": 6,
+      "originalThreadAndContext": true,
+      "usageMatchesOriginal": true
+    }
+  ],
+  "nativeBinary": "/opt/lax-paired-upstream-20261024-r320-r03/native/bin/codex-app-server",
+  "modelsStarted": 0,
+  "networkDenied": true,
+  "productionChanged": false,
+  "originalFailedAttemptsRetained": true,
+  "corrections": [
+    "R01 usage notification arrived after resume response; await exact event.",
+    "R02 assumed later role-goal journal on older production; reconcile original SQLite source, which has no native Goal row."
+  ],
+  "limit": "Actual cold loading and history/usage restoration; not post-upgrade semantic behavior or arbitrary downgrade proof."
+}

@@ -1,0 +1,67 @@
+{
+  "at": 1792842845.1869137,
+  "sourceChange": "Only allocate unique Goal-proposal schema marker38 and Hollywood version120; no model/tool/instruction semantics changed from qualified SDK161/H119.",
+  "cause": {
+    "existingContextSelectionMarker": 36,
+    "retainedActionsMarker": 37,
+    "candidateGoalMarkerIncorrectlyReused": 36,
+    "fixedGoalMarker": 38
+  },
+  "actualProductionSnapshotQualification": {
+    "at": 1792842789.1336381,
+    "state": "actual_production_snapshot_migration_qualified_with_disclosed_corrections",
+    "passed": true,
+    "versions": [
+      "0.1.0.dev161",
+      "0.3.0.dev120"
+    ],
+    "canonicalTablesCompared": 79,
+    "everyOriginalRowAndFieldPreserved": true,
+    "schemaMarkersAdded": [
+      37,
+      38
+    ],
+    "fourColumnsAdded": {
+      "hb_goal": [
+        "definition_resolution"
+      ],
+      "hb_context_selection": [
+        "native_action"
+      ],
+      "hb_purpose_context": [
+        "tool_completion",
+        "native_action_retention"
+      ]
+    },
+    "repeatedMigrateIdempotent": true,
+    "changedPlacementNegativeControlDetected": true,
+    "newAndDeployedOldRoomAndContextIdentitiesEqual": true,
+    "elevenPausedPlacementsPreserved": true,
+    "cancelledOriginalRequestsPreserved": true,
+    "twoPrivateClonesDropped": true,
+    "originalFailedAttemptsRetained": true,
+    "oldReaderUsesShareLocks": true,
+    "oldReaderRowDigestsUnchanged": true,
+    "modelsStarted": 0,
+    "listenersStarted": 0,
+    "productionChanged": false,
+    "protectedProductionPidsUnchanged": true,
+    "claim": "Actual production snapshot schema/data preservation and deployed old-reader compatibility; not proof of arbitrary downgrade after new admissions or native effects.",
+    "next": "Prepare exact coherent Global-only runtime canary, fresh drain and accepted-receipt checks before any activation."
+  },
+  "preparationOnly": true,
+  "nativeToolSemanticsEvidence": "R329 actual captured native calls13/13 on H119; unchanged by marker fix, not rerun or relabeled as new trial.",
+  "earlierFailures": {
+    "R331r01": "Operator inventory SQL cast precedence; failed before private DB creation.",
+    "R331r02": "Container socket correctly required authorized password; failed before clone creation.",
+    "R331r03": "Strict full-row comparison rejected three additional context-schema columns; exact defaults reviewed; original failed result retained.",
+    "R331Continuation": "Operator assumed max schema marker36; actual existing set1..36, new retained action37 exposed duplicate Goal marker allocation.",
+    "R332FirstOldRead": "Old deployed read accessor takes SELECT FOR SHARE, incompatible with operator read-only SQL flag; corrected only in private clone and verified exact unchanged digests."
+  },
+  "limits": [
+    "No production activation",
+    "No universal rollback after new admissions/effects",
+    "No new model trial claimed",
+    "LAX remote source publication still lacks workflow OAuth scope"
+  ]
+}

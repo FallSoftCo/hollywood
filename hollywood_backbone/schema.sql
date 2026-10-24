@@ -991,4 +991,4 @@ INSERT INTO hb_schema VALUES (35) ON CONFLICT DO NOTHING;
 -- Explicit disposition of a latest proposal preserves the adopted contract.
 ALTER TABLE hb_goal ADD COLUMN IF NOT EXISTS definition_resolution jsonb NOT NULL DEFAULT '{}'::jsonb
  CHECK(jsonb_typeof(definition_resolution)='object');
-INSERT INTO hb_schema VALUES (36) ON CONFLICT DO NOTHING;
+INSERT INTO hb_schema VALUES (38) ON CONFLICT DO NOTHING;
