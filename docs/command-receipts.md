@@ -25,3 +25,18 @@ they can recover safely. Do not put enrollment secrets in this generic journal.
 Qualification: tests/integration_command_receipts.py exercises the actual
 authenticated PostgreSQL HTTP API, including restart, changed-operation conflict,
 principal isolation, original versus current state and revoked room visibility.
+
+## Purpose context operation receipts
+
+The separate authenticated route
+GET /hollywood/v3/agents/{agent}/contexts/{purpose}/operations/{operationId}
+reads an original purpose-context receipt. A current credential for that exact
+agent and purpose is required. An absent committed receipt returns HTTP404 with
+code CONTEXT_OPERATION_NOT_FOUND and mayApply=false. Wrong-purpose or invalid
+credentials retain HTTP403. Absence of this metadata receipt is not proof that
+a native or external effect did not occur.
+
+Paired LAX may recover only an original bootstrap bind by first looking up its
+receipt, then resubmitting the exact same idempotent binding metadata when that
+authenticated lookup reports absence. It preserves the existing operation and
+native-thread identities. Other uncertain context operations remain held.
