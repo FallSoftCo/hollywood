@@ -217,12 +217,61 @@
     "workersStarted": 0,
     "scope": "Actual old installed server rejects the new action route before command admission. Not downgrade compatibility of new active policy state."
   },
-  "nativeQualificationOfNewTool": false,
+  "nativeQualificationOfNewTool": true,
   "productionChanged": false,
   "limits": [
-    "Native H118 source-review/Goal-wait proof remains separate14/14; new H119/SDK161 proposal tool still needs an actual native caller.",
+    "Actual new-tool use qualified13/13 with one agent/three contexts and explicit self-review. Independent two-agent/six-context H118 proof remains separate14/14. Neither is universal/systemwide assurance.",
     "Two API caller mistakes remain in original failed receipts: bootstrap agent lacked required native provenance; command GET used wrong envelope. Accepted operations were inspected, not replayed.",
     "Cross-native-version history/rollback remains unqualified; R327 thread/read result returned metadata without turns.",
     "Old-server404 prevents new-action admission, not a safe downgrade over new active policy state."
-  ]
+  ],
+  "actualNativeEvidence": {
+    "at": 1792840520.3172665,
+    "state": "native_proposal_resolution_qualified_and_stopped",
+    "passed": true,
+    "checks": 13,
+    "actualNativeToolCalls": 2,
+    "sourcePair": {
+      "lax": "f3ca9de43fcf2f571b5ff1892070acba4012c11c",
+      "hollywood": "1b3a88f17388986d05e6ff3a44f1b61e778b5362"
+    },
+    "versions": [
+      "0.1.0.dev161",
+      "0.3.0.dev119"
+    ],
+    "runtime": "/opt/harness/goal-proposal-disposition-20261024-r328-r01/venv",
+    "authority": "c799eaf6-0218-4821-9691-b60815cbf657",
+    "originalRequestEvent": "edf4e2f1-f6e4-4ac9-ac55-994e67fd0be7",
+    "sourceInterventions": 0,
+    "operatorFollowups": 0,
+    "selfReviewExplicit": true,
+    "independentReviewClaim": false,
+    "goalState": "accepted",
+    "adoptedDefinition": 1,
+    "latestProposal": 3,
+    "latestDisposition": "rejected",
+    "nativeEffectCount": 2,
+    "quiescence": "/var/lib/lax-native-proposal-resolution-20261024-r329/final-quiescence-r01/result.json",
+    "stoppedUnits": 6,
+    "persistentStartupDisabled": 5,
+    "productionChanged": false,
+    "broadGoalComplete": false,
+    "nativeHistoryMigrationQualified": false,
+    "next": "Prepare bounded production canary using matched native/SDK/H image and preserved histories/roles/queued work. Qualify actual old-history load through native LAX path; thread/read metadata with zero turns is insufficient. Retain pre-admission rollback and never blindly downgrade after new effects. Preserve every paused worker and phone pairing."
+  },
+  "actualNativeChecks": {
+    "one_agent_three_original_purpose_contexts": true,
+    "one_authentic_original_qa_human_request": true,
+    "actual_native_goal_resolve_tool_calls": true,
+    "both_attributable_decisions_monotonically_after_adopted_contract": true,
+    "latest_resolution_is_exact_current_rejected_proposal": true,
+    "original_decisions_retain_immutable_command_results": true,
+    "base_work_not_retagged_or_reexecuted_for_unadopted_options": true,
+    "artifact_preserved_from_accepted_base_report": true,
+    "native_protected_edit_and_explicit_self_review": true,
+    "goal_and_original_responsibility_complete": true,
+    "sourced_final_global_response": true,
+    "idle_no_live_native_edit_or_delivery_work": true,
+    "production_unchanged_and_previous_qa_stopped": true
+  }
 }
