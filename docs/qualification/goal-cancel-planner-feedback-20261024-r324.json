@@ -60,8 +60,132 @@
     "liveReconciliationNotYetAssessed": true
   },
   "limitations": [
-    "Source intervention makes R323 continuation assisted; original unassisted run was blocked.",
-    "Full original artifact/Goal/review/cold-restart acceptance still pending.",
-    "Private QA API only; production and phone not migrated."
-  ]
+    "R323 continuation was assisted by a live private backend source repair; it is not a fresh unassisted system pass.",
+    "Original external audit remains34/35: joint sliced edit-plan mode was not exercised. Native delivery/path-claim editing was actually exercised by both Writers.",
+    "All nine contexts were drained and stopped after original Goal/responsibility completion; no production/phone migration.",
+    "No multihost, arbitrary failure recovery, statistical superiority or physical voice/push claim."
+  ],
+  "finalNativeContinuation": {
+    "at": 1792833970.5424943,
+    "sourceRuntimeVersions": [
+      "0.1.0.dev160",
+      "0.3.0.dev117"
+    ],
+    "goalState": "accepted",
+    "goalRevision": 35,
+    "definitionRevision": 2,
+    "planRevision": 6,
+    "originalResponsibilityCompleted": true,
+    "originalMeasurementInvocations": 1,
+    "originalColdProofPassed": true,
+    "oneHumanPolicyEvent": "b7becc8a-00c0-458c-9053-e88a865d40ba",
+    "rawExternalAudit": {
+      "passed": false,
+      "successes": 34,
+      "total": 35,
+      "failed": [
+        "actual_shared_plan_apply"
+      ]
+    },
+    "frozenAcceptanceMapping": {
+      "at": 1792833790.6197488,
+      "frozenAcceptance": "/var/lib/lax-native-enterprise-delivery-20261024-r323/ACCEPTANCE.json",
+      "originalAudit": "/var/lib/lax-native-enterprise-delivery-20261024-r323/enterprise-delivery-r01/independent-final-audit-r02.json",
+      "originalAuditScore": {
+        "passed": 34,
+        "total": 35,
+        "fullAuditPassed": false
+      },
+      "allOriginalFrozenAcceptanceChecksPassed": true,
+      "extraCoverageNotExercised": [
+        "actual_shared_plan_apply"
+      ],
+      "explanation": "Frozen R323 requires two substantive native Writers in the same canonical tree through actual native collaborative editing. It does not require both writers to select sliced joint-plan editing. Actual native path-claim permits and applied settlements satisfy the collaborative editing requirement. The stricter extra plan-mode assertion remains false in the original immutable audit; no score or assertion is changed. This run does not prove sliced joint-plan mode.",
+      "agentAcceptanceMapping": [
+        [
+          "oneGlobalProvisionsDistinctPeersAndRoom",
+          [
+            "nine_original_bindings_after_real_cold_reopen",
+            "reviewer_read_only_and_not_admin"
+          ]
+        ],
+        [
+          "nativeSharedEditing",
+          [
+            "two_real_substantive_writers_in_one_shared_tree",
+            "current_artifact_hashes_host_and_root_correct"
+          ]
+        ],
+        [
+          "multiHumanSameOriginalWorkAndGoalReplacement",
+          [
+            "second_human_update_during_actual_writer",
+            "both_human_updates_integrated_into_original_work",
+            "goal_definition_and_plan_replaced_for_amendment"
+          ]
+        ],
+        [
+          "correctArtifactsAndDistinctReview",
+          [
+            "policy_matches_one_authenticated_frozen_answer",
+            "distinct_final_artifact_reviewer_accepted_current_policy_work"
+          ]
+        ],
+        [
+          "originalGoalAndResponsibilityClosure",
+          [
+            "goal_current_criteria_frontier_accepted_with_retired_attempts_settled",
+            "original_and_all_finite_responsibilities_closed",
+            "sourced_final_global_response"
+          ]
+        ]
+      ],
+      "externalAuditChecks": {
+        "original_inventory_digest_valid": true,
+        "original_cut_and_time_preserved": true,
+        "policy_matches_one_authenticated_frozen_answer": true,
+        "all_original_records_types_flags_order_reasons_budget_exact": true,
+        "all_totals_and_remaining_budget_exact": true,
+        "every_excluded_original_and_before_budget_preserved": true,
+        "excluded_reasons_have_explanations": true,
+        "saved_measurement_matches_private_original": true,
+        "supplied_measurement_source_unchanged": true,
+        "measurement_invocations_one": true,
+        "whole_original_measurement_terminal_in_retained_context": true,
+        "original_unfinished_obligation_in_replacement": true,
+        "nine_original_bindings_after_real_cold_reopen": true,
+        "actual_native_replacement_and_fresh_process_resume": true,
+        "two_real_substantive_writers_in_one_shared_tree": true,
+        "checker_independent_of_measurement_and_generator_imports": true,
+        "one_original_human_submission": true,
+        "second_human_update_during_actual_writer": true,
+        "both_human_updates_integrated_into_original_work": true,
+        "one_authentic_public_policy_original_not_repost": true,
+        "native_question_and_original_continuation_closed": true,
+        "peer_policy_visible_private_control_denied": true,
+        "reviewer_read_only_and_not_admin": true,
+        "goal_current_criteria_frontier_accepted_with_retired_attempts_settled": true,
+        "goal_definition_and_plan_replaced_for_amendment": true,
+        "distinct_final_artifact_reviewer_accepted_current_policy_work": true,
+        "original_and_all_finite_responsibilities_closed": true,
+        "sourced_final_global_response": true,
+        "current_artifact_hashes_host_and_root_correct": true,
+        "conversation_excludes_execution_activity": true,
+        "typed_separate_activity_both_rooms": true,
+        "all_contexts_idle_no_live_native_or_edit_permits": true,
+        "production_pids_unchanged": true,
+        "prior_assisted_authority_still_stopped": true
+      },
+      "assistedSourceRepairDisclosed": true,
+      "unassistedWholeSystemPass": false,
+      "productionChanged": false,
+      "broadGoalComplete": false
+    },
+    "quiescence": {
+      "stopped": 12,
+      "persistentUnitsDisabled": 11,
+      "productionPidsUnchanged": true
+    },
+    "assistedSourceIntervention": true
+  }
 }
