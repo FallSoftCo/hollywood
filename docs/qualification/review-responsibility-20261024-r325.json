@@ -1,0 +1,59 @@
+{
+  "schema": "hollywood-review-responsibility-qualification/v1",
+  "version": "0.3.0.dev118",
+  "problem": "Observed original Global administrator waits were refused while its designated independent verifier owned the submitted review. Administrative override was incorrectly used as wake responsibility.",
+  "change": "Keep canReview actual permission; use explicit reviewResponsible only for wake eligibility. Planning, unknown effects and default manager review still produce actionable hints. No mutation-authority change.",
+  "redEvidence": {
+    "at": 1792834049.0609717,
+    "state": "admin_review_duty_false_positive_reproduced",
+    "sourceSnapshot": "/var/lib/lax-native-enterprise-delivery-20261024-r323/enterprise-delivery-r01/observations/1792833543230950412.json",
+    "nativeObservedWaitRefusals": 2,
+    "disclosedRollbackCounterfactual": "Reopen only completed disposable Goal and final submitted Work inside rolled-back transaction, matching captured pre-review state; original live authority stays stopped.",
+    "oldFrontier": {
+      "goalId": "8cd4705a-296b-5eb2-978b-cc1bb1159e91",
+      "revision": 35,
+      "state": "active",
+      "reviewFrontier": {
+        "version": 1,
+        "sha256": "dd36ae10cb085ab3b8bc616563502c18f758a50a9f537829cf0a6b063fa8e34b",
+        "actionable": true,
+        "workCount": 1,
+        "canManage": true,
+        "canReview": true,
+        "definitionPending": false,
+        "waitingForCancellation": false
+      }
+    },
+    "newModelCalls": 0,
+    "rolledBack": true,
+    "initialManualWaitCount": 3,
+    "originalNativeWaitEvidence": [
+      {
+        "turnId": "01a16d2e-b918-7bf3-a615-ad63270479f8",
+        "itemId": "exec-21a5d723-c105-4e62-87c8-c683744c8888"
+      },
+      {
+        "turnId": "01a16d2e-b918-7bf3-a615-ad63270479f8",
+        "itemId": "exec-0d39ec6b-d1d7-4a9f-b33c-d9c3d68efb12"
+      }
+    ],
+    "originalNativeTrace": "/var/lib/harness/8960d62b-d010-4169-a534-8e3ce6e2cb4a/purpose-agents/57696213-e44a-4527-a5f8-891b8b308a29/home/state/writer/events.jsonl"
+  },
+  "qualification": {
+    "at": 1792834154.392249,
+    "state": "passed",
+    "cases": [
+      "admin_keeps_override_but_designated_verifier_owns_review_wake",
+      "wait_stable_until_accepted_review_then_exact_parent_resumes_once",
+      "unknown_effects_remain_actionable_without_acceptance_or_replay",
+      "default_manager_review_retained_when_not_independently_delegated",
+      "unrelated_executor_gets_no_frontier"
+    ],
+    "originalCompletedRowsRestored": true,
+    "nativeOrModelCalls": 0,
+    "scope": "Actual captured native wait state plus explicit rollback-only machine counterfactuals. No semantic/model, production or unassisted fresh-system claim."
+  },
+  "nativeQualificationOfThisVersion": false,
+  "productionChanged": false,
+  "priorH117NativeDelivery": "docs/qualification/goal-cancel-planner-feedback-20261024-r324.json"
+}

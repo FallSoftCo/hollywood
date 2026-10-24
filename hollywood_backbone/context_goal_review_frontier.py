@@ -35,6 +35,7 @@ def snapshot(c, store, actor, goal):
     reviewer=policy["reviewer"] if policy and policy["reviewer"] else None
     can_manage=actor["administrator"] or actor["id"] in (goal["owner"],goal["creator"])
     can_review=actor["administrator"] or (actor["id"]==reviewer if reviewer else can_manage)
+    review_responsible=actor["id"]==reviewer if reviewer else can_manage
     if not (can_manage or can_review):
         return result
     contract=current(c,goal)
@@ -106,15 +107,19 @@ def snapshot(c, store, actor, goal):
             or w["state"]=="assigned" and w["delivery_state"]=="completed" for w in rows))
     if definition_pending:
         planning_actionable=not cancellation_wait
-    actionable=(can_review and review_actionable or can_manage and planning_actionable)
+    # Administrative override is a capability, not a second review assignment.
+    # An explicitly designated verifier owns that wake; the planner can await it.
+    actionable=(review_responsible and review_actionable or can_manage and planning_actionable)
     cut={"goalId":str(goal["id"]),"definitionRevision":goal["definition_revision"],
          "adoptedDefinitionRevision":goal["adopted_definition_revision"],
          "planRevision":goal["plan_revision"],"current":valid,"work":records,
-         "canManage":bool(can_manage),"canReview":bool(can_review),"unsettled":planning}
+         "canManage":bool(can_manage),"canReview":bool(can_review),
+         "reviewResponsible":bool(review_responsible),"unsettled":planning}
     result["reviewFrontier"]={"version":1,"sha256":digest(cut),
         "actionable":bool(actionable),"workCount":len(records),
         "canManage":bool(can_manage),"canReview":bool(can_review),
-        "definitionPending":definition_pending,"waitingForCancellation":cancellation_wait}
+        "definitionPending":definition_pending,"waitingForCancellation":cancellation_wait,
+        "reviewResponsible":bool(review_responsible)}
     return result
 
 
