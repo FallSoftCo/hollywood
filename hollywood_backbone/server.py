@@ -292,6 +292,11 @@ class ApprovalDetails(Input):
     changes: list[dict] | None = Field(default=None, max_length=100)
 
 
+class ResponsePublication(Input):
+    version: int = Field(strict=True, ge=1, le=1)
+    roomId: UUID
+
+
 class AttentionCreate(Input):
     id: UUID
     deliveryId: UUID
@@ -308,6 +313,7 @@ class AttentionCreate(Input):
     ]
     summary: str = Field(min_length=1, max_length=6000)
     request: dict
+    responsePublication: ResponsePublication | None = None
 
 
 class AttentionScope(Input):
@@ -1159,7 +1165,9 @@ async def attention_create(request):
             raise ValueError("Complete command action required")
         if p.method == "item/fileChange/requestApproval" and not details.changes:
             raise ValueError("Complete file changes required")
-    payload = p.model_dump(mode="json", exclude={"id"})
+    payload = p.model_dump(mode="json", exclude={"id", "responsePublication"})
+    if p.responsePublication is not None:
+        payload["responsePublication"] = p.responsePublication.model_dump(mode="json")
     payload["request"] = details.model_dump(mode="json")
     if len(json.dumps(payload).encode()) > 14000:
         raise ValueError("Attention action exceeds limit")

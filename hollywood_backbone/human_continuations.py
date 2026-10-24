@@ -73,6 +73,8 @@ def can_respond(store, c, actor, row, delivery):
             if target["kind"] != "agent":
                 return False
             store.room(c, target, row["room"])
+            from .human_decision_publication import check
+            check(store, c, actor, row)
         return True
     except (Conflict, Denied):
         return False
@@ -94,12 +96,19 @@ def enqueue(store, c, actor, row, delivery, response):
     })
     if len(body.encode()) > 6000:
         raise ValueError("Question answer exceeds the 6000-byte continuation limit")
+    from .human_decision_publication import response as publish_response
+    publication = publish_response(store, c, actor, row, response["answers"])
+    # One canonical answer keeps its original continuation even when its
+    # declared audience is a different room; agent contexts are not room-bound.
     event = store.event(
-        c, actor, row["room"], "request", body,
-        recipient=row["agent"], audience="direct", source=row["event"],
+        c, actor, publication["room"] if publication else row["room"],
+        "message" if publication else "request", publication["body"] if publication else body,
+        recipient=row["agent"], audience="room" if publication else "direct",
+        source=row["event"],
         data={"type": "humanQuestionAnswer", "attentionId": str(row["id"]),
               "originalDeliveryId": str(delivery["id"]),
-              "contextId": binding["context_id"]},
+              "contextId": binding["context_id"],
+              **(publication["data"] if publication else {})},
     )
     c.execute(
         "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",

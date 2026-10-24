@@ -40,3 +40,30 @@ Paired LAX may recover only an original bootstrap bind by first looking up its
 receipt, then resubmitting the exact same idempotent binding metadata when that
 authenticated lookup reports absence. It preserves the existing operation and
 native-thread identities. Other uncertain context operations remain held.
+
+
+### Declared room for a native human answer
+
+AttentionCreate optionally accepts responsePublication={version:1,roomId:<UUID>}
+for a nonsecret, nonblocking hollywood/question. Hollywood checks current
+agent/human read and post access and appends an enforced room-visibility notice
+to the displayed questions. The question digest binds the declared target.
+Omitting the field preserves the private request and its original fingerprint.
+
+An authenticated answer commits one existing humanQuestionAnswer event in that
+room, with real human authorship and the original agent/context continuation.
+It creates no peer delivery or execution permission. Its response_event is the
+normal room-readable evidence pointer. Private question/approval controls keep
+their participant-only access; room membership cannot read the private receipt.
+Readers other than the original recipient receive ordinary room observations.
+
+Original operation lookup returns the same response/event. Current permissions,
+scope, cancellation and context are checked before publication. A denied reply
+creates no partial room event. Cancelling later work does not erase an already
+committed human communication. Approvals and generic callbacks cannot opt in.
+
+A server downgrade to a version unaware of this opt-in must first settle or
+explicitly withdraw pending publication questions; do not silently switch their
+promised audience or replay answers. Current HTTP/PostgreSQL qualification uses
+disclosed native/capacity metadata fixtures. Real native multi-context and
+physical-client qualification are recorded separately.

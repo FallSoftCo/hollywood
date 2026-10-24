@@ -90,6 +90,8 @@ def create(store, actor_id, identity, payload):
                 "method": payload["method"],
                 "request": payload["request"],
                 "summary": payload["summary"],
+                **({"responsePublication": payload["responsePublication"]}
+                   if payload.get("responsePublication") is not None else {}),
             }
         )
         old = c.execute("SELECT * FROM hb_attention WHERE id=%s FOR UPDATE", (identity,)).fetchone()
@@ -134,6 +136,8 @@ def create(store, actor_id, identity, payload):
         human = human_owner(c, event)
         h = store.actor(c, human)
         store.room(c, h, event["room"])
+        from .human_decision_publication import prepare
+        question_request, question_summary = prepare(store, c, a, h, payload)
         # Approval detail is private to the attributable human and agent even
         # when the original work request was published to the entire room.
         kind = (
@@ -146,7 +150,7 @@ def create(store, actor_id, identity, payload):
             a,
             event["room"],
             kind,
-            payload["summary"],
+            question_summary,
             recipient=human,
             audience="direct",
             source=event["id"],
@@ -179,7 +183,7 @@ def create(store, actor_id, identity, payload):
                 payload["nativeTurn"],
                 payload["nativeSlot"],
                 payload["method"],
-                Jsonb(payload["request"]),
+                Jsonb(question_request),
                 fingerprint,
             ),
         )
