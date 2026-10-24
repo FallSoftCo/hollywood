@@ -4,7 +4,10 @@ from .store import json_value
 def settle_idle(c,store,actor):
     rows=c.execute("""SELECT m.* FROM hb_context_material m JOIN hb_delivery d
         ON d.event=m.source AND d.agent=m.agent WHERE m.agent=%s AND m.kind='work'
-        AND m.state NOT IN ('complete','cancelled','superseded') AND d.cancellation_requested
+        AND (m.state NOT IN ('complete','cancelled','superseded')
+          OR (m.state='cancelled' AND EXISTS(SELECT 1 FROM hb_work w
+              WHERE w.delivery=d.id AND w.state='cancel_requested')))
+        AND d.cancellation_requested
         AND d.state<>'unknown'
         AND NOT EXISTS(SELECT 1 FROM hb_purpose_context b WHERE b.agent=m.agent
           AND b.active_turn IS NOT NULL AND m.id=ANY(b.active_material))

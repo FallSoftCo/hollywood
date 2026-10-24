@@ -1,0 +1,67 @@
+{
+  "schema": "hollywood-goal-cancellation-planning-feedback-qualification/v1",
+  "at": 1792832682.615209,
+  "version": "0.3.0.dev117",
+  "sourceFailure": "Native R323 cancellation had already cancelled material/delivery but left Goal Work cancel_requested; independent verifier suppressed planner continuation.",
+  "changes": [
+    "Reconcile cancelled work material only when canonical linked Work still needs cancellation acknowledgement, retaining all native/unknown fences.",
+    "Expose stable planning and review hints to existing authorized managers/verifiers separately, include proposed definition and unsettled off-frontier facts, and permit known cancellation waits.",
+    "Submitted independent review stays with its verifier; hints grant no new permission and do not create another work ledger."
+  ],
+  "deterministicEvidence": {
+    "at": 1792832533.4334738,
+    "state": "passed",
+    "cases": [
+      "actual_native_terminal_reconciles_and_original_responsibility_resumes_once",
+      "unknown_delivery_holds",
+      "running_permit_holds",
+      "missing_terminal_receipt_holds",
+      "active_original_native_binding_holds",
+      "planner_verifier_and_observer_authority_preserved",
+      "independent_submitted_review_is_not_planner_work"
+    ],
+    "count": 7,
+    "capturedRowsRestored": true,
+    "modelsStarted": 0,
+    "newConversationEvents": 0,
+    "scope": "Actual captured real PG/native terminal facts plus disclosed rollback-only machine counterfactuals; not model behavior or whole system proof."
+  },
+  "nativeObservation": {
+    "at": 1792832682.6147234,
+    "state": "canonical_native_continuation_observed",
+    "workId": "54848893-83bc-5bfe-be07-3dd5ef046a23",
+    "workState": "cancelled",
+    "parentId": "43f9549e-d392-5285-a4b3-21c765c73fb3",
+    "parentState": "running",
+    "resumeRevision": 4,
+    "activeOriginalWriterTurn": "01a16d26-fa60-76a2-b403-825c0c657017",
+    "sourceTaskEvent": "b31803d2-e591-479a-8325-e59a7f78cf64",
+    "earlyHumanEvent": "b3d7795c-ded8-41d3-871f-3c9aed60295b",
+    "measurementInvocations": 1,
+    "operatorContinuationMessages": 0,
+    "operatorStateRepair": false,
+    "wholeArtifactAcceptanceNotYetPassed": true
+  },
+  "cutover": {
+    "at": 1792832632.6874125,
+    "state": "passed",
+    "oldPID": "454693",
+    "newPID": "619581",
+    "versions": [
+      "0.1.0.dev160",
+      "0.3.0.dev117"
+    ],
+    "health": 200,
+    "nativePurposesUnrestarted": 9,
+    "infrastructureUnrestarted": 2,
+    "productionPidsUnchanged": true,
+    "sameNativeBindings": true,
+    "modelsOrTasksSubmittedByCutover": 0,
+    "liveReconciliationNotYetAssessed": true
+  },
+  "limitations": [
+    "Source intervention makes R323 continuation assisted; original unassisted run was blocked.",
+    "Full original artifact/Goal/review/cold-restart acceptance still pending.",
+    "Private QA API only; production and phone not migrated."
+  ]
+}
