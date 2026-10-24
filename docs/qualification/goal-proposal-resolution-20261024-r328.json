@@ -1,0 +1,228 @@
+{
+  "schema": "hollywood-goal-proposal-resolution-qualification/v1",
+  "at": 1792838537.7163334,
+  "versions": [
+    "0.1.0.dev161",
+    "0.3.0.dev119"
+  ],
+  "design": {
+    "authority": "Existing Hollywood Goal/definition/strategy/command/event authority; LAX native tools expose the same actions.",
+    "states": "Latest proposal is pending, adopted, rejected or deferred. Rejection/deferment does not change the adopted definition or accepted Work.",
+    "storage": "One Goal projection field definition_resolution records exact latest revision/digest, decision, actual actor, explanatory public source and note; existing immutable command/event receipt owns the attributable transition. No additional service or Work ledger.",
+    "rules": [
+      "Only existing Goal managers can reject/defer a proposal, with current Goal revision and exact latest proposal digest.",
+      "Acceptance requires the latest proposal adopted or explicitly rejected/deferred. No silent success with unresolved intent.",
+      "New proposal invalidates prior resolution. Adoption remains the existing exact revision/digest operation.",
+      "Rejection/deferment preserves selected strategy, accepted criterion bindings and original evidence. Adoption retains existing stale-work and coverage checks.",
+      "Planning wake cuts include exact resolution state; unchanged reads cause no model wake.",
+      "Dispositions are attributable planning decisions, not claims of human approval or semantic correctness."
+    ]
+  },
+  "capturedRollbackQualification": {
+    "at": 1792837614.678627,
+    "state": "passed",
+    "cases": [
+      "pending_latest_proposal_fences_goal_acceptance",
+      "explicit_rejection_preserves_accepted_work_and_changes_stable_cut",
+      "explicit_deferment_keeps_adopted_contract_and_evidence",
+      "wrong_digest_fenced",
+      "wrong_revision_fenced",
+      "independent_verifier_cannot_resolve_owner_proposal",
+      "new_decision_for_already_resolved_proposal_rejected",
+      "newer_proposal_invalidates_prior_resolution",
+      "reconsidered_adoption_keeps_existing_replan_and_coverage_fences",
+      "goal_local_public_source_still_required"
+    ],
+    "count": 10,
+    "allOriginalCapturedRowsRestored": true,
+    "nativeOrModelCalls": 0,
+    "scope": "Real completed disposable native Goal and Work with explicitly rolled-back lifecycle counterfactuals. Deterministic state/authority checks, not HTTP/native semantic proof."
+  },
+  "httpQualification": {
+    "at": 1792838311.5367503,
+    "passed": true,
+    "cases": [
+      "original_agent_bootstrap_denial_has_no_goal_command_or_admission",
+      "actual_http_pending_acceptance_fenced",
+      "actual_http_exact_digest_fence",
+      "actual_readable_human_observer_cannot_resolve_owner_proposal",
+      "source_sdk_handler_real_http_rejection_with_original_receipt_dedup",
+      "changed_payload_same_operation_denied",
+      "new_proposal_needs_new_resolution_and_old_canonical_decision_retained",
+      "sdk_declaration_handler_and_atomic_effect_classification_coherent"
+    ],
+    "count": 8,
+    "authority": "85f9275d-fad7-4dfd-b1da-f3d38b870028",
+    "goal": "49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+    "originalHTTPCalls": [
+      {
+        "method": "POST",
+        "path": "rooms/551384f3-b497-4467-9c9f-4ee8beeb4f8e/goals",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/definition",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/adopt",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/definition",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/state",
+        "status": 409
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/resolve",
+        "status": 409
+      },
+      {
+        "method": "POST",
+        "path": "principals",
+        "status": 200
+      },
+      {
+        "method": "PUT",
+        "path": "rooms/551384f3-b497-4467-9c9f-4ee8beeb4f8e/membership",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/resolve",
+        "status": 403
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/resolve",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/resolve",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/resolve",
+        "status": 409
+      },
+      {
+        "method": "GET",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/definition",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/contract/resolve",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "commands/r328:original-resolution",
+        "status": 200
+      }
+    ],
+    "readbackAndCleanupCalls": [
+      {
+        "method": "GET",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "commands/r328:original-resolution",
+        "status": 200
+      },
+      {
+        "method": "GET",
+        "path": "commands/r328:next-resolution",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "goals/49d953c7-6bb2-45d9-ba1a-20e92e27206c/state",
+        "status": 200
+      },
+      {
+        "method": "POST",
+        "path": "deliveries/4d1c74a6-74d7-42ab-87a2-fedf86402ac2/cancel",
+        "status": 200
+      }
+    ],
+    "modelsStarted": 0,
+    "linuxWorkers": 0,
+    "originalPOSTsReplayed": false,
+    "originalFailureRetained": "/var/lib/lax-goal-proposal-disposition-20261024-r328/http-pg-r02/failure.json",
+    "callerCorrection": "Command GET returns workflow/canonicalCommand.acceptedResult envelopes, not a direct contract property. Read original receipts to finish inspection; no resolve/create/source submission repeated.",
+    "scope": "Authenticated real HTTP/PG state/receipt tests using disclosed nonexecuting human metadata-admin authority and source SDK forwarding. Not native-agent admission or model behavior proof.",
+    "cleanup": "Only fixture Goal and source delivery cancelled, original command/event history retained."
+  },
+  "oldAPIboundary": {
+    "at": 1792838415.884425,
+    "passed": true,
+    "oldBackend": "0.3.0.dev118",
+    "httpStatus": 404,
+    "oldActionNotAdmitted": true,
+    "goalRowsUnchanged": true,
+    "modelsStarted": 0,
+    "workersStarted": 0,
+    "scope": "Actual old installed server rejects the new action route before command admission. Not downgrade compatibility of new active policy state."
+  },
+  "nativeQualificationOfNewTool": false,
+  "productionChanged": false,
+  "limits": [
+    "Native H118 source-review/Goal-wait proof remains separate14/14; new H119/SDK161 proposal tool still needs an actual native caller.",
+    "Two API caller mistakes remain in original failed receipts: bootstrap agent lacked required native provenance; command GET used wrong envelope. Accepted operations were inspected, not replayed.",
+    "Cross-native-version history/rollback remains unqualified; R327 thread/read result returned metadata without turns.",
+    "Old-server404 prevents new-action admission, not a safe downgrade over new active policy state."
+  ]
+}

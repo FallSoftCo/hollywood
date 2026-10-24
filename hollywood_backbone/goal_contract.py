@@ -18,7 +18,14 @@ def current(c, goal):
                        (goal["id"],goal["adopted_definition_revision"])).fetchone()
     strategy=c.execute("SELECT * FROM hb_goal_strategy WHERE goal=%s AND revision=%s",
                         (goal["id"],goal["plan_revision"])).fetchone()
+    resolution=goal.get("definition_resolution") or {}
+    resolved=bool(isinstance(resolution,dict) and definition
+        and resolution.get("revision")==goal["definition_revision"]
+        and resolution.get("sha256")==definition["digest"]
+        and resolution.get("disposition") in ("rejected","deferred"))
+    pending=goal["definition_revision"]!=goal["adopted_definition_revision"] and not resolved
     return json_value({"schema":CAPABILITY,"required":goal["contract_required"],
+        "definitionPending":pending,"definitionResolution":resolution if resolved else None,
         "definition":definition,"adoptedDefinition":adopted,"strategy":strategy,
         "definitionReady":bool(adopted),"strategyCurrent":bool(strategy and
           strategy["definition_revision"]==goal["adopted_definition_revision"]),
@@ -38,6 +45,25 @@ def mutate(store,c,actor,goal,action,payload):
         c.execute("UPDATE hb_goal SET contract_required=true,definition_revision=%s WHERE id=%s",
                   (number,goal["id"]))
         return {"definitionRevision":number,"definitionSha256":digest(body),"adopted":False}
+    if action=="goal.definition_resolve":
+        from .work import manage
+        manage(actor,goal)
+        body=c.execute("SELECT * FROM hb_goal_definition WHERE goal=%s AND revision=%s",
+                       (goal["id"],payload["definitionRevision"])).fetchone()
+        if not body or body["revision"]!=goal["definition_revision"] or body["digest"]!=payload["definitionSha256"]:
+            raise ContractConflict('GOAL_DEFINITION_CHANGED','Resolve the exact latest proposed definition and digest')
+        if body["revision"]==goal["adopted_definition_revision"]:
+            raise ContractConflict('GOAL_PROPOSAL_NOT_PENDING','The latest definition is already adopted')
+        if current(c,goal)["definitionResolution"]:
+            raise ContractConflict('GOAL_PROPOSAL_ALREADY_RESOLVED','Proposal already resolved; inspect its original decision receipt')
+        if payload["disposition"] not in ("rejected","deferred") or not 1<=len(payload["note"].strip())<=1000:
+            raise ValueError("Explicit rejected/deferred disposition and bounded explanation required")
+        resolution={"revision":body["revision"],"sha256":body["digest"],
+            "disposition":payload["disposition"],"note":payload["note"],
+            "actorId":str(actor["id"]),"actorKind":actor["kind"],"sourceEventId":str(source["id"])}
+        c.execute("UPDATE hb_goal SET definition_resolution=%s WHERE id=%s",
+                  (Jsonb(resolution),goal["id"]))
+        return {"definitionResolution":resolution,"activeDefinitionChanged":False,"achievementProved":False}
     if action=="goal.definition_adopt":
         body=c.execute("SELECT * FROM hb_goal_definition WHERE goal=%s AND revision=%s",
                        (goal["id"],payload["definitionRevision"])).fetchone()
@@ -52,7 +78,7 @@ def mutate(store,c,actor,goal,action,payload):
         if len(acceptance)>4000:
             raise ContractConflict('GOAL_DEFINITION_TOO_LARGE','Criterion text exceeds Goal acceptance limit; retain concise criteria with artifact references')
         c.execute("""UPDATE hb_goal SET contract_required=true,adopted_definition_revision=%s,
-            objective=%s,acceptance=%s WHERE id=%s""",
+            definition_resolution='{}',objective=%s,acceptance=%s WHERE id=%s""",
             (body["revision"],body["definition"]["objective"],acceptance,goal["id"]))
         return {"definitionRevision":body["revision"],"definitionSha256":body["digest"],
                 "adopted":True,"reviewerId":str(actor["id"]),"reviewerKind":actor["kind"],
@@ -110,6 +136,10 @@ def accept_goal(c,goal):
     if not adopted:
         raise ContractConflict('GOAL_DEFINITION_REQUIRED','Goal has no adopted acceptance definition')
     contract=current(c,goal)
+    if contract["definitionPending"]:
+        raise ContractConflict('GOAL_PROPOSAL_UNRESOLVED',
+            'Reconcile the latest proposed definition before accepting this Goal',
+            next_action='Read the current Goal. Adopt the exact latest developed definition, or explicitly reject/defer the proposal with an attributable public source and explanation. Existing adopted Work/evidence remains unchanged; do not relabel or replay it.')
     if not contract["strategyCurrent"]:
         raise ContractConflict('GOAL_STRATEGY_REQUIRED','Goal strategy belongs to a superseded definition')
     all_work=c.execute("""SELECT w.id,w.state,d.state AS delivery_state FROM hb_work w

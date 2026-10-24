@@ -44,6 +44,9 @@ class DefinitionAdopt(Input):
     sourceEventId: UUID
     note: str = Field(min_length=1, max_length=1000)
 
+class DefinitionResolve(DefinitionAdopt):
+    disposition: Literal["rejected", "deferred"]
+
 class Alternative(Input):
     id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
     approach: str = Field(min_length=1, max_length=1500)

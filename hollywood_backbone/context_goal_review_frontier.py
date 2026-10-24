@@ -75,7 +75,7 @@ def snapshot(c, store, actor, goal):
             or w["delivery_state"] in ("failed","unknown")
             or w["state"]=="assigned" and w["delivery_state"]=="completed" for w in rows) or complete)
     planning=[];cancellation_wait=False;planning_unavailable=False
-    definition_pending=goal["definition_revision"]!=goal["adopted_definition_revision"]
+    definition_pending=contract["definitionPending"]
     if can_manage:
         # Include unresolved work outside a replaced frontier. A selected plan
         # cannot hide outstanding cancellations or uncertain obsolete effects.
@@ -113,6 +113,7 @@ def snapshot(c, store, actor, goal):
     cut={"goalId":str(goal["id"]),"definitionRevision":goal["definition_revision"],
          "adoptedDefinitionRevision":goal["adopted_definition_revision"],
          "planRevision":goal["plan_revision"],"current":valid,"work":records,
+         "definitionPending":definition_pending,"definitionResolution":contract["definitionResolution"],
          "canManage":bool(can_manage),"canReview":bool(can_review),
          "reviewResponsible":bool(review_responsible),"unsettled":planning}
     result["reviewFrontier"]={"version":1,"sha256":digest(cut),

@@ -269,7 +269,7 @@ def mutation(store, actor_id, action, identity, operation, payload, *, wire=None
                 and goal["state"] != "active"
             ):
                 raise Conflict("Goal is not active")
-            if action in ("goal.definition","goal.definition_adopt","goal.strategy"):
+            if action in ("goal.definition","goal.definition_adopt","goal.definition_resolve","goal.strategy"):
                 contract_result=goal_contract.mutate(store,c,a,goal,action,payload)
             elif action == "goal.cooperation":
                 cooperation.configure(store, c, a, goal, payload)

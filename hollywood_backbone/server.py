@@ -394,7 +394,7 @@ class CommunicationGrant(Input):
     allowRequests: bool = False
 
 
-from .goal_contract_models import DefinitionWrite, DefinitionAdopt, StrategyWrite
+from .goal_contract_models import DefinitionWrite, DefinitionAdopt, DefinitionResolve, StrategyWrite
 
 
 class GoalCreate(Input):
@@ -1347,7 +1347,7 @@ async def goal_create(request):
 
 
 async def goal_contract(request):
-    models={"definition":(DefinitionWrite,"goal.definition"),"adopt":(DefinitionAdopt,"goal.definition_adopt"),"strategy":(StrategyWrite,"goal.strategy")}
+    models={"definition":(DefinitionWrite,"goal.definition"),"adopt":(DefinitionAdopt,"goal.definition_adopt"),"resolve":(DefinitionResolve,"goal.definition_resolve"),"strategy":(StrategyWrite,"goal.strategy")}
     model,action=models[request.match_info["contract"]]
     p=await body(request,model)
     return await invoke(request,"workflow",action,str(UUID(request.match_info["goal"])),p.operationId,p.model_dump(mode="json",exclude={"operationId"}))
@@ -1555,7 +1555,7 @@ def application(store):
             web.get("/hollywood/v3/goals/{goal}/work", work_list),
             web.get("/hollywood/v3/rooms/{room}/work", work_list),
             web.post("/hollywood/v3/goals/{goal}/state", goal_state),
-            web.post("/hollywood/v3/goals/{goal}/contract/{contract:definition|adopt|strategy}",goal_contract),
+            web.post("/hollywood/v3/goals/{goal}/contract/{contract:definition|adopt|resolve|strategy}",goal_contract),
             web.get("/hollywood/v3/work/{work}", work_read),
             web.get("/hollywood/v3/work/{work}/attempts", work_attempts),
             web.get("/hollywood/v3/rooms/{room}/decisions", decisions),
