@@ -80,3 +80,5 @@ review, whole-window/native-action human selection, manual hard-limit behavior,
 full assembled provider input/token accounting and NextComp controls.
 `fullProviderInputReady=false` is intentional: canonical/native replacement
 bytes do not measure all tool/instruction request overhead or actual provider tokens.
+
+A real-model two-agent qualification now exercises all six purpose histories and the same accepted Work through a human correction, reviewed Writer replacement, attributed peer review, repaired CLI and independent executable checks. The original run required disclosed QA observer recovery; it is not a clean uninterrupted, all-purpose or production qualification. The recorded first fresh inference used 22,327 input tokens; this is distinct from a full seed preview. See the [bounded real-model evidence](qualification/real-reviewed-window-r338.json).

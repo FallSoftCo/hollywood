@@ -1,0 +1,131 @@
+{
+  "schema": "lax-hollywood-real-reviewed-window-qualification/v1",
+  "at": 1792954696.7481723,
+  "state": "passed_bounded_with_disclosed_observer_recovery",
+  "candidateCode": {
+    "hollywood": "1025fb119ba03e6b2c7a9ce39843b4c261784f56",
+    "sdk": "a3dd2a7c4001dd5f40746b120160c313ec6ed6ee",
+    "runtime": "/opt/lax-reviewed-context-20261025-r337-r01/venv",
+    "native": "/opt/lax-native-idle-reconcile-20261025-r334-r02/native/bin/codex-app-server",
+    "nativeSha256": "da41ed3b84dc634ea777e587f6b36f6224c8641d087bdd45c940ab6170c3d36d",
+    "model": "gpt-6.1-sol",
+    "effort": "xhigh"
+  },
+  "authorityKind": "new disposable; one disclosed human, two independent full LAX agents, six purposes",
+  "actualResult": {
+    "originalWork": "9b5c451d-302e-5315-b3f3-3a0c11e886e2",
+    "originalHumanRequest": "58f19542-5cb5-4cc5-87be-b755e3f0d43a",
+    "humanCorrection": "2334e270-ef66-463b-b757-6da906e83420",
+    "nativeContexts": 6,
+    "allSixActuallyInferred": true,
+    "sameWorkCompleted": true,
+    "nativeResponderOriginalFinal": true,
+    "independentCliCasesPassed": 33,
+    "fourBrokenControlsRejected": true,
+    "wireAndStateAuditChecksPassed": 34,
+    "providerRequests": 52,
+    "providerCompleted": 51,
+    "reportedUncachedInputPlusOutput": 334368,
+    "lastExtraObserverInference": {
+      "thread": "01a17455-d1d5-7672-8c89-902900037c93",
+      "turn": "01a1745e-cf12-7ce2-9914-01a38084dd09",
+      "status": "interrupted",
+      "error": null
+    },
+    "artifacts": {
+      "invoice_totals.py": {
+        "sha256": "a7d1ff88344ffefb2fb267deb9204fc7a3878164d828b597c995f0569eedb40d",
+        "bytes": 4338
+      },
+      "README.md": {
+        "sha256": "c821cb2bd834e986a2ad0186b2cf5571824cc9db3f1d823b650efae0b6752dc2",
+        "bytes": 3729
+      },
+      "VERIFICATION.md": {
+        "sha256": "1b01b6630594f460cee61fa77c2a4930b352d073902a45dfcc6d60c86fa5c573",
+        "bytes": 9868
+      },
+      "REVIEW.md": {
+        "sha256": "975abd9b36e551f60c36e2b0973d35c6e6a3dec99deeff1c61860ceb00086187",
+        "bytes": 9321
+      }
+    }
+  },
+  "nativeWindow": {
+    "sameThread": "01a17451-89e0-77a2-afc5-343dc7c0f03c",
+    "generation": 1,
+    "firstActualPostRefreshRequest": 12,
+    "canonicalReviewedSnapshotBytes": 7400,
+    "preparedNativeReplacementWireBytes": 92665,
+    "actualProviderFrameBytes": 102009,
+    "observedFirstInferenceInputTokens": 22327,
+    "oldProviderContinuationId": null,
+    "selectedFactAndCorrectionPresent": true,
+    "unselectedOldCanaryOmitted": true,
+    "fullProviderInputPreviewImplemented": false,
+    "note": "Canonical bytes/native packet/frame and first-inference usage are different measurements; no pure seed token-size preview claim."
+  },
+  "evidenceRoot": "/var/lib/lax-real-reviewed-team-20261025-r338",
+  "primaryEvidence": [
+    "INDEPENDENT-AUDIT-r02.json",
+    "INDEPENDENT-AUDIT-r01.json",
+    "result.json",
+    "generated-artifact-oracle.json",
+    "oracle-controls.json",
+    "operator/",
+    "provider-capture/",
+    "installed-reviewed-window.json",
+    "reader-amended-original-work.json",
+    "FINITE-CLEANUP.json"
+  ],
+  "allAttemptsRetained": [
+    "setup-failure-r01.json",
+    "setup-failure-r02.json",
+    "pre-model-http-rejection.json",
+    "observer-config-corrected.json",
+    "trial-failure-r01.json",
+    "trial-failure-r02.json",
+    "trial-failure-r03.json",
+    "observer-recovery-r04-intent.json",
+    "audit-decoder-correction.json"
+  ],
+  "interventions": "QA observer null-control assumption stopped only this new trial; source unchanged, exact original inputs/work/revision resumed, no model prompt/product artifact/canonical repair. Tool audit decoder corrected for real Code Mode declarations; no new model trial claimed.",
+  "scopeLimits": [
+    "Observer null-state error stopped/restarted only new trial workers; exact original inputs/review/work resumed. Not a straight-through run.",
+    "Actual peer artifact required agent's declared sudo read because fixture default ACL lacked owner access; no operator repair during credited work.",
+    "Selected learned fact was also in mandatory unfinished Work; this run does not isolate the causal effect of an optional mark.",
+    "One idle Writer case only; not active/all-purpose/whole-window/user-UI/superiority/enterprise qualification.",
+    "Final cleanup may cancel a bounded observer inference; unmatched provider completion is reported, not retried.",
+    "Physical phone/push/voice/NextComp human-review controls and production cutover not qualified.",
+    "Active-turn/all-purpose/whole-window/native-action human marks and complete pre-inference size preview remain open."
+  ],
+  "production": {
+    "changed": false,
+    "protectedPids": {
+      "hollywood-backbone.service": "2350230",
+      "lax-agent-e488f19b-2d4a0daa0514-reader.service": "2727021",
+      "lax-agent-e488f19b-2d4a0daa0514-writer.service": "2727022",
+      "lax-agent-e488f19b-2d4a0daa0514-responder.service": "2727023",
+      "lax-host-e488f19b0f60.service": "1604689",
+      "lax-collaboration-e488f19b-ec32d149.service": "1604403",
+      "nextcomp-native-core.service": "2583312",
+      "harness-postgres.service": "3176384"
+    },
+    "originalGoal": {
+      "state": "paused",
+      "revision": 43
+    },
+    "disabledPlacementsPreserved": 11,
+    "nextcompCodeOrPhoneChanges": false
+  },
+  "resources": {
+    "allNewWorkersAndInfrastructureStopped": true,
+    "temporaryListenersStopped": [
+      "lax-reviewed-team-provider-r338-r01.service",
+      "lax-reviewed-team-hollywood-r338-r01.service"
+    ],
+    "ownRegenerableCachesRemovedBytes": 441739566,
+    "newModelTimers": 0
+  },
+  "productionReplacementReady": false
+}
