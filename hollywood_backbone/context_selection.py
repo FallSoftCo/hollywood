@@ -111,6 +111,8 @@ def mark(c,store,actor,purpose,binding,p):
 
 
 def request(c,store,actor,purpose,binding,p):
+    if binding.get("seed_review"):
+        raise Conflict("Human review owns this window; use its original control state")
     if p["value"]:
         raise ValueError("Rebuild request takes no mutable payload")
     if binding["rebuild_requested"] and binding["rebuild_requested"] != p["operationId"]:
@@ -156,6 +158,9 @@ def request(c,store,actor,purpose,binding,p):
 
 def installed(c,store,actor,purpose,binding,p):
     value=p["value"]
+    if value.get("schema") == "lax-native-idle-context-installed/v1" and binding.get("seed_review"):
+        from .context_seed_runtime import installed as reviewed_installed
+        return reviewed_installed(c,store,actor,purpose,binding,p)
     if value.get("schema") == "lax-native-idle-context-installed/v1":
         from .context_native_idle import installed as native_installed
         return native_installed(c,store,actor,purpose,binding,p)
@@ -191,6 +196,9 @@ def installed(c,store,actor,purpose,binding,p):
 
 
 def snapshot(c,store,actor,purpose,binding,p,*,preflight=False,selection=None):
+    if not preflight and binding.get("seed_review"):
+        from .context_seed_runtime import snapshot as reviewed_snapshot
+        return reviewed_snapshot(c,store,actor,purpose,binding,p)
     # call() chooses REPEATABLE READ before any statement. A manifest is one
     # consistent database read point; later source changes remain observable.
     if not preflight and (binding["active_turn"] is not None or binding["accepting"]):

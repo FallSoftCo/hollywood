@@ -447,6 +447,18 @@ class Store:
         from .context_system import receipt
         return receipt(self, actor_id, token_digest, agent, purpose, operation)
 
+    def context_seed_control(self, actor_id, token_digest, agent, purpose, identity, payload):
+        from .context_seed_review import call
+        return call(self, actor_id, token_digest, agent, purpose, identity, payload)
+
+    def context_seed_control_read(self, actor_id, token_digest, agent, purpose, identity):
+        from .context_seed_review import call
+        return call(self, actor_id, token_digest, agent, purpose, identity)
+
+    def context_seed_control_content(self, actor_id, token_digest, agent, purpose, identity):
+        from .context_seed_review import call
+        return call(self, actor_id, token_digest, agent, purpose, identity, content=True)
+
     def context_seed_create(self, actor_id, token_digest, agent, purpose, payload):
         from .context_seeds import mutate
         return mutate(self, actor_id, token_digest, agent, purpose,
@@ -483,6 +495,8 @@ class Store:
             c.execute(WORK_RESOURCE_SCHEMA)
             from .context_seeds import SCHEMA as SEED_SCHEMA
             c.execute(SEED_SCHEMA)
+            from .context_seed_review import SCHEMA as REVIEW_SCHEMA
+            c.execute(REVIEW_SCHEMA)
 
     def bootstrap(self, authority, name, plan):
         """Local installer operation; never exposed through an anonymous HTTP route."""

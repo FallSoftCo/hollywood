@@ -21,7 +21,7 @@ STATE = {"threadId", "contextId", "purpose", "windowId", "historyVersion",
          "lastStartedTurnId", "activeTurnId", "idle", "heldOperationId"}
 
 
-def installed(c, store, actor, purpose, binding, p):
+def installed(c, store, actor, purpose, binding, p, *, selection=None):
     from .context_selection import material, selected
 
     value = p["value"]
@@ -99,7 +99,7 @@ def installed(c, store, actor, purpose, binding, p):
             or snapshot.get("requestOperationId") != binding["rebuild_requested"]):
         raise Conflict("Original Hollywood snapshot or rebuild request changed")
     content = json.loads("".join(chunk["content"] for chunk in snapshot["chunks"]))
-    if content["selection"] != selected(c, actor, purpose, binding):
+    if content["selection"] != (selected(c, actor, purpose, binding) if selection is None else selection):
         raise Conflict("Original selected inputs changed")
     # Re-authorize each delivered source. No old role or membership is restored.
     # Previously unavailable optional pointers convey no content or permission.

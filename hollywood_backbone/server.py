@@ -28,7 +28,7 @@ from .goal_contract import ContractConflict
 from .context_assignments import AssignmentConflict
 from .context_system import ContextOperationNotFound
 from .context_material import MaterialReadConflict
-from .context_seed_models import SeedCreate, SeedMark
+from .context_seed_models import SeedCreate, SeedMark, SeedControl
 from .context_seeds import SeedConflict
 
 
@@ -72,7 +72,7 @@ class ContextCall(Input):
     runtimeProtocol: Literal["lax-purpose-runtime/v3"]
     requiredCapability: Literal["scoped-execution-evidence/v1"] | None = None
     operationId: str = Field(min_length=1, max_length=256)
-    action: Literal["action_prepare", "action_commit", "selection", "select", "rebuild_request", "rebuild_snapshot", "rebuild_installed", "active_snapshot", "active_installed", "active_terminal", "release_reservation", "resume_interrupted", "resume_failed_preturn", "resume_unsettled", "acknowledge_provider_rejection", "observe_writer_outcome", "review_writer_outcome", "writer_evidence_available", "writer_evidence_authorize", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "read_complete", "accept", "answer", "announce",
+    action: Literal["seed_revised", "seed_refused", "seed_prepared", "seed_apply", "seed_cancelled", "action_prepare", "action_commit", "selection", "select", "rebuild_request", "rebuild_snapshot", "rebuild_installed", "active_snapshot", "active_installed", "active_terminal", "release_reservation", "resume_interrupted", "resume_failed_preturn", "resume_unsettled", "acknowledge_provider_rejection", "observe_writer_outcome", "review_writer_outcome", "writer_evidence_available", "writer_evidence_authorize", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "read_complete", "accept", "answer", "announce",
                     "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "wait_goals", "peer_result", "amend", "activity", "response_material", "observe", "initiative", "room_list", "room_history"]
     nativeThread: str = Field(min_length=1, max_length=256)
     nativeTurn: str = Field(min_length=1, max_length=256)
@@ -1552,6 +1552,18 @@ async def context_seed(request):
     return await invoke(request, "context_seed_preview", *args)
 
 
+async def context_seed_control(request):
+    if request.query:
+        raise ValueError("No review-control query accepted")
+    args = (request["tokenDigest"], str(UUID(request.match_info["agent"])),
+            request.match_info["purpose"], str(UUID(request.match_info["draft"])))
+    if request.method == "POST":
+        p = await body(request, SeedControl)
+        return await invoke(request, "context_seed_control", *args, p.model_dump(mode="json"))
+    name = "context_seed_control_content" if request.match_info.get("content") else "context_seed_control_read"
+    return await invoke(request, name, *args)
+
+
 def application(store):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
@@ -1563,6 +1575,9 @@ def application(store):
             web.get("/hollywood/v3/agents/{agent}/context-system", context_configuration_read),
             web.put("/hollywood/v3/agents/{agent}/context-system", context_configuration),
             web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/{source:seed-sources}", context_seed),
+            web.post("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts/{draft}/control", context_seed_control),
+            web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts/{draft}/control", context_seed_control),
+            web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts/{draft}/control/{content:content}", context_seed_control),
             web.post("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts", context_seed),
             web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts/{draft}", context_seed),
             web.put("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts/{draft}/marks", context_seed),

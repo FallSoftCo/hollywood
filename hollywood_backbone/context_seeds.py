@@ -31,7 +31,7 @@ class SeedConflict(Conflict):
         super().__init__("Seed sources or context changed; review the current revisions")
 
 
-def authorize(store, c, actor_id, token_digest, agent, purpose):
+def human(store, c, actor_id, token_digest):
     actor = store.actor(c, actor_id)
     if actor["kind"] != "human" or not actor["administrator"]:
         raise Denied("Human administrator required for this initial review interface")
@@ -41,6 +41,11 @@ def authorize(store, c, actor_id, token_digest, agent, purpose):
             AND t.digest=%s AND NOT t.revoked FOR SHARE""",
             (actor["id"], token_digest)).fetchone():
         raise Denied("Human credential unavailable")
+    return actor
+
+
+def authorize(store, c, actor_id, token_digest, agent, purpose):
+    actor = human(store, c, actor_id, token_digest)
     target = store.actor(c, agent)
     if target["kind"] != "agent" or target["authority"] != actor["authority"]:
         raise Denied("Same-authority agent required")
@@ -130,6 +135,8 @@ def mutate(store, actor_id, token_digest, agent, purpose, identity, payload, *, 
                  binding["native_thread"], binding["rebuild_generation"], Jsonb(marks)))
         else:
             row = draft_row(c, actor, agent, purpose, identity)
+            if row.get("review") is not None:
+                raise Conflict("Review is frozen; retain it and use a new draft")
             same_context(row, binding)
             if payload["revision"] != row["revision"]:
                 raise Conflict("Seed draft revision changed")
@@ -175,44 +182,48 @@ def preview(store, actor_id, token_digest, agent, purpose, identity, operation=N
                 from .context_system import ContextOperationNotFound
                 raise ContextOperationNotFound()
             return receipt["result"]
-        same_context(row, binding)
-        marks = []
-        for reference, pin in sorted(row["marks"].items()):
-            record = source(c, store, actor, target, purpose, binding, reference)
-            if (pin["revision"], pin["sha256"]) != (record["revision"], record["sha256"]):
-                raise SeedConflict({"reason": "source_changed", "reference": reference,
-                                    "currentRevision": record["revision"],
-                                    "currentSha256": record["sha256"]})
-            if reference != "role":
-                marks.append({"reference": reference, "reason": pin["reason"],
-                              "selected_revision": pin["revision"], "sha256": pin["sha256"],
-                              "markedBy": pin["markedBy"], "authorKind": pin["authorKind"]})
-        kind = {"reader": "input", "writer": "work", "responder": "need"}[purpose]
-        ids = [str(value["id"]) for value in c.execute("""SELECT id
-            FROM hb_context_material WHERE agent=%s AND id=ANY(%s::uuid[])
-            AND kind=%s AND state<>ALL(%s) ORDER BY id""",
-            (agent, binding["active_material"], kind, context_selection.TERMINAL)).fetchall()]
-        selected = {"selectionRevision": row["revision"], "marks": marks,
-                    "policy": "Explicit human draft; not the agent's runtime selection"}
-        try:
-            snapshot = context_selection.snapshot(c, store, target, purpose, binding,
-                {"nativeThread": binding["native_thread"], "nativeTurn": "human-seed-preview",
-                 "value": {"materialIds": ids}}, preflight=True, selection=selected)
-        except context_selection.RebuildBudgetExceeded as error:
-            raise SeedConflict({"reason": "canonical_budget_exceeded",
-                                "totalBytes": error.total_bytes,
-                                "limitBytes": context_selection.MAX_MANIFEST_BYTES}) from error
-        # Human admin can read target-authorized obligations; no new grant is made.
-        return {"schema": "lax-human-seed-preview/v1", "draft": metadata(row),
-                "snapshot": snapshot, "canonicalContentSha256": snapshot["sha256"],
-                "size": {"canonicalBytes": snapshot["totalBytes"],
-                         "canonicalLimitBytes": context_selection.MAX_MANIFEST_BYTES,
-                         "assembledNativeBytes": None, "estimatedTokens": None,
-                         "authoritativeInputTokens": None,
-                         "scope": "Canonical content only; native instructions/tool overhead not assembled"},
-                "stage": "canonical-material-preview", "nativeInputReady": False,
-                "nativeWindowChanged": False, "modelCalls": 0,
-                "meaning": "Not approved, frozen or installed. Recheck sources and native state at reviewed commit."}
+        return build_preview(c, store, actor, target, binding, row, purpose)
+
+
+def build_preview(c, store, actor, target, binding, row, purpose):
+    same_context(row, binding)
+    marks = []
+    for reference, pin in sorted(row["marks"].items()):
+        record = source(c, store, actor, target, purpose, binding, reference)
+        if (pin["revision"], pin["sha256"]) != (record["revision"], record["sha256"]):
+            raise SeedConflict({"reason": "source_changed", "reference": reference,
+                                "currentRevision": record["revision"],
+                                "currentSha256": record["sha256"]})
+        if reference != "role":
+            marks.append({"reference": reference, "reason": pin["reason"],
+                          "selected_revision": pin["revision"], "sha256": pin["sha256"],
+                          "markedBy": pin["markedBy"], "authorKind": pin["authorKind"]})
+    kind = {"reader": "input", "writer": "work", "responder": "need"}[purpose]
+    ids = [str(value["id"]) for value in c.execute("""SELECT id
+        FROM hb_context_material WHERE agent=%s AND id=ANY(%s::uuid[])
+        AND kind=%s AND state<>ALL(%s) ORDER BY id""",
+        (target["id"], binding["active_material"], kind, context_selection.TERMINAL)).fetchall()]
+    selected = {"selectionRevision": row["revision"], "marks": marks,
+                "policy": "Explicit human draft; not the agent's runtime selection"}
+    try:
+        snapshot = context_selection.snapshot(c, store, target, purpose, binding,
+            {"nativeThread": binding["native_thread"], "nativeTurn": "human-seed-preview",
+             "value": {"materialIds": ids}}, preflight=True, selection=selected)
+    except context_selection.RebuildBudgetExceeded as error:
+        raise SeedConflict({"reason": "canonical_budget_exceeded",
+                            "totalBytes": error.total_bytes,
+                            "limitBytes": context_selection.MAX_MANIFEST_BYTES}) from error
+    # Human admin can read target-authorized obligations; no new grant is made.
+    return {"schema": "lax-human-seed-preview/v1", "draft": metadata(row),
+            "snapshot": snapshot, "canonicalContentSha256": snapshot["sha256"],
+            "size": {"canonicalBytes": snapshot["totalBytes"],
+                     "canonicalLimitBytes": context_selection.MAX_MANIFEST_BYTES,
+                     "assembledNativeBytes": None, "estimatedTokens": None,
+                     "authoritativeInputTokens": None,
+                     "scope": "Canonical content only; native instructions/tool overhead not assembled"},
+            "stage": "canonical-material-preview", "nativeInputReady": False,
+            "nativeWindowChanged": False, "modelCalls": 0,
+            "meaning": "Not approved, frozen or installed. Recheck sources and native state at reviewed commit."}
 
 
 def inspect_source(store, actor_id, token_digest, agent, purpose, reference):

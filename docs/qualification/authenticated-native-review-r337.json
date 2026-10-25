@@ -1,0 +1,111 @@
+{
+  "state": "authenticated_native_review_passed",
+  "checks": [
+    "Authenticated human pins/frozen sources and actual native preparation agree; Writer admission held with no inference slot; Reader input stays pending",
+    "Only explicit authenticated human approval admits native apply; original receipt/generation verified, next wire input retains pins and omits old canary without rewriting model selections",
+    "Prepared/cancel-during-preparation and post-admission no-dispatch recovery preserve history; changed source and revoked reviewer refuse before write",
+    "Canonical source edit and replacement draft transfer the admission hold without a runnable gap; second native generation adopts new source and omits prior seed fact",
+    "Explicit settled capability disable restores default-off admission; old/unpaired profile cannot begin review"
+  ],
+  "realPostgres": true,
+  "authenticatedHumanHttp": true,
+  "actualNative": true,
+  "providerRequestTypes": [
+    "response.create",
+    "response.create",
+    "response.create"
+  ],
+  "scriptedProviderRequests": 3,
+  "realModel": false,
+  "semanticContinuityProved": false,
+  "activeTurnReview": false,
+  "physicalPhone": false,
+  "productionChanged": false,
+  "httpRequests": 123,
+  "schema": "native_review_ba305ecd643d459e9859e2682f9aebd6",
+  "nativeThread": "01a17420-d82e-72e2-90e5-0e895f2088a3",
+  "contextId": "73ee8e4b-5c22-4a29-b828-4da355e7669e",
+  "versions": {
+    "hollywood": "0.3.0.dev124",
+    "sdk": "0.1.0.dev168",
+    "candidateSchema": 40,
+    "liveSchema": 38
+  },
+  "evidence": "/var/lib/lax-global-unified-catalog-20261025-r334/human-native-review-r337-r01",
+  "deployed": false,
+  "attempts": {
+    "r01": "Failed extracted preview helper NameError before prepare; exact failure retained; source corrected",
+    "r02": "First joined human/native path65requests passed",
+    "r03": "Added no-dispatch/cancel-during-prepare/authorized audit,93requests passed",
+    "r04": "Authority read fence typo corrected by exact baseline-set audit before package;93requests passed",
+    "r05": "Explicit default-off disable,97requests passed",
+    "r06": "Hold-preserving review revision and second native generation,123requests passed"
+  },
+  "regressions": {
+    "legacy-human-preview-r01": {
+      "state": "canonical_preview_integration_passed",
+      "checks": [
+        "Original human draft creation reconciles by receipt without a model or new window",
+        "Human fact/correction pins have exact source hashes, canonical bytes and provenance",
+        "CAS and immutable operation receipts prevent changed writes; unpin preserves original source",
+        "Role is mandatory; changed canonical role requires explicit review and repin",
+        "Foreign human, agent-admin, purpose token and wrong-purpose/private sources refused",
+        "Preview reauthorizes source membership; pins restore no revoked access",
+        "Oversized canonical preview refuses before closure without truncating human pins",
+        "All native bindings, runtime marks, work deliveries and inference permits unchanged"
+      ],
+      "schema": "seed_review_3ea20fd43aef4778ba4783d265c9a366",
+      "actualHttp": true,
+      "actualPostgres": true,
+      "semanticModelProof": false,
+      "modelsStarted": 0,
+      "productionChanged": false,
+      "nativeRefreshQualified": false,
+      "physicalPhoneProof": false,
+      "requestCount": 68
+    },
+    "legacy-native-lifecycle-r01": {
+      "state": "native_review_lifecycle_passed",
+      "checks": [
+        "Prepared real native packet waits without history change, replacement gate or provider request",
+        "Wrong approval, changed configuration and altered packet refuse before dispatch; owner remains usable",
+        "Explicit apply independently verifies original checkpoint; next provider input uses selected fact and omits old canary/cache",
+        "Known prepared-only cancellation preserves history and unblocks this owner",
+        "Original immediate rebuild still installs under its original receipt lifecycle",
+        "Cold owner restores pending review without inference; stale cut refuses before dispatch and can be explicitly cancelled"
+      ],
+      "actualNative": true,
+      "scriptedProviderRequests": 2,
+      "realModel": false,
+      "hollywoodAuthorizationProved": false,
+      "humanApprovalApiProved": false,
+      "productionChanged": false,
+      "nativeInstalls": 2,
+      "binarySha256": "da41ed3b84dc634ea777e587f6b36f6224c8641d087bdd45c940ab6170c3d36d"
+    }
+  },
+  "knownLimits": [
+    "Declared scripted provider, not model semantics or full-agent Work continuation",
+    "Idle Writer only; no active or Reader/Responder atomic review proof",
+    "No full provider-input/token size or NextComp UI qualification",
+    "Nonadmin/shared review and whole-window/native action human pins pending"
+  ],
+  "nativeSourceFieldsAndOldFencesPreserved": true,
+  "newServicesOrStoppedWorkerResumes": 0,
+  "wheels": {
+    "hollywood": {
+      "wheel": "/var/lib/lax-global-unified-catalog-20261025-r334/human-native-review-r337-r01/wheels/hollywood_cli-0.3.0.dev124-py3-none-any.whl",
+      "sha256": "16a79b655060a48ea4f59940b7151c33a3d24239e2b70f9f83b2574e24df14fb",
+      "bytes": 359991,
+      "moduleByteMatches": 95,
+      "deployed": false
+    },
+    "sdk": {
+      "wheel": "/var/lib/lax-global-unified-catalog-20261025-r334/human-native-review-r337-r01/wheels/lax_hollywood_connector-0.1.0.dev168-py3-none-any.whl",
+      "sha256": "dc8e5694439e89f905cc9731f3c68d515d48e639170da9b543de00cc16860772",
+      "bytes": 357805,
+      "moduleByteMatches": 111,
+      "deployed": false
+    }
+  }
+}

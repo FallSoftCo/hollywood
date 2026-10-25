@@ -160,7 +160,7 @@ def call(store, actor_id, token_digest, agent, purpose, p):
 
 def transaction(store, actor_id, token_digest, agent, purpose, p):
     with store.pool.connection() as c:
-        if (p["action"] in ("rebuild_snapshot","read_complete","active_snapshot","active_installed","active_terminal","action_prepare","action_commit")
+        if (p["action"] in ("rebuild_snapshot","read_complete","active_snapshot","active_installed","active_terminal","action_prepare","action_commit","seed_prepared","seed_apply","seed_cancelled","seed_refused","seed_revised")
                 or p["action"] == "rebuild_installed" and p["value"].get("schema")
                     == "lax-native-idle-context-installed/v1"
                 or p["action"] == "begin" and p["value"].get("primaryInput") == 1):
@@ -192,6 +192,8 @@ def transaction(store, actor_id, token_digest, agent, purpose, p):
         old=c.execute("SELECT * FROM hb_context_operation WHERE agent=%s AND purpose=%s AND operation=%s",
                       (agent,purpose,op)).fetchone()
         if old:
+            if p["action"]=="bind" and binding["manual_seed_control"] and p["value"].get("manualSeedControl",0)!=1:
+                raise Conflict("Explicit settled manual-review downgrade required")
             if p["action"]=="bind" and binding.get("tool_completion", 0)==1 and p["value"].get("toolCompletion", 0)!=1:
                 raise Conflict("Explicit paired tool-completion downgrade required")
             if p["action"]=="bind" and binding["work_scheduling"]==2 and p["value"].get("workScheduling",1)!=2:
@@ -203,12 +205,14 @@ def transaction(store, actor_id, token_digest, agent, purpose, p):
                 observe(c,store,actor,purpose,binding,p,old["result"])
             return old["result"]
         if p["action"]=="bind":
-            if {k:v for k,v in p["value"].items() if k!="nativeActionRetention"} not in ({"runtimeProtocol":"lax-purpose-runtime/v3"},
+            if {k:v for k,v in p["value"].items() if k not in ("nativeActionRetention","manualSeedControl")} not in ({"runtimeProtocol":"lax-purpose-runtime/v3"},
                     {"runtimeProtocol":"lax-purpose-runtime/v3","workScheduling":2},
                     {"runtimeProtocol":"lax-purpose-runtime/v3","workScheduling":2,"toolCompletion":1}):
                 raise Conflict("Native work and inference admission runtime required")
             from .context_native_action_selection import bind as bind_retention
             retention=bind_retention(c,actor,purpose,binding,p["value"])
+            from .context_seed_runtime import bind as bind_manual
+            manual = bind_manual(c,actor,purpose,binding,p["value"])
             completion=p["value"].get("toolCompletion",0)
             if binding.get("tool_completion",0)==1 and completion!=1:
                 raise Conflict("Explicit paired tool-completion downgrade required")
@@ -227,6 +231,7 @@ def transaction(store, actor_id, token_digest, agent, purpose, p):
                       (p["nativeThread"],agent,purpose))
             result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose,
                     "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1,"roleDecisionOwner":1,"contextSelection":1,"contextRebuildSnapshot":1,"completeMaterialRead":1,"goalReviewFrontier":1,"activeContextRefill":1,"interruptedContinuation":1,"toolCompletion":completion,"failedPreModelRefillRecovery":1,"explicitUnsettledContinuation":1,"providerRejectionRecovery":1,"writerOutcomeReview":2,"writerEvidenceRead":1,"primaryInput":1,"nativeActionRetention":retention}
+            result["manualSeedControl"] = manual
             if retention == 1:
                 result["nativeIdleContextReplacement"] = 1
         elif p["nativeThread"]!=binding["native_thread"]:
@@ -329,6 +334,13 @@ def lifecycle(c, store, actor, purpose, binding, p):
 
 def perform(store,c,actor,purpose,binding,p):
     action,v=p["action"],p["value"]
+    if action in ("seed_prepared", "seed_apply", "seed_cancelled", "seed_refused", "seed_revised"):
+        from . import context_seed_runtime
+        return {"seed_prepared": context_seed_runtime.prepared,
+                "seed_apply": context_seed_runtime.apply,
+                "seed_refused": context_seed_runtime.refused,
+                "seed_revised": context_seed_runtime.revised,
+                "seed_cancelled": context_seed_runtime.cancelled}[action](c,store,actor,purpose,binding,p)
     if action == "active_terminal":
         from .context_terminal_refill import terminal
         return terminal(c, store, actor, purpose, binding, p)
@@ -484,7 +496,8 @@ def perform(store,c,actor,purpose,binding,p):
                   coalesce((m.value->'execution'->>'resumeRevision')::bigint,-1))
           ORDER BY m.created_at,m.id LIMIT 100""",
           (actor["id"],kind,binding["work_scheduling"],binding["active_material"])).fetchall()
-        return {"pending":json_value(rows),"contextRebuild":{"requestedOperationId":binding["rebuild_requested"],"generation":binding["rebuild_generation"],"selectionRevision":binding["selection_revision"]}}
+        from .context_seed_runtime import pending as review_pending
+        return {"pending":json_value(rows),"contextRebuild":{"requestedOperationId":binding["rebuild_requested"],"generation":binding["rebuild_generation"],"selectionRevision":binding["selection_revision"],"manualReview":review_pending(c,actor,purpose,binding)}}
     if action in ("snapshot", "read", "read_complete"):
         from .context_material import index, read, complete
         retrieve = {"snapshot":index,"read":read,"read_complete":complete}[action]
