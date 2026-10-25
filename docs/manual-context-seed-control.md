@@ -2,7 +2,7 @@
 
 Hollywood owns the human review and its durable source/approval records. LAX owns
 native preparation, installation and independent file verification. No additional
-coordinator or service is introduced. This is candidate H124/schema40 + SDK168,
+coordinator or service is introduced. This is candidate H126/schema40 + SDK168,
 not a statement that the live installation has switched.
 
 The initial control scope is an authenticated human administrator's own draft
@@ -74,8 +74,8 @@ generations, source revision/hold transfer, queued Reader input, approval,
 cancellation, pre-dispatch failure recovery and explicit disable. This is not
 real-model semantics or an actual full-agent enterprise journey.
 
-Remaining required gates: frozen actual-model same-Work continuation in the real
-purpose runtime, active-turn quiescing, all three purpose windows, nonadmin/shared
+The bounded same-Work model journey is qualified below. Remaining gates include
+active-turn quiescing, all three purpose windows, nonadmin/shared
 review, whole-window/native-action human selection, manual hard-limit behavior,
 full assembled provider input/token accounting and NextComp controls.
 `fullProviderInputReady=false` is intentional: canonical/native replacement
@@ -101,3 +101,14 @@ Reader/Responder scope is preview-only; the native apply scope remains the idle
 Writer. fullProviderInputReady remains false. A client must preserve a legitimate
 control:null while a replacement draft is waiting for host transfer. See the
 [HTTP/PG projection evidence](qualification/context-review-metadata-r339.json).
+
+Human source discovery uses the existing seed-sources route without an exact
+reference: GET agents/{agent}/contexts/{purpose}/seed-sources?view=active|history.
+An optional after cursor continues the same view. It reuses the purpose-scoped
+canonical material index and checks the human's current source access as well.
+Responses carry schema lax-human-seed-sources/v1, bounded source titles, exact
+reference/revision metadata and nextCursor. Read the selected exact reference to
+obtain its content/hash before marking. The index never admits inference, changes
+runtime selections or sends room messages. sourceIndexVersion:1 in contextReview
+advertises this addition. Writer event: references remain reader-only; a human
+chooses canonical work sources rather than bypassing that boundary.

@@ -1521,20 +1521,27 @@ async def context_call(request):
 
 
 async def context_seed(request):
-    if request.query and not (request.match_info.get("source") and
-                             set(request.query) == {"reference"} and
-                             len(request.query.getall("reference")) == 1):
-        raise ValueError("Unknown seed query")
     agent = str(UUID(request.match_info["agent"]))
     purpose = request.match_info["purpose"]
     if purpose not in ("reader", "writer", "responder"):
         raise ValueError("Unknown context purpose")
     args = [request["tokenDigest"], agent, purpose]
     if request.match_info.get("source"):
-        reference = request.query.get("reference", "")
+        if "reference" not in request.query:
+            if set(request.query)-{"view","after"} or any(len(request.query.getall(k))!=1 for k in request.query):
+                raise ValueError("Invalid source index query")
+            value = dict(request.query)
+            if value.get("view", "active") not in ("active", "history"):
+                raise ValueError("Unknown source index view")
+            return await invoke(request, "context_seed_sources", *args, value)
+        if set(request.query)!={"reference"} or len(request.query.getall("reference"))!=1:
+            raise ValueError("Choose one exact source")
+        reference = request.query["reference"]
         if not 1 <= len(reference) <= 42:
             raise ValueError("Bounded exact source reference required")
         return await invoke(request, "context_seed_source", *args, reference)
+    if request.query:
+        raise ValueError("Unknown seed query")
     identity = request.match_info.get("draft")
     if identity is not None:
         args.append(str(UUID(identity)))

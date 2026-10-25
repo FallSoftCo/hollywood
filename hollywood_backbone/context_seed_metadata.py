@@ -12,6 +12,7 @@ def project(binding, actor, system_enabled):
     return {
         "schema": "lax-human-context-review-availability/v1",
         "purpose": binding["purpose"],
+        "sourceIndexVersion": 1,
         "windowGeneration": binding["rebuild_generation"],
         "agentActive": binding["agent_active"],
         "contextSystemEnabled": system_enabled,

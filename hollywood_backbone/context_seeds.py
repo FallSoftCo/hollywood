@@ -232,3 +232,30 @@ def inspect_source(store, actor_id, token_digest, agent, purpose, reference):
         actor, target, binding = authorize(store, c, actor_id, token_digest, agent, purpose)
         return {"schema": "lax-human-seed-source/v1",
                 "record": source(c, store, actor, target, purpose, binding, reference)}
+
+
+def list_sources(store, actor_id, token_digest, agent, purpose, value):
+    """List authorized canonical sources, without invoking a purpose context."""
+    with store.pool.connection() as c:
+        c.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ")
+        actor, target, binding = authorize(store, c, actor_id, token_digest, agent, purpose)
+        page = context_material.index(c, store, target, purpose, binding,
+            "human-seed-sources:" + agent + ":" + purpose, value)
+        entries = [entry for key in ("inputs", "work", "communications")
+                   for entry in page[key]]
+        labels = {str(row["id"]): row["value"] for row in c.execute(
+            "SELECT id,value FROM hb_context_material WHERE agent=%s AND id=ANY(%s::uuid[])",
+            (agent, [entry["id"] for entry in entries])).fetchall()}
+        visible = []
+        for entry in entries:
+            try:
+                store.readable_event(c, actor, entry["source"])
+            except Denied:
+                continue
+            data = labels[entry["id"]]
+            title = data.get("objective") or data.get("material") or data.get("interpretation") or "Saved context"
+            visible.append({**entry, "title": str(title)[:180]})
+        return {"schema": "lax-human-seed-sources/v1", "agentId": agent,
+                "purpose": purpose, "view": page["view"], "sources": visible,
+                "nextCursor": page["nextCursor"], "nativeWindowChanged": False,
+                "meaning": "Authorized source index. Read exact content and revision before marking."}

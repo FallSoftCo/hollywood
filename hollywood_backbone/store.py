@@ -476,6 +476,10 @@ class Store:
         from .context_seeds import preview
         return preview(self, actor_id, token_digest, agent, purpose, identity, operation)
 
+    def context_seed_sources(self, actor_id, token_digest, agent, purpose, value):
+        from .context_seeds import list_sources
+        return list_sources(self, actor_id, token_digest, agent, purpose, value)
+
     def context_seed_source(self, actor_id, token_digest, agent, purpose, reference):
         from .context_seeds import inspect_source
         return inspect_source(self, actor_id, token_digest, agent, purpose, reference)
