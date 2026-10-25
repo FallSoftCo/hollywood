@@ -166,6 +166,67 @@ async def main():
       (event,agent)).fetchone()["state"]=="pending"
    checks.append("truthful native-window receipt dedup/readback clears rebuild once and leaves pending Work untouched")
 
+   # Frozen regression from production: individually bounded completed Work
+   # records jointly exceed96KiB. Synthetic content/native lifecycle is explicit;
+   # the real authenticated HTTP transaction and completion guard are exercised.
+   oversized=[str(uuid4()),str(uuid4())]
+   with store.pool.connection() as c:
+    for ident in oversized:
+     c.execute("INSERT INTO hb_context_material(id,agent,kind,source,state,value) "
+       "VALUES(%s,%s,'work',%s,'complete',%s)",
+       (ident,agent,event,Jsonb({"objective":"Disclosed archived Work fixture",
+                               "retainedEvidence":"x"*55000})))
+   for ident in oversized:
+    marks=await ctx("writer","selection")
+    await ctx("writer","select",{"selectionRevision":marks["selectionRevision"],
+      "reference":ident,"materialRevision":1,"keep":True,
+      "reason":"Disclosed combined-budget regression; no model or execution"})
+   active="synthetic-budget-original-turn"
+   with store.pool.connection() as c:
+    c.execute("UPDATE hb_context_material SET value=value || %s,revision=revision+1 WHERE id=%s",
+      (Jsonb({"execution":{"nativeThread":"mechanical-writer","nativeTurn":active,
+                          "status":"running","resumeRevision":0}}),ids["work"]))
+    c.execute("UPDATE hb_purpose_context SET active_turn=%s,accepting=true,"
+      "active_material=%s::uuid[],tool_completion=1 WHERE agent=%s AND purpose='writer'",
+      (active,[ids["work"]],agent))
+    before=c.execute("SELECT value,revision FROM hb_context_material WHERE id=%s",
+      (ids["work"],)).fetchone()
+   rejected=await ctx("writer","rebuild_request",operation="oversized-rebuild-preview",
+                      native_turn=active)
+   assert rejected["requested"] is False
+   assert rejected["code"]=="CONTEXT_REBUILD_BUDGET_EXCEEDED"
+   assert rejected["totalBytes"]>rejected["limitBytes"]==98304
+   assert {entry["reference"] for entry in rejected["records"] if entry["mandatory"]}=={"role",ids["work"]}
+   assert all(set(entry)=={"reference","bytes","mandatory"} for entry in rejected["records"])
+   assert "x"*100 not in json.dumps(rejected)
+   with store.pool.connection() as c:
+    after=c.execute("SELECT active_turn,accepting,rebuild_requested FROM hb_purpose_context "
+      "WHERE agent=%s AND purpose='writer'",(agent,)).fetchone()
+    assert after=={"active_turn":active,"accepting":True,"rebuild_requested":None}
+    assert before==c.execute("SELECT value,revision FROM hb_context_material WHERE id=%s",
+      (ids["work"],)).fetchone()
+   checks.append("oversized Writer preview retains accepting original turn and unchanged continuation")
+   marks=await ctx("writer","selection",native_turn=active)
+   await ctx("writer","select",{"selectionRevision":marks["selectionRevision"],
+     "reference":oversized[0],"materialRevision":1,"keep":False,
+     "reason":"Unpin one optional archived source; preserve durable original"},
+     native_turn=active)
+   accepted=await ctx("writer","rebuild_request",operation="fitting-rebuild-request",
+                      native_turn=active)
+   assert accepted["requested"] is True
+   assert accepted["inferenceControl"]["disposition"]=="complete"
+   assert await call("GET",f"agents/{agent}/contexts/writer/operations/oversized-rebuild-preview",
+                     who="writer")==rejected
+   with store.pool.connection() as c:
+    state=c.execute("SELECT active_turn,accepting,rebuild_requested FROM hb_purpose_context "
+      "WHERE agent=%s AND purpose='writer'",(agent,)).fetchone()
+    assert state=={"active_turn":active,"accepting":False,"rebuild_requested":"fitting-rebuild-request"}
+    assert c.execute("SELECT value,revision FROM hb_context_material WHERE id=%s",
+      (ids["work"],)).fetchone()["revision"]==before["revision"]+1
+    assert c.execute("SELECT count(*) AS n FROM hb_context_material "
+      "WHERE id=ANY(%s::uuid[]) AND state='complete'",(oversized,)).fetchone()["n"]==2
+   checks.append("existing selection CAS fits request; immutable rejection and archived sources retained")
+
    # Mechanical lifecycle fixture: a marked optional response later becomes
    # suppressed. Its pointer survives; its old body is no longer responder input.
    need_id=str(uuid4())

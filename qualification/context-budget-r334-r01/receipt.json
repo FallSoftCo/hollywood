@@ -1,0 +1,27 @@
+{
+  "schema": "lax-context-budget-qualification/v1",
+  "at": 1792923140.3541028,
+  "failure": "An accepted idle rebuild later exceeded its96KiB retained-input budget, after the original Writer turn closed. No context replacement was dispatched; original work remained pending.",
+  "changes": [
+    "Check existing paired Writer retained-input budget before accepting rebuild or closing the current inference. Bounded requested:false preview allows existing selection tools to remove optional marks; original sources/mandatory role/current Work remain.",
+    "Existing explicit rebuild-only mode can continue an exact known rejected pre-data preparation only after local rejection, canonical receipt absence, original terminal native identity/window and real rollout prefix/no-intent proof. Normal starts, accepted/unknown snapshots and dispatched operations retain observation-only holds."
+  ],
+  "versions": {
+    "connector": "0.1.0.dev164",
+    "hollywood": "0.3.0.dev122",
+    "nativeExecutableChanged": false
+  },
+  "qualification": {
+    "httpPostgres": "11 checks passed, including actual authenticated size refusal without turn closure, selection CAS correction and retained original refusal/source. Synthetic admission/material/native metadata; no model.",
+    "sdk": "6 captured-real-rollout scan/negative controls passed with explicit fake HTTP/native observations, no canonical writes or replacement calls.",
+    "terminalBoundary": "2 focused existing SDK checks pass."
+  },
+  "productionRecovery": "PENDING; no live upgrade or repair claimed by component tests.",
+  "deploymentBoundary": "Only changed Hollywood/context-runtime consumers need upgrading. Existing bridge/controller implementations are byte-identical to current163 and use unchanged v3 contracts; retain them and their PIDs. No reason to restart unrelated components solely for version-number equality.",
+  "limits": [
+    "No model superiority/general autonomy claim.",
+    "No handset, provider voice, push, final APK or enterprise migration certification.",
+    "Explicit operator-assisted recovery, if executed, will be recorded separately."
+  ],
+  "evidence": "Protected coordinator R334/context-budget-recovery-r01 receipts; no credentials or transcripts published."
+}

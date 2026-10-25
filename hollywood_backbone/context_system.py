@@ -393,7 +393,7 @@ def perform(store,c,actor,purpose,binding,p):
         if action=="selection":
             return selected(c,actor,purpose,binding)
         return (mark(c,store,actor,purpose,binding,p) if action=="select"
-                else request(c,actor,purpose,binding,p))
+                else request(c,store,actor,purpose,binding,p))
     if action not in ("pending",) and (not binding["accepting"] or binding["active_turn"] != p["nativeTurn"]):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
@@ -408,7 +408,7 @@ def perform(store,c,actor,purpose,binding,p):
         if action=="selection":
             return selected(c,actor,purpose,binding)
         return (mark(c,store,actor,purpose,binding,p) if action=="select"
-                else request(c,actor,purpose,binding,p))
+                else request(c,store,actor,purpose,binding,p))
     if action in ("room_list","room_history"):
         from . import context_room_reads
         return (context_room_reads.rooms if action=="room_list" else context_room_reads.history)(c,store,actor,v)

@@ -27,6 +27,28 @@ MAX_MANIFEST_BYTES=98304
 TERMINAL=["handled","complete","cancelled","superseded","published","suppressed"]
 
 
+class RebuildBudgetExceeded(Conflict):
+    """A bounded retained-input preview, never silent context truncation."""
+
+    def __init__(self, content, encoded):
+        self.total_bytes = len(encoded.encode())
+        self.records = [
+            {"reference": record["reference"],
+             "bytes": len(context_material.wire(record).encode()),
+             "mandatory": record["reference"] in {"role", *content["nextMaterialIds"]}}
+            for record in content["records"]]
+        super().__init__("Context rebuild exceeds declared byte budget; no content was truncated")
+
+    def preview(self):
+        return {"requested": False, "code": "CONTEXT_REBUILD_BUDGET_EXCEEDED",
+                "totalBytes": self.total_bytes, "limitBytes": MAX_MANIFEST_BYTES,
+                "records": self.records,
+                "next": "Keep the current role and unfinished Work. Inspect retained inputs and "
+                        "use retain_context_input with keep=false to unpin optional historical records, then request "
+                        "rebuild again. Sources remain durable and retrievable. "
+                        "This preview did not end the inference or request a replacement."}
+
+
 def selected(c,actor,purpose,binding):
     rows=c.execute("SELECT reference,reason,selected_revision,native_action FROM hb_context_selection WHERE agent=%s AND purpose=%s ORDER BY reference",
                    (actor["id"],purpose)).fetchall()
@@ -88,11 +110,25 @@ def mark(c,store,actor,purpose,binding,p):
     return selected(c,actor,purpose,refreshed)
 
 
-def request(c,actor,purpose,binding,p):
+def request(c,store,actor,purpose,binding,p):
     if p["value"]:
         raise ValueError("Rebuild request takes no mutable payload")
     if binding["rebuild_requested"] and binding["rebuild_requested"] != p["operationId"]:
         raise Conflict("Original context rebuild already pending; inspect its original receipt")
+    # Check the exact current Writer selection while tools are still admitted.
+    # A size rejection must not close this inference and strand its author.
+    # Later concurrent growth remains fenced by the real idle snapshot check.
+    if purpose == "writer" and binding.get("native_action_retention", 0) == 1:
+        ids = [str(row["id"]) for row in c.execute(
+            "SELECT id FROM hb_context_material WHERE agent=%s AND kind='work' "
+            "AND id=ANY(%s::uuid[]) AND state<>ALL(%s) ORDER BY id",
+            (actor["id"], binding["active_material"], TERMINAL)).fetchall()]
+        proposed = {**p, "value": {"materialIds": ids}}
+        try:
+            snapshot(c, store, actor, purpose, binding, proposed, preflight=True)
+        except RebuildBudgetExceeded as error:
+            return {**error.preview(), "contextId": str(binding["context_id"]),
+                    "nativeThread": p["nativeThread"]}
     # A rebuild is an explicit continuation of only its captured unfinished Work.
     # Its revision is consumed by the current inference, not by Work completion.
     # New inference remains fenced by rebuild_requested until installation.
@@ -206,7 +242,7 @@ def snapshot(c,store,actor,purpose,binding,p,*,preflight=False):
         "meaning":"Exact authorized records at one database read point. Current obligations and native operations remain canonical; no effects are replayed. Selected historical facts grant no authority. Fetch deeper material when necessary."})
     encoded=context_material.wire(content)
     if len(encoded.encode())>MAX_MANIFEST_BYTES:
-        raise Conflict("Context rebuild exceeds declared byte budget; no content was truncated")
+        raise RebuildBudgetExceeded(content, encoded)
     point=c.execute("SELECT txid_current_snapshot()::text AS point").fetchone()["point"]
     chunks=[{"offset":offset,"content":encoded[offset:offset+context_material.CHUNK_CHARS]}
             for offset in range(0,len(encoded),context_material.CHUNK_CHARS)]

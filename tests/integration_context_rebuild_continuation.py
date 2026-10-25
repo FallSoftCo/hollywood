@@ -36,14 +36,14 @@ def main():
     c.execute("UPDATE hb_purpose_context SET active_turn=%s,accepting=true,active_material=%s::uuid[] WHERE agent=%s AND purpose='writer'",(turn,[ids[0]],A))
     binding=c.execute("SELECT * FROM hb_purpose_context WHERE agent=%s AND purpose='writer'",(A,)).fetchone()
     p={"operationId":"disclosed-request-fixture","nativeThread":thread,"nativeTurn":turn,"value":{}}
-    result=context_selection.request(c,actor,"writer",binding,p)
+    result=context_selection.request(c,store,actor,"writer",binding,p)
     a,b=[c.execute("SELECT * FROM hb_context_material WHERE id=%s",(x,)).fetchone() for x in ids]
     assert a["value"].get("resumeRevision",0)==1,"Requesting unfinished Work was not released for continuation"
     assert b["value"].get("resumeRevision",0)==0,"Unrelated consumed Work woke"
     assert a["source"]==b["source"] and all(a["value"][k]==original[k] for k in ("objective","acceptance"))
     checks.append("Only requesting original unfinished Work receives continuation")
     current=c.execute("SELECT * FROM hb_purpose_context WHERE agent=%s AND purpose='writer'",(A,)).fetchone()
-    try:context_selection.request(c,actor,"writer",current,{**p,"operationId":"cannot-overwrite-original-request"})
+    try:context_selection.request(c,store,actor,"writer",current,{**p,"operationId":"cannot-overwrite-original-request"})
     except Conflict:pass
     else:raise AssertionError("Another request replaced the original unresolved rebuild")
     checks.append("A new request cannot overwrite an unresolved original rebuild")
@@ -70,7 +70,7 @@ def main():
     checks.append("Installed rebuild leaves only requesting Work eligible")
     # An idle maintenance request has no captured execution and must wake none.
     before={x:c.execute("SELECT value,revision FROM hb_context_material WHERE id=%s",(x,)).fetchone() for x in ids}
-    context_selection.request(c,actor,"writer",after,{"operationId":"idle-maintenance-fixture","nativeThread":thread,"nativeTurn":"context-maintenance","value":{}})
+    context_selection.request(c,store,actor,"writer",after,{"operationId":"idle-maintenance-fixture","nativeThread":thread,"nativeTurn":"context-maintenance","value":{}})
     assert before=={x:c.execute("SELECT value,revision FROM hb_context_material WHERE id=%s",(x,)).fetchone() for x in ids}
     checks.append("Idle maintenance never wakes consumed original Work")
     for ident,terminal in zip(ids,("complete","cancelled")):
@@ -78,7 +78,7 @@ def main():
      previous=c.execute("SELECT value,revision FROM hb_context_material WHERE id=%s",(ident,)).fetchone()
      c.execute("UPDATE hb_purpose_context SET rebuild_requested=NULL,active_turn=%s,accepting=true,active_material=%s::uuid[] WHERE agent=%s AND purpose='writer'",(turn,[ident],A))
      current=c.execute("SELECT * FROM hb_purpose_context WHERE agent=%s AND purpose='writer'",(A,)).fetchone()
-     outcome=context_selection.request(c,actor,"writer",current,{**p,"operationId":"terminal-fixture-"+terminal})
+     outcome=context_selection.request(c,store,actor,"writer",current,{**p,"operationId":"terminal-fixture-"+terminal})
      assert outcome["continuationMaterialIds"]==[]
      assert previous==c.execute("SELECT value,revision FROM hb_context_material WHERE id=%s",(ident,)).fetchone()
     checks.append("Completed and cancelled Work never receives rebuild continuation")
