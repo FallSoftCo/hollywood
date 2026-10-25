@@ -1,0 +1,60 @@
+{
+  "schema": "lax-native-plan-cleanup-qualification/v1",
+  "at": 1792912536.5178676,
+  "packages": {
+    "lax-hollywood-connector": "0.1.0.dev163",
+    "hollywood-cli": "0.3.0.dev121"
+  },
+  "problem": "An admitted collaborative edit failed Unix permission checks; blocked Work could not obtain cleanup-only transport and ordinary-only administrator recovery could not settle the known original plan outcome. Strict bridge upgrade correctly refused the unresolved hold.",
+  "changes": [
+    "Kernel-credential read-only write preflight before mutation admission",
+    "Metadata-only cleanup capture after original Work report/block, without write grants",
+    "Common original-mutation read/admin recovery for ordinary and collaborative permits; native provenance/administrator/fresh observation/stopped executor/original manifest fences retained",
+    "Purpose-aware protected observer with original-operation recovery, no repeat POST",
+    "No bridge held-permit upgrade exception"
+  ],
+  "qualification": {
+    "peerHttpPg": {
+      "records": 43,
+      "groups": 5,
+      "nativeProvenance": "SYNTHETIC",
+      "targetEdits": 0
+    },
+    "adminHttpPg": {
+      "records": 34,
+      "groups": 4,
+      "nativeProvenance": "SYNTHETIC",
+      "targetEdits": 0
+    },
+    "sdkTargetedTests": 21,
+    "actualProductionNative": {
+      "assisted": true,
+      "tool": "hollywood_mutation_reconcile",
+      "sourceSchema": "hollywood-native-source/v3",
+      "nativeEffectSequence": 893,
+      "outcome": "notApplied",
+      "permitRevision": 6,
+      "originalUnknownSettlementRetained": true,
+      "targetManifestUnchanged": true,
+      "newEditOrBusinessAcceptance": false
+    }
+  },
+  "deployment": {
+    "immutableRuntime": "/opt/harness/native-plan-cleanup-20261025-r334-r02/venv",
+    "sourceModulesVerified": 198,
+    "phase1Receipt": "/var/lib/lax-global-unified-catalog-20261025-r334/phase1-activation-r01/RESULT.json",
+    "phase2Receipt": "/var/lib/lax-global-unified-catalog-20261025-r334/phase2-activation-r01/RESULT.json",
+    "strictBridgeUpgradeAccepted": true,
+    "bridgeRevision": 3,
+    "sameNativeImageContextsThreadsHistories": true,
+    "allElevenOtherAgentsRemainStopped": true,
+    "gatewayPostgresPhoneUnchanged": true
+  },
+  "limits": [
+    "Actual production proof is assisted recovery of one retained failed operation, not general autonomous stability or arbitrary crash/compaction proof",
+    "Peer metadata recovery has actual HTTP/PG but synthetic native provenance; no real multiagent peer cleanup claim",
+    "Mixed catalog native menu journey passed previously; raw IME Back still unresolved at this receipt; no client release claimed",
+    "Original setup/qualification failures retained in private investigation root, including peer physical cleanup flag failure, stale fixture interfaces, pre-effect UUID plan serialization and listener startup first-read gap"
+  ],
+  "evidenceRoot": "/var/lib/lax-global-unified-catalog-20261025-r334"
+}

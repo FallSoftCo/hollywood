@@ -43,27 +43,31 @@ def snapshot(c, plan, store):
         "mayApply": False, "newExecutionAdmitted": False})
 
 
+def authorize_read(store, c, actor, plan):
+    if actor["kind"] == "service":
+        policy = c.execute("SELECT host FROM hb_collaboration_bridge WHERE controller=%s AND authority=%s AND state='active'",
+                           (actor["id"], actor["authority"])).fetchall()
+        hosts = {p["host"] for p in policy}
+        version = revision(c, plan)
+        members = [p["workId"] for p in version["manifest"]["participants"]]
+        member_hosts = c.execute("""SELECT host FROM hb_agent_context
+            WHERE principal IN (SELECT owner FROM hb_work WHERE id=ANY(%s::uuid[]))
+            UNION SELECT host FROM hb_context_system WHERE enabled
+            AND agent IN (SELECT owner FROM hb_work WHERE id=ANY(%s::uuid[]))""",
+            (members,members)).fetchall()
+        need(any(p["host"] in hosts for p in member_hosts) or plan["host"] in hosts,
+             "scope_mismatch", "Controller does not own a participant namespace")
+        for host in hosts:
+            claims.bridge(c, actor, str(host))
+    else:
+        store.room(c, actor, plan["room"])
+
+
 def read(store, actor_id, identity):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
         plan = plan_row(c, actor["authority"], identity)
-        if actor["kind"] == "service":
-            policy = c.execute("SELECT host FROM hb_collaboration_bridge WHERE controller=%s AND authority=%s AND state='active'",
-                               (actor["id"], actor["authority"])).fetchall()
-            hosts = {p["host"] for p in policy}
-            version = revision(c, plan)
-            members = [p["workId"] for p in version["manifest"]["participants"]]
-            member_hosts = c.execute("""SELECT host FROM hb_agent_context
-                WHERE principal IN (SELECT owner FROM hb_work WHERE id=ANY(%s::uuid[]))
-                UNION SELECT host FROM hb_context_system WHERE enabled
-                AND agent IN (SELECT owner FROM hb_work WHERE id=ANY(%s::uuid[]))""",
-                (members,members)).fetchall()
-            need(any(p["host"] in hosts for p in member_hosts) or plan["host"] in hosts,
-                 "scope_mismatch", "Controller does not own a participant namespace")
-            for host in hosts:
-                claims.bridge(c, actor, str(host))
-        else:
-            store.room(c, actor, plan["room"])
+        authorize_read(store, c, actor, plan)
         return snapshot(c, plan, store)
 
 
@@ -321,7 +325,7 @@ def call(store, actor_id, payload):
         need(cleanup or str(work["delivery"]) == source["deliveryId"], "source_changed", "Current original owned work admission required")
         claims.decisions(c, work, command)
         from .physical_workspaces import attest
-        binding = attest(c, relay, source, binding, payload, cleanup=command["action"] in ("revoke", "withdraw"))
+        binding = attest(c, relay, source, binding, payload, cleanup=cleanup)
         need(command["note"].strip(), "invalid_request", "Specific note required")
         old = original_command(c, actor, payload, PATH)
         if old:

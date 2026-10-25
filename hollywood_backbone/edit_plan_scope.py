@@ -137,7 +137,7 @@ def participant_fences(store, c, plan, manifest, rows, cleanup=False):
         need(profile, "consent_changed", "Participant bridge enrollment was revoked or changed")
         source = vote["source"]
         from .physical_workspaces import registered
-        registered(c, plan["authority"], source, vote["work"], vote["target"])
+        registered(c, plan["authority"], source, vote["work"], vote["target"], cleanup=cleanup)
         actor = store.actor(c, source["agentId"])
         work, goal = claims.work_scope(store, c, actor, str(vote["work"]), cleanup=cleanup)
         need(goal["id"] == plan["goal"] and work["room"] == plan["room"]

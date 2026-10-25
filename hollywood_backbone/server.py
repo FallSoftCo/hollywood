@@ -575,7 +575,7 @@ async def invoke(request, method, *args):
             "path": request.path.removeprefix("/hollywood/v3/"),
             "body": await request.json(),
         }
-    if method in ("context_configure", "delivery_recover", "delivery_edit_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "work_resource", "placement_state"):
+    if method in ("context_configure", "delivery_recover", "delivery_edit_reconcile", "mutation_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "work_resource", "placement_state"):
         raw = await request.json()
         if raw.get("operationId"):
             from .store import digest
@@ -699,6 +699,19 @@ async def delivery_targets_read(request):
 
 async def delivery_edit_call(request):
     return await edit_call_body(request, "delivery_edit_call", DeliveryEditCall)
+
+
+async def mutation_read(request):
+    if request.query:
+        raise ValueError("Unknown mutation query")
+    return await edit_invoke(request, "mutation_read", str(UUID(request.match_info["permit"])))
+
+
+async def mutation_reconcile(request):
+    p = await body(request, DeliveryReconcile)
+    return await edit_invoke(request, "mutation_reconcile",
+                            str(UUID(request.match_info["permit"])),
+                            p.model_dump(mode="json", by_alias=True))
 
 
 async def delivery_edit_reconcile(request):
@@ -1527,6 +1540,8 @@ def application(store):
             web.put("/hollywood/v3/physical-workspaces/{workspace}/grants/{work}", physical_grant),
             web.put("/hollywood/v3/physical-workspaces/{workspace}/agent-grants/{agent}", physical_agent_grant),
             web.get("/hollywood/v3/collaboration/delivery-targets/{delivery}", delivery_targets_read),
+            web.get("/hollywood/v3/collaboration/mutations/{permit}", mutation_read),
+            web.post("/hollywood/v3/collaboration/mutations/{permit}/reconcile", mutation_reconcile),
             web.post("/hollywood/v3/collaboration/delivery-edits", delivery_edit_call),
             web.get("/hollywood/v3/collaboration/delivery-edits/{permit}", delivery_edit_read),
             web.post("/hollywood/v3/collaboration/delivery-edits/{permit}/reconcile", delivery_edit_reconcile),

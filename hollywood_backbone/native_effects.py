@@ -19,7 +19,7 @@ _request = contextvars.ContextVar("hollywood_native_request", default=None)
 
 BUSINESS = {"context_configure",
     "delivery_recover",
-    "delivery_edit_reconcile",
+    "delivery_edit_reconcile", "mutation_reconcile",
     "report_scope_read",
     "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "work_resource", "placement_state",
     "post", "workflow", "decision_write", "principal", "create_room",
@@ -39,7 +39,7 @@ METADATA = {"runtime_observe", "context_call",
 }
 EXCLUSIVE = {"runtime_observe", "context_configure", "context_call",
     "delivery_recover",
-    "delivery_edit_reconcile",
+    "delivery_edit_reconcile", "mutation_reconcile",
     "report_scope_read",
     "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "work_resource", "placement_state",
     "principal", "membership", "placement", "role", "host_policy_set",
@@ -48,7 +48,7 @@ EXCLUSIVE = {"runtime_observe", "context_configure", "context_call",
     "collaboration_call", "collaboration_bridge",
     "edit_plan_call", "mutation_observe", "delivery_edit_call",
 }
-FENCED_READS = {"edit_plan_read", "delivery_edit_read", "delivery_targets_read",
+FENCED_READS = {"mutation_read", "edit_plan_read", "delivery_edit_read", "delivery_targets_read",
                 "resource_roots_read", "agent_resources_read", "resource_default_read",
                 "delivery_resource_default_read", "work_resource_read", "placement_read"}
 FIELDS = {

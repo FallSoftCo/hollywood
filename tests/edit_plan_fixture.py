@@ -1,6 +1,6 @@
 """Actual PostgreSQL/HTTP fixture with explicitly synthetic native provenance.
 
-No bridge/controller/native/model starts. RAM files exercise digest bindings;
+No bridge/controller/native/model starts. Disk fixture files exercise digest bindings;
 host/workspace IDs simulate namespaces and are not a true multi-host proof.
 """
 import copy
@@ -30,8 +30,16 @@ class Fixture:
     def __init__(self):
         self.out = Path(os.environ['CANONICAL_TEST_OUTPUT'])
         config = json.loads(Path(os.environ['CANONICAL_TEST_DATABASE']).read_text())
-        assert str(self.out).startswith('/dev/shm/') and config['host'].startswith('/dev/shm/')
+        # A new disposable database is explicit; never migrate production merely
+        # because a test-output path happened to be temporary.
+        assert self.out.is_absolute() and self.out.is_dir()
+        assert config['dbname'].startswith('lax_test_')
+        assert config['host'] in ('127.0.0.1', 'localhost', '::1') or config['host'].startswith('/var/lib/')
+        import subprocess
+        assert subprocess.check_output(['stat', '-f', '-c', '%T', str(self.out)], text=True).strip() not in ('tmpfs', 'ramfs')
         self.store = Store(config)
+        with self.store.pool.connection() as c:
+            assert c.execute('SELECT current_database() AS name').fetchone()['name'] == config['dbname']
         self.store.migrate()
         self.ids = {k: uid() for k in ('authority', 'room', 'goal', 'host1', 'host2', 'workspace1', 'workspace2')}
         self.credentials = {name: {'principalId': uid(), 'token': secrets.token_urlsafe(40)} for name in ('Owner', 'Global')}

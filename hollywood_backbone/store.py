@@ -116,6 +116,18 @@ class Store:
         from .delivery_edit_recovery import reconcile
         return reconcile(self, c, actor, identity, payload)
 
+    def mutation_read(self, actor_id, identity):
+        from .delivery_edit_recovery import read
+        return read(self, actor_id, identity)
+
+    def mutation_reconcile(self, actor_id, identity, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, "mutation_reconcile", [identity, payload], command)
+
+    def _admin_mutation_reconcile(self, c, actor, identity, payload):
+        from .delivery_edit_recovery import reconcile
+        return reconcile(self, c, actor, identity, payload, required_scope=None)
+
     def delivery_edit_read(self, actor_id, identity):
         from .delivery_edits import read
         return read(self, actor_id, identity)
