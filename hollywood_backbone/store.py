@@ -447,6 +447,27 @@ class Store:
         from .context_system import receipt
         return receipt(self, actor_id, token_digest, agent, purpose, operation)
 
+    def context_seed_create(self, actor_id, token_digest, agent, purpose, payload):
+        from .context_seeds import mutate
+        return mutate(self, actor_id, token_digest, agent, purpose,
+                      payload["id"], payload, create=True)
+
+    def context_seed_mark(self, actor_id, token_digest, agent, purpose, identity, payload):
+        from .context_seeds import mutate
+        return mutate(self, actor_id, token_digest, agent, purpose, identity, payload, create=False)
+
+    def context_seed_preview(self, actor_id, token_digest, agent, purpose, identity):
+        from .context_seeds import preview
+        return preview(self, actor_id, token_digest, agent, purpose, identity)
+
+    def context_seed_receipt(self, actor_id, token_digest, agent, purpose, identity, operation):
+        from .context_seeds import preview
+        return preview(self, actor_id, token_digest, agent, purpose, identity, operation)
+
+    def context_seed_source(self, actor_id, token_digest, agent, purpose, reference):
+        from .context_seeds import inspect_source
+        return inspect_source(self, actor_id, token_digest, agent, purpose, reference)
+
     def context_token_scope(self, token_digest):
         with self.pool.connection() as c:
             row = c.execute("SELECT agent,purpose FROM hb_purpose_context WHERE token_digest=%s", (token_digest,)).fetchone()
@@ -460,6 +481,8 @@ class Store:
             c.execute(SCHEMA)
             from .work_resources import SCHEMA as WORK_RESOURCE_SCHEMA
             c.execute(WORK_RESOURCE_SCHEMA)
+            from .context_seeds import SCHEMA as SEED_SCHEMA
+            c.execute(SEED_SCHEMA)
 
     def bootstrap(self, authority, name, plan):
         """Local installer operation; never exposed through an anonymous HTTP route."""

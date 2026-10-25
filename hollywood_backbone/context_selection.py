@@ -190,7 +190,7 @@ def installed(c,store,actor,purpose,binding,p):
         "effectsReplayed":0,"semanticSufficiencyProved":False}
 
 
-def snapshot(c,store,actor,purpose,binding,p,*,preflight=False):
+def snapshot(c,store,actor,purpose,binding,p,*,preflight=False,selection=None):
     # call() chooses REPEATABLE READ before any statement. A manifest is one
     # consistent database read point; later source changes remain observable.
     if not preflight and (binding["active_turn"] is not None or binding["accepting"]):
@@ -223,7 +223,7 @@ def snapshot(c,store,actor,purpose,binding,p,*,preflight=False):
     active={x["id"]:x for x in obligations}
     if any(identity not in active or active[identity]["kind"]!=kind or active[identity].get("access")=="unavailable" for identity in ids):
         raise Denied("Next material is not a current accessible obligation")
-    marks=selected(c,actor,purpose,binding)
+    marks=selected(c,actor,purpose,binding) if selection is None else selection
     references=sorted(set(["role",*ids,*[m["reference"] for m in marks["marks"]]]))
     records=[]
     mandatory={"role",*ids}

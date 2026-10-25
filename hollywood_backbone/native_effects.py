@@ -36,6 +36,7 @@ METADATA = {"runtime_observe", "context_call",
     "portfolio_dispatch", "agent_execution_binding",
     "collaboration_call",
     "edit_plan_call", "mutation_observe", "delivery_edit_call",
+    "context_seed_create", "context_seed_mark",
 }
 EXCLUSIVE = {"runtime_observe", "context_configure", "context_call",
     "delivery_recover",
@@ -50,7 +51,8 @@ EXCLUSIVE = {"runtime_observe", "context_configure", "context_call",
 }
 FENCED_READS = {"mutation_read", "edit_plan_read", "delivery_edit_read", "delivery_targets_read",
                 "resource_roots_read", "agent_resources_read", "resource_default_read",
-                "delivery_resource_default_read", "work_resource_read", "placement_read"}
+                "delivery_resource_default_read", "work_resource_read", "placement_read",
+                "context_seed_source", "context_seed_preview", "context_seed_receipt"}
 FIELDS = {
     "schema", "authorityId", "agentId", "hostId", "deliveryId", "claimId",
     "generation", "requestId", "nativeThread", "nativeTurn", "callId", "tool",

@@ -1,0 +1,55 @@
+{
+  "state": "canonical_preview_integration_passed",
+  "checks": [
+    "Original human draft creation reconciles by receipt without a model or new window",
+    "Human fact/correction pins have exact source hashes, canonical bytes and provenance",
+    "CAS and immutable operation receipts prevent changed writes; unpin preserves original source",
+    "Role is mandatory; changed canonical role requires explicit review and repin",
+    "Foreign human, agent-admin, purpose token and wrong-purpose/private sources refused",
+    "Preview reauthorizes source membership; pins restore no revoked access",
+    "Oversized canonical preview refuses before closure without truncating human pins",
+    "All native bindings, runtime marks, work deliveries and inference permits unchanged"
+  ],
+  "schema": "seed_review_6e726b41fea64bd0881e609418fcb40f",
+  "actualHttp": true,
+  "actualPostgres": true,
+  "semanticModelProof": false,
+  "modelsStarted": 0,
+  "productionChanged": false,
+  "nativeRefreshQualified": false,
+  "physicalPhoneProof": false,
+  "requestCount": 68,
+  "candidateVersion": "0.3.0.dev123",
+  "liveVersionUnchanged": "0.3.0.dev122",
+  "qualification": "mechanical integration, declared fixtures; not model/native-refresh/phone proof",
+  "implementation": [
+    "hollywood_backbone/context_seeds.py",
+    "hollywood_backbone/context_seed_models.py"
+  ],
+  "sourceRequirement": "LAX manual-context-windows-20261025.json at0ca4973c",
+  "privateEvidence": "/var/lib/lax-global-unified-catalog-20261025-r334/manual-context-r335-r01/http-r01",
+  "knownLimitations": [
+    "Human administrator / own draft only",
+    "Canonical preview only; no native freeze/install or full input/token metric",
+    "Existing purpose ceilings and bounded canonical input limits remain",
+    "No model or NextComp control qualification"
+  ],
+  "wheel": {
+    "wheel": "/var/lib/lax-global-unified-catalog-20261025-r334/manual-context-r335-r01/wheels/hollywood_cli-0.3.0.dev123-py3-none-any.whl",
+    "sha256": "5c1585da4571db5d3d5c7bd0b9f7b8324d264aecf390c5b26bc82619c232a427",
+    "bytes": 352983,
+    "sourceModulesByteMatched": 93,
+    "newModulesIncluded": true,
+    "deployed": false
+  },
+  "buildAttempt1": "Known failure before build: selected runtime venv lacks setuptools; retained wheel.log, corrected to preexisting build-only venv without changing any runtime dependency.",
+  "sourceSha256": {
+    "hollywood_backbone/context_seeds.py": "2471bfa7497d2d77fcdc32fb9500d8105ff569005672ef16cdacaf987406f7d5",
+    "hollywood_backbone/context_seed_models.py": "0b524ea0ef727f9989751443deca8c6ff2dab6144458b5a10dcde409fae0322e",
+    "hollywood_backbone/context_selection.py": "65a6ed020e3694db50b8460f755e22201813d00e50e33e054923a014510c45aa",
+    "hollywood_backbone/native_effects.py": "7e2587cfac91ac110d0d6b2226ff5d799001d6b2bd83df50f19be1b0ec0ff278",
+    "hollywood_backbone/store.py": "e4475a575a5a99d586abf1174f2a0130c4c4ad4d28cc701b01fbd08a141ca6f9",
+    "hollywood_backbone/server.py": "fcfa06c6104e062e94132192468ff5f0833cc85b96f9b1b9ddcde4395ed37359",
+    "tests/integration_context_seed_review.py": "5259ab6948e25c0ad5c64762b34f509abfedf0c498556cdab9b525f5d94ef9b5"
+  }
+}

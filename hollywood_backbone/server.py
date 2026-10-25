@@ -28,6 +28,8 @@ from .goal_contract import ContractConflict
 from .context_assignments import AssignmentConflict
 from .context_system import ContextOperationNotFound
 from .context_material import MaterialReadConflict
+from .context_seed_models import SeedCreate, SeedMark
+from .context_seeds import SeedConflict
 
 
 class Input(BaseModel):
@@ -554,6 +556,9 @@ async def boundary(request, handler):
         }, status=404)
     except Denied:
         return web.json_response({"error": "Access denied"}, status=403)
+    except SeedConflict as error:
+        return web.json_response({"error": str(error), "code": error.code,
+                                  "details": error.details, "nativeWindowChanged": False}, status=409)
     except (ContractConflict,AssignmentConflict,MaterialReadConflict) as error:
         return web.json_response({"error": str(error), "code": error.code,
             **({"next": error.next_action} if getattr(error, "next_action", None) else {})}, status=409)
@@ -1515,6 +1520,38 @@ async def context_call(request):
                         p.model_dump(mode="json", exclude={"runtimeProtocol", "requiredCapability"}))
 
 
+async def context_seed(request):
+    if request.query and not (request.match_info.get("source") and
+                             set(request.query) == {"reference"} and
+                             len(request.query.getall("reference")) == 1):
+        raise ValueError("Unknown seed query")
+    agent = str(UUID(request.match_info["agent"]))
+    purpose = request.match_info["purpose"]
+    if purpose not in ("reader", "writer", "responder"):
+        raise ValueError("Unknown context purpose")
+    args = [request["tokenDigest"], agent, purpose]
+    if request.match_info.get("source"):
+        reference = request.query.get("reference", "")
+        if not 1 <= len(reference) <= 42:
+            raise ValueError("Bounded exact source reference required")
+        return await invoke(request, "context_seed_source", *args, reference)
+    identity = request.match_info.get("draft")
+    if identity is not None:
+        args.append(str(UUID(identity)))
+    if request.method == "POST":
+        p = await body(request, SeedCreate)
+        return await invoke(request, "context_seed_create", *args, p.model_dump(mode="json"))
+    if request.method == "PUT":
+        p = await body(request, SeedMark)
+        return await invoke(request, "context_seed_mark", *args, p.model_dump(mode="json"))
+    operation = request.match_info.get("operation")
+    if operation is not None:
+        if not 1 <= len(operation) <= 128:
+            raise ValueError("Bounded original operation required")
+        return await invoke(request, "context_seed_receipt", *args, operation)
+    return await invoke(request, "context_seed_preview", *args)
+
+
 def application(store):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
@@ -1525,6 +1562,11 @@ def application(store):
             web.get("/hollywood/v3/hosts/{host}/agents/{agent}/runtime-observations/{operation}",runtime_observation_read),
             web.get("/hollywood/v3/agents/{agent}/context-system", context_configuration_read),
             web.put("/hollywood/v3/agents/{agent}/context-system", context_configuration),
+            web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/{source:seed-sources}", context_seed),
+            web.post("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts", context_seed),
+            web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts/{draft}", context_seed),
+            web.put("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts/{draft}/marks", context_seed),
+            web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/seed-drafts/{draft}/operations/{operation}", context_seed),
             web.post("/hollywood/v3/agents/{agent}/contexts/{purpose}", context_call),
             web.get("/hollywood/v3/agents/{agent}/contexts/{purpose}/operations/{operation}", context_receipt),
             web.put("/hollywood/v3/hosts/{host}/collaboration-bridge", collaboration_bridge),
