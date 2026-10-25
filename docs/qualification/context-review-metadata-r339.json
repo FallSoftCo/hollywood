@@ -36,5 +36,22 @@
     "production deployment"
   ],
   "productionChanged": false,
-  "modelsStarted": 0
+  "modelsStarted": 0,
+  "installedArtifact": {
+    "at": 1792956020.761862,
+    "runtime": "/opt/lax-context-review-discovery-20261025-r339-r01/venv",
+    "hollywood": "0.3.0.dev125",
+    "sdk": "0.1.0.dev168",
+    "schema": 40,
+    "sourceModuleByteMatches": 235,
+    "wheel": {
+      "path": "/var/lib/lax-context-review-discovery-20261025-r339/wheels/hollywood_cli-0.3.0.dev125-py3-none-any.whl",
+      "bytes": 361101,
+      "sha256": "765a9d3ba15fade4ef562be7010cbad4cbea03f19b78795c7d5eec08e84c1978"
+    },
+    "native": "/opt/lax-native-idle-reconcile-20261025-r334-r02/native/bin/codex-app-server",
+    "productionDeployed": false
+  },
+  "installedArtifactProof": "/var/lib/lax-context-review-discovery-20261025-r339/installed-http-pg-r01/result.json",
+  "sourceCommit": "2e96c3c945a7010aabad2ce4a4d6d8ce2e5a2ce2"
 }
