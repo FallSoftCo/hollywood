@@ -692,9 +692,20 @@ def configuration(store, actor_id, agent, *, connection=None):
                        (agent, actor["authority"])).fetchone()
     if not system or not (actor["administrator"] or str(actor["id"]) == agent):
         raise Denied("Own enrolled context system required")
-    bindings = c.execute("""SELECT purpose,context_id,token_digest,native_thread
-        FROM hb_purpose_context WHERE agent=%s ORDER BY purpose""",(agent,)).fetchall()
+    bindings = c.execute("""SELECT b.purpose,b.context_id,b.token_digest,b.native_thread,
+        b.native_action_retention,b.manual_seed_control,b.rebuild_generation,
+        b.active_turn,b.accepting,b.rebuild_requested,b.seed_review,p.active AS agent_active,
+        d.id AS own_review_id, d.review->>'state' AS own_review_state,
+        (d.review->>'revision')::bigint AS own_review_revision,
+        EXISTS(SELECT 1 FROM hb_context_permit permit WHERE permit.agent=b.agent
+            AND permit.purpose=b.purpose AND permit.state IN ('reserved','running')) AS capacity_held
+        FROM hb_purpose_context b JOIN hb_principal p ON p.id=b.agent
+        LEFT JOIN hb_context_seed_draft d ON d.id=b.seed_review AND d.reviewer=%s AND %s
+        WHERE b.agent=%s ORDER BY b.purpose""",
+        (actor['id'], actor['kind']=='human', agent)).fetchall()
+    from .context_seed_metadata import project
     return json_value({"system":{"agentId":agent,"authorityId":system["authority"],
         "hostId":system["host"],"workspaceId":system["workspace"],"enabled":system["enabled"]},
         "bindings":[{"purpose":b["purpose"],"contextId":b["context_id"],
-                     "credentialDigest":b["token_digest"],"nativeThread":b["native_thread"]} for b in bindings]})
+                     "credentialDigest":b["token_digest"],"nativeThread":b["native_thread"],
+                     "contextReview":project(b,actor,system["enabled"])} for b in bindings]})

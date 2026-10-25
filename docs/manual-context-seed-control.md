@@ -82,3 +82,22 @@ full assembled provider input/token accounting and NextComp controls.
 bytes do not measure all tool/instruction request overhead or actual provider tokens.
 
 A real-model two-agent qualification now exercises all six purpose histories and the same accepted Work through a human correction, reviewed Writer replacement, attributed peer review, repaired CLI and independent executable checks. The original run required disclosed QA observer recovery; it is not a clean uninterrupted, all-purpose or production qualification. The recorded first fresh inference used 22,327 input tokens; this is distinct from a full seed preview. See the [bounded real-model evidence](qualification/real-reviewed-window-r338.json).
+
+The existing GET /hollywood/v3/agents/{agent}/context-system also returns a
+contextReview object on each binding (lax-human-context-review-availability/v1).
+Original enrollment fields remain unchanged. The projection identifies the window
+generation, configured idle-Writer review, native thread binding, current inference
+busy/accepting or capacity hold, rebuild/review hold, and this human's own active
+review ID/state/revision. Another reviewer or an agent receives no human draft ID
+or seed content. A disabled context/agent remains distinguishable and a human can
+recover their own review reference for the existing control/status interface.
+
+nativeReviewConfigured is explicit opt-in configuration, not health or permission.
+humanControlAuthorized describes this authenticated actor's current active-context
+eligibility; prepare/approval still reauthorize exact sources and native state.
+workerReadiness is always unverified: the metadata read starts no worker and
+cannot certify a live connection. inferenceBusy is not a room's work status.
+Reader/Responder scope is preview-only; the native apply scope remains the idle
+Writer. fullProviderInputReady remains false. A client must preserve a legitimate
+control:null while a replacement draft is waiting for host transfer. See the
+[HTTP/PG projection evidence](qualification/context-review-metadata-r339.json).

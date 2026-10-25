@@ -1,0 +1,40 @@
+{
+  "schema": "hollywood-context-review-configuration/v1",
+  "at": 1792955930.2113929,
+  "state": "actual_http_pg_context_review_metadata_passed",
+  "change": "Additive contextReview projection on EXISTING GET agents/{agent}/context-system. No endpoint, schema, scheduler, inference or control-authority change.",
+  "candidate": {
+    "hollywood": "0.3.0.dev125",
+    "sdk": "0.1.0.dev168",
+    "databaseSchema": 40
+  },
+  "evidenceRoot": "/var/lib/lax-context-review-discovery-20261025-r339",
+  "httpRequests": 26,
+  "checks": [
+    "Unbound/default-off profile is explicit and never healthy/ready",
+    "Configured Writer capability is distinct from purpose and worker liveness",
+    "Own exact original review can be recovered without re-preparing or inference admission",
+    "Other humans/agents see a hold without another human's draft; foreign/nonadmin refused; enrolled purpose retains metadata read but cannot access human control",
+    "Native busy/accepting is explicit; disabled agent still permits recovery of own review metadata",
+    "Readback mutates no state; revoked credential denied; bearer tokens never returned"
+  ],
+  "classification": "Actual authenticated HTTP/PostgreSQL, declared enrolled/native/busy/admin fixtures; no models or workers. R338 model flow qualified prior H124 execution code, not a new H125 semantic trial.",
+  "retainedFailures": [
+    "http-pg-r01.log",
+    "fixture-correction-r01.json",
+    "http-pg-r02.log",
+    "existing-contract-correction-r02.json",
+    "http-pg-r03.log",
+    "existing-status-correction-r03.json"
+  ],
+  "compatibility": "Old identity/digest fields retained; enrolled purpose's existing metadata read stays allowed with human controls false/own review absent. Actual human-control endpoint remains403. Revoked credential uses existing403.",
+  "notClaims": [
+    "worker connected/healthy",
+    "active-turn/all-purpose native reset",
+    "full provider input preview",
+    "NextComp adapter/UI delivery",
+    "production deployment"
+  ],
+  "productionChanged": false,
+  "modelsStarted": 0
+}
