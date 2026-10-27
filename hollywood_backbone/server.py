@@ -870,6 +870,16 @@ async def room_create(request):
     return await invoke(request, "create_room", str(p.id), p.name, p.purpose, str(p.ownerId))
 
 
+async def agent_directory(request):
+    if set(request.query) - {"after", "limit"}:
+        raise ValueError("Unknown agent directory query")
+    after = str(UUID(request.query["after"])) if "after" in request.query else None
+    limit = int(request.query.get("limit", "50"))
+    if not 1 <= limit <= 100:
+        raise ValueError("Invalid agent directory page")
+    return await invoke(request, "agent_directory", after, limit)
+
+
 async def principal_create(request):
     p = await body(request, Principal)
     return await invoke(request, "principal", str(p.id), p.name, p.kind, p.enrollmentCredential)
@@ -1654,6 +1664,7 @@ def application(store):
             web.get("/hollywood/v3/rooms", rooms),
             web.get("/hollywood/v3/rooms/{room}", room_detail),
             web.post("/hollywood/v3/rooms", room_create),
+            web.get("/hollywood/v3/agents", agent_directory),
             web.post("/hollywood/v3/principals", principal_create),
             web.get("/hollywood/v3/principals/{principal}", principal_read),
             web.put("/hollywood/v3/rooms/{room}/membership", membership),

@@ -688,6 +688,10 @@ class Store:
             )
         return {"principalId": identity, "created": True}
 
+    def agent_directory(self, actor_id, after=None, limit=50):
+        from .agent_directory import read
+        return read(self, actor_id, after, limit)
+
     def principal_read(self, actor_id, identity):
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
