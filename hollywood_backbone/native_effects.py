@@ -17,7 +17,7 @@ from .store import Conflict, Denied, digest, json_value
 HEADER = "X-Hollywood-Native-Source"
 _request = contextvars.ContextVar("hollywood_native_request", default=None)
 
-BUSINESS = {"context_configure",
+BUSINESS = {"external_response", "context_configure",
     "delivery_recover",
     "delivery_edit_reconcile", "mutation_reconcile",
     "report_scope_read",
@@ -39,7 +39,7 @@ METADATA = {"runtime_observe", "context_call",
     "context_seed_create", "context_seed_mark",
     "context_seed_control",
 }
-EXCLUSIVE = {"runtime_observe", "context_configure", "context_call",
+EXCLUSIVE = {"external_response", "runtime_observe", "context_configure", "context_call",
     "delivery_recover",
     "delivery_edit_reconcile", "mutation_reconcile",
     "report_scope_read",
@@ -51,7 +51,7 @@ EXCLUSIVE = {"runtime_observe", "context_configure", "context_call",
     "edit_plan_call", "mutation_observe", "delivery_edit_call",
     "context_seed_control",
 }
-FENCED_READS = {"mutation_read", "edit_plan_read", "delivery_edit_read", "delivery_targets_read",
+FENCED_READS = {"external_response_read", "mutation_read", "edit_plan_read", "delivery_edit_read", "delivery_targets_read",
                 "resource_roots_read", "agent_resources_read", "resource_default_read",
                 "delivery_resource_default_read", "work_resource_read", "placement_read",
                 "context_seed_source", "context_seed_sources", "context_seed_preview", "context_seed_receipt",

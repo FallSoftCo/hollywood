@@ -27,6 +27,7 @@ from .activity_models import Activity, normalize as normalize_activity
 from .goal_contract import ContractConflict
 from .context_assignments import AssignmentConflict
 from .context_system import ContextOperationNotFound
+from .external_responses import ResponseNotFound
 from .context_material import MaterialReadConflict
 from .context_seed_models import SeedCreate, SeedMark, SeedControl
 from .context_seeds import SeedConflict
@@ -52,6 +53,11 @@ class Message(Input):
     sourceEventId: UUID | None = None
     expectsReply: bool = False
     evidenceReferences: EvidenceReferences | None = None
+
+
+class ExternalResponse(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    responseEventId: UUID
 
 
 class ContextBinding(Input):
@@ -547,6 +553,9 @@ async def boundary(request, handler):
         return await handler(request)
     except web.HTTPRequestEntityTooLarge:
         return web.json_response({"error": "Request body exceeds limit; nothing admitted"}, status=413)
+    except ResponseNotFound:
+        return web.json_response({"error": "External response has no committed receipt",
+                                  "code": "EXTERNAL_RESPONSE_NOT_FOUND", "mayApply": False}, status=404)
     except ContextOperationNotFound:
         return web.json_response({
             "error": "Original context operation has no committed receipt",
@@ -724,6 +733,19 @@ async def delivery_edit_reconcile(request):
     return await edit_invoke(request, "delivery_edit_reconcile",
                              str(UUID(request.match_info["permit"])),
                              p.model_dump(mode="json"))
+
+
+async def external_response(request):
+    p = await body(request, ExternalResponse)
+    return await invoke(request, "external_response", str(UUID(request.match_info["delivery"])),
+                        p.model_dump(mode="json", by_alias=True))
+
+
+async def external_response_read(request):
+    if set(request.query) != {"operationId"} or not 1 <= len(request.query["operationId"]) <= 128:
+        raise ValueError("Exact external response operation required")
+    return await invoke(request, "external_response_read", str(UUID(request.match_info["delivery"])),
+                        request.query["operationId"])
 
 
 async def delivery_edit_read(request):
@@ -1698,6 +1720,8 @@ def application(store):
             web.get("/hollywood/v3/deliveries/{delivery}", delivery),
             web.get("/hollywood/v3/agents/{agent}/context", agent_context),
             web.put("/hollywood/v3/agents/{agent}/communication", communication_set),
+            web.post("/hollywood/v3/deliveries/{delivery}/external-response", external_response),
+            web.get("/hollywood/v3/deliveries/{delivery}/external-response", external_response_read),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/agent-binding", agent_execution_binding),
             web.get("/hollywood/v3/work/{work}/resource", work_resource),
             web.put("/hollywood/v3/work/{work}/resource", work_resource),

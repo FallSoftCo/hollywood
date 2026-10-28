@@ -36,6 +36,14 @@ def json_value(value):
 
 
 class Store:
+    def external_response(self, actor_id, delivery, payload):
+        from .external_responses import complete
+        return complete(self, actor_id, delivery, payload)
+
+    def external_response_read(self, actor_id, delivery, operation):
+        from .external_responses import read
+        return read(self, actor_id, delivery, operation)
+
     def runtime_observe(self,actor_id,host,agent,payload):
         from .runtime_observation import observe
         return observe(self,actor_id,host,agent,payload)

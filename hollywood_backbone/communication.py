@@ -4,7 +4,7 @@ import json
 from .store import uid
 
 
-def completion(store, c, actor, request, delivery, result, state):
+def completion(store, c, actor, request, delivery, result, state, *, result_kind="native_execution"):
     if (
         not request["data"].get("expectsReply")
         or state == "cancelled"
@@ -45,7 +45,9 @@ def completion(store, c, actor, request, delivery, result, state):
                 "type": "peer_completion",
                 "requestId": str(request["id"]),
                 "resultEventId": str(result),
-                "executionState": state,
+                "executionState": state if result_kind == "native_execution" else "not_attested",
+                **({"communicationState": "answered", "resultKind": result_kind}
+                   if result_kind != "native_execution" else {}),
                 "originRequestId": (
                     str(request["source"]) if request["source"] else None
                 ),
@@ -55,6 +57,8 @@ def completion(store, c, actor, request, delivery, result, state):
         recipient=target["id"],
         source=result,
         data={
+            **({"resultKind": result_kind, "communicationState": "answered",
+                "executionState": "not_attested"} if result_kind != "native_execution" else {}),
             "type": "peerCompletion",
             "replyToRequest": str(request["id"]),
             "replyToDelivery": str(delivery["id"]),

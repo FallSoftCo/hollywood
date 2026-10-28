@@ -181,6 +181,14 @@ def communication_allowed(c, request, principal):
            WHERE token_digest=%s AND principal=%s""",
         (request["tokenDigest"], principal["id"]),
     ).fetchone()
+    if request["action"] == "external_response_read":
+        return bool(row)
+    if request["action"] == "external_response":
+        return bool(row and not any(c.execute(sql, (principal["id"],)).fetchone() for sql in (
+            "SELECT 1 FROM hb_placement WHERE agent=%s",
+            "SELECT 1 FROM hb_agent_context WHERE principal=%s",
+            "SELECT 1 FROM hb_context_system WHERE agent=%s",
+        )))
     return bool(
         row
         and request["action"] == "post"

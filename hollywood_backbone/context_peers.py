@@ -168,7 +168,10 @@ def apply(c, store, actor, binding, p):
             raise Conflict("Canonical peer result differs from the original delegation")
         work = item(c, store, actor, value["parentWorkId"], "work")
         peer_result = {"requestEventId": str(request["id"]), "deliveryId": str(child["id"]),
-                       "resultEventId": str(result["id"]), "executionState": child["state"],
+                       "resultEventId": str(result["id"]),
+                       "executionState": ("not_attested" if event["data"].get("resultKind") == "external_agent_response" else child["state"]),
+                       **({"resultKind": "external_agent_response", "communicationState": "answered",
+                           "deliveryState": child["state"]} if event["data"].get("resultKind") == "external_agent_response" else {}),
                        "interpretation": p["value"]["body"]}
         change(c, need, need["state"], {**need["value"], "peerResult": peer_result})
         peers = [{**x, "state": "result_recorded", "peerResult": peer_result}
