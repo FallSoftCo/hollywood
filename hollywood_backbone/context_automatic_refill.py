@@ -275,25 +275,7 @@ def installed(c, store, actor, purpose, binding, p, *, apply=True):
             or v["previousWindowId"] != receipt["windowId"]
             or v["windowId"] == v["previousWindowId"]):
         raise Conflict("Original cut/digest/window changed")
-    result = {
-        "schema": INSTALLED_SCHEMA, "status": "recorded", "operationId": v["operationId"],
-        "requestOperationId": v["operationId"], "installedOperationId": p["operationId"],
-        "snapshotOperationId": v["snapshotOperationId"], "binding": receipt["binding"],
-        "resetRequest": receipt["resetRequest"],
-        "snapshotReadPoint": v["snapshotReadPoint"], "snapshotSha256": v["snapshotSha256"],
-        "nativeActionsSha256": v["nativeActionsSha256"],
-        "selectionRevision": v["selectionRevision"], "totalBytes": v["totalBytes"],
-        "previousWindowId": v["previousWindowId"], "windowId": v["windowId"],
-        "historyVersion": receipt["historyVersion"],
-        "nativeHistoryBytes": v["nativeHistoryBytes"],
-        "nativeHistorySha256": v["nativeHistorySha256"],
-        "verification": "Authenticated LAX runtime reported independently verified original native "
-                        "intent/checkpoint/installed receipt and prefix; Hollywood records provenance, "
-                        "not filesystem inspection or model sufficiency. nativeActionsSha256 "
-                        "identifies the delivered descriptor, not the full native action ledger; "
-                        "resetRequest identifies the original native operation, not a transport RPC ID.",
-        "effectsReplayed": 0, "modelCalls": 0, "semanticSufficiencyProved": False,
-    }
+    result = installed_result(v, p, receipt)
     if apply:
         prior = c.execute("""SELECT result FROM hb_context_operation WHERE agent=%s AND purpose=%s
             AND result->>'schema'=%s AND result->>'snapshotOperationId'=%s LIMIT 1""",
@@ -314,6 +296,29 @@ def installed(c, store, actor, purpose, binding, p, *, apply=True):
         c.execute("UPDATE hb_purpose_context SET reads=%s WHERE agent=%s AND purpose=%s",
                   (Jsonb(reads), actor["id"], purpose))
     return result
+
+
+def installed_result(v, p, receipt):
+    """Original cut provenance shared by active and terminal acknowledgement."""
+    return {
+        "schema": INSTALLED_SCHEMA, "status": "recorded", "operationId": v["operationId"],
+        "requestOperationId": v["operationId"], "installedOperationId": p["operationId"],
+        "snapshotOperationId": v["snapshotOperationId"], "binding": receipt["binding"],
+        "resetRequest": receipt["resetRequest"],
+        "snapshotReadPoint": v["snapshotReadPoint"], "snapshotSha256": v["snapshotSha256"],
+        "nativeActionsSha256": v["nativeActionsSha256"],
+        "selectionRevision": v["selectionRevision"], "totalBytes": v["totalBytes"],
+        "previousWindowId": v["previousWindowId"], "windowId": v["windowId"],
+        "historyVersion": receipt["historyVersion"],
+        "nativeHistoryBytes": v["nativeHistoryBytes"],
+        "nativeHistorySha256": v["nativeHistorySha256"],
+        "verification": "Authenticated LAX runtime reported independently verified original native "
+                        "intent/checkpoint/installed receipt and prefix; Hollywood records provenance, "
+                        "not filesystem inspection or model sufficiency. nativeActionsSha256 "
+                        "identifies the delivered descriptor, not the full native action ledger; "
+                        "resetRequest identifies the original native operation, not a transport RPC ID.",
+        "effectsReplayed": 0, "modelCalls": 0, "semanticSufficiencyProved": False,
+    }
 
 
 def observe(c, store, actor, purpose, binding, p, result):

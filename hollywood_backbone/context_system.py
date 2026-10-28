@@ -160,7 +160,7 @@ def call(store, actor_id, token_digest, agent, purpose, p):
 
 def transaction(store, actor_id, token_digest, agent, purpose, p):
     with store.pool.connection() as c:
-        if (p["action"] in ("rebuild_snapshot","read_complete","active_snapshot","active_installed","active_terminal","action_prepare","action_commit","seed_prepared","seed_apply","seed_cancelled","seed_refused","seed_revised")
+        if (p["action"] in ("rebuild_snapshot","read_complete","active_snapshot","active_installed","active_installed_reconcile","active_terminal","action_prepare","action_commit","seed_prepared","seed_apply","seed_cancelled","seed_refused","seed_revised")
                 or p["action"] == "rebuild_installed" and p["value"].get("schema")
                     == "lax-native-idle-context-installed/v1"
                 or p["action"] == "begin" and p["value"].get("primaryInput") == 1):
@@ -203,6 +203,9 @@ def transaction(store, actor_id, token_digest, agent, purpose, p):
             if p["action"] in ("active_snapshot", "active_installed"):
                 from .context_automatic_refill import observe
                 observe(c,store,actor,purpose,binding,p,old["result"])
+            elif p["action"] == "active_installed_reconcile":
+                from .context_automatic_refill import lookup
+                lookup(c,store,actor,purpose,binding,old["result"])
             return old["result"]
         if p["action"]=="bind":
             if {k:v for k,v in p["value"].items() if k not in ("nativeActionRetention","manualSeedControl")} not in ({"runtimeProtocol":"lax-purpose-runtime/v3"},
@@ -341,6 +344,9 @@ def perform(store,c,actor,purpose,binding,p):
                 "seed_refused": context_seed_runtime.refused,
                 "seed_revised": context_seed_runtime.revised,
                 "seed_cancelled": context_seed_runtime.cancelled}[action](c,store,actor,purpose,binding,p)
+    if action == "active_installed_reconcile":
+        from .context_installed_recovery import acknowledge
+        return acknowledge(c, store, actor, purpose, binding, p)
     if action == "active_terminal":
         from .context_terminal_refill import terminal
         return terminal(c, store, actor, purpose, binding, p)
