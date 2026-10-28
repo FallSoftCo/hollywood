@@ -125,7 +125,7 @@ def configure(store, actor_id, host, operation, payload):
 def policy(store, actor_id, host):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
-        host_row(store, c, actor, host)
+        enrollment = host_row(store, c, actor, host)
         row = c.execute("SELECT * FROM hb_host_admission WHERE host=%s", (host,)).fetchone()
         if (
             not actor["administrator"]
@@ -139,7 +139,14 @@ def policy(store, actor_id, host):
         controls = c.execute(
             "SELECT agent FROM hb_host_control_agent WHERE host=%s ORDER BY agent", (host,)
         ).fetchall()
-        return json_value({"policy": row, "controlAgentIds": [r["agent"] for r in controls]})
+        return json_value({
+            "policy": row, "controlAgentIds": [r["agent"] for r in controls],
+            "enrollment": {
+                "schema": "hollywood-host-enrollment/v1",
+                "authorityId": enrollment["authority"], "hostId": enrollment["id"],
+                "identityFingerprint": enrollment["identity_fingerprint"],
+            },
+        })
 
 
 def sample(store, actor_id, host, operation, payload):
