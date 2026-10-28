@@ -768,8 +768,9 @@ async def edit_invoke(request, method, *args):
                                   "retry": "read-original-operation-or-reconcile"}, status=409)
     except Denied:
         return web.json_response({"error": "authority_denied", "mayApply": False}, status=403)
-    except Conflict:
-        return web.json_response({"error": "source_or_scope_changed", "mayApply": False}, status=409)
+    except Conflict as error:
+        return web.json_response({"error": "source_or_scope_changed", "message": str(error),
+                                  "mayApply": False}, status=409)
     except (ValidationError, ValueError, TypeError, KeyError):
         return web.json_response({"error": "invalid_edit_request", "mayApply": False}, status=400)
 
