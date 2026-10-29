@@ -88,5 +88,13 @@
     "client": "NextComp exposes one combined list with host badges and room/session distinction. A browser/device receives no broker or administrator credentials.",
     "currentState": "The isolated native test currently uses one CPU Hollywood API over HTTPS plus CPU/GPU connectors. NATS routing is separately qualified. Per-host Hollywood services and NATS room delivery are not yet deployed.",
     "slotMeaning": "A slot is a simultaneous inference/execution admission limit, not a CPU core or open session. Verified awaited control-agent replies must use the reserved control lane while retaining agent authorship."
+  },
+  "executionCapacity": {
+    "userDirection": "Transparent multi-node Hollywood with NATS is the priority; fixed worker/control slot partitions are not the product architecture.",
+    "transport": "Persist and route messages independently of model execution availability. A full executor must never block room delivery, acknowledgement, cancellation, questions or catalog reads.",
+    "execution": "Host-local executor admission protects measured memory and provider concurrency. Use a shared work-conserving capacity pool with bounded queues, explicit waiting reasons and fair scheduling; do not permanently reserve an empty worker/control partition.",
+    "continuations": "An awaited peer response retains its original causal context and typed agent authorship. Queue or resume it without requiring a second execution reservation for the still-held parent. Release execution capacity when a turn stops waiting; retain durable conversation identity.",
+    "limits": "No unbounded native process spawning. Broker transport backpressure and host execution capacity are distinct concerns. NATS does not schedule inference.",
+    "currentState": "The isolated QA still has the older static admission policy. Its immediate classification bug is fixed; replacement of the partition policy is not yet implemented or deployed."
   }
 }
