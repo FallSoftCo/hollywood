@@ -120,7 +120,7 @@ def reserve(store,c,actor,purpose,binding,p):
         counts=resources(c,host)
         free=max(0,(sample["available_memory"]-policy["memory_reserve"])//policy["memory_per_turn"])
         total=min(policy["max_concurrent"],sample["cpu_slots"],counts["total"]+free)
-        worker_limit=max(0,total-policy["reserved_interactive"])
+        worker_limit=total  # Shared capacity; no reserved worker/control partition.
         capacity={"total":total,"active":counts["total"],"activeWorkers":counts["workers"],
                   "workerLimit":worker_limit,"policyRevision":policy["revision"]}
         cls="interactive" if interactive else "worker"
@@ -158,8 +158,6 @@ def reserve(store,c,actor,purpose,binding,p):
             ORDER BY q.ticket LIMIT 1""",(host,cls,policy["connector_max_age"])).fetchone()
         if counts["total"]>=total:
             reason="host_capacity_exhausted"
-        elif cls=="worker" and counts["workers"]>=worker_limit:
-            reason="worker_capacity_reserved_for_control"
         elif not head or str(head["id"])!=identity:
             reason="fair_queue_ahead"
         else:

@@ -1,6 +1,6 @@
 """Durable host admission. Unattested executors retain capacity; semantic holds remain explicit.
 
-Host controllers attest resources. Policy and reserved control agents are
+Host controllers attest resources. Policy and control-agent priority are
 administrator-owned. Connectors observe and claim; this module starts no models.
 """
 
@@ -267,7 +267,7 @@ def diagnose(store, c, actor, host, capabilities, record=False):
             // policy["memory_per_turn"],
         )
         total = min(policy["max_concurrent"], observation["cpu_slots"], counts["total"] + free)
-        workers = max(0, total - policy["reserved_interactive"])
+        workers = total  # Legacy reserved_interactive does not partition execution capacity.
         result["capacity"] = {
             "total": total,
             "workerLimit": workers,
@@ -316,8 +316,6 @@ def diagnose(store, c, actor, host, capabilities, record=False):
             result["queueClass"] = own_head["queue_class"]
             if counts["total"] >= total:
                 reason = "host_capacity_exhausted"
-            elif own_head["queue_class"] == "worker" and counts["workers"] >= workers:
-                reason = "worker_capacity_reserved_for_control"
             else:
                 history = c.execute(
                     """SELECT e.room,t.queue_class,max(t.ticket) AS last_ticket
