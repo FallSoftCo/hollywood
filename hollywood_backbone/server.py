@@ -119,7 +119,17 @@ class Principal(Input):
     id: UUID
     name: str = Field(min_length=1, max_length=128)
     kind: Literal["human", "agent", "service"]
-    enrollmentCredential: str = Field(pattern=r"^[A-Za-z0-9_-]{40,128}$")
+    enrollmentCredential: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{40,128}$")
+    enrollmentCredentialDigest: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    administrator: bool | None = Field(default=None, strict=True)
+
+    @model_validator(mode="after")
+    def one_enrollment_credential(self):
+        if (self.enrollmentCredential is None) == (self.enrollmentCredentialDigest is None):
+            raise ValueError("Exactly one enrollment credential or digest is required")
+        if self.administrator is True and self.kind != "agent":
+            raise ValueError("Only an agent can receive explicit delegated administration")
+        return self
 
 
 class DeliveryRecovery(Input):
@@ -904,7 +914,8 @@ async def agent_directory(request):
 
 async def principal_create(request):
     p = await body(request, Principal)
-    return await invoke(request, "principal", str(p.id), p.name, p.kind, p.enrollmentCredential)
+    return await invoke(request, "principal", str(p.id), p.name, p.kind, p.enrollmentCredential,
+                        p.enrollmentCredentialDigest, p.administrator)
 
 
 async def principal_read(request):

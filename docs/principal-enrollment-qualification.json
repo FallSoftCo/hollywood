@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "realPostgreSQLAndHTTP": true,
+  "digestEnrollmentAuthenticatesOriginalSecretOnly": true,
+  "legacyEnrollmentPreserved": true,
+  "revocationNotRestored": true,
+  "privilegeChangesRequireExplicitReconciliation": true,
+  "onlyHumanAdministratorMayCreateDelegatedAdministrator": true,
+  "fixturesRolledBack": true,
+  "workersOrModelsStarted": 0
+}

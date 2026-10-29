@@ -654,11 +654,26 @@ class Store:
         )
         return identity
 
-    def principal(self, actor_id, identity, name, kind, enrollment_credential, *, command=None):
+    def principal(self, actor_id, identity, name, kind, enrollment_credential=None,
+                  enrollment_credential_digest=None, administrator=None, *, command=None):
         from .administrative import mutate
-        return mutate(self, actor_id, 'principal', [identity, name, kind, enrollment_credential], command)
+        arguments = [identity, name, kind, enrollment_credential]
+        # Preserve the original administrative receipt fingerprint for legacy enrollment.
+        if enrollment_credential_digest is not None or administrator is not None:
+            arguments.extend([enrollment_credential_digest, administrator])
+        return mutate(self, actor_id, 'principal', arguments, command)
 
-    def _admin_principal(self, c, a, identity, name, kind, enrollment_credential):
+    def _admin_principal(self, c, a, identity, name, kind, enrollment_credential,
+                         enrollment_credential_digest=None, administrator=None):
+        if (enrollment_credential is None) == (enrollment_credential_digest is None):
+            raise ValueError("Exactly one enrollment credential or digest is required")
+        token_digest = digest(enrollment_credential) if enrollment_credential is not None else enrollment_credential_digest
+        if not isinstance(token_digest, str) or len(token_digest) != 64 or any(ch not in "0123456789abcdef" for ch in token_digest):
+            raise ValueError("Canonical enrollment credential digest required")
+        if administrator is not None and type(administrator) is not bool:
+            raise ValueError("Explicit boolean administration grant required")
+        if administrator is True and (a["kind"] != "human" or kind != "agent"):
+            raise Denied("Only the authenticated human administrator may create a delegated administrator agent")
         row = c.execute("SELECT * FROM hb_principal WHERE id=%s", (identity,)).fetchone()
         if row:
             if (str(row["authority"]), row["name"], row["kind"]) != (
@@ -667,23 +682,25 @@ class Store:
                 kind,
             ):
                 raise Conflict("Principal identity conflict")
+            if administrator is not None and row["administrator"] != administrator:
+                raise Conflict("Existing principal authority requires explicit privilege reconciliation")
             if not c.execute(
                 "SELECT principal FROM hb_token WHERE principal=%s AND digest=%s AND NOT revoked",
-                (identity, digest(enrollment_credential)),
+                (identity, token_digest),
             ).fetchone():
                 raise Conflict(
                     "Principal enrollment credential differs; explicit rotation required"
                 )
             return {"principalId": identity, "created": False}
         c.execute(
-            "INSERT INTO hb_principal(id,authority,name,kind) VALUES(%s,%s,%s,%s)",
-            (identity, a["authority"], name, kind),
+            "INSERT INTO hb_principal(id,authority,name,kind,administrator) VALUES(%s,%s,%s,%s,%s)",
+            (identity, a["authority"], name, kind, bool(administrator)),
         )
         # Installer/connector persists this random credential before submission.
         # A lost reply can reconcile the same identity without losing its key.
         c.execute(
             "INSERT INTO hb_token VALUES(%s,%s,false)",
-            (digest(enrollment_credential), identity),
+            (token_digest, identity),
         )
         if kind == "agent":
             c.execute(
