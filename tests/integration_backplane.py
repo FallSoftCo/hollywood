@@ -15,7 +15,7 @@ from nats.errors import TimeoutError as NATSTimeout
 from hollywood_backbone.backplane import HostBackplane, BackplaneError, encode
 
 
-async def qualify(binary, *, authority_id=None, configure=None):
+async def qualify(binary, *, authority_id=None, configure=None, response_max=1):
     with tempfile.TemporaryDirectory(prefix="hollywood-backplane-") as temporary:
         root = Path(temporary)
         with socket.socket() as port:
@@ -28,9 +28,9 @@ async def qualify(binary, *, authority_id=None, configure=None):
         users = []
         for host in (cpu, gpu):
             users.append({"user": host, "password": passwords[host], "permissions": {
-                "publish": {"allow": [f"{prefix}.rpc.{host}.*.*"]},
-                "subscribe": {"allow": [f"{prefix}.rpc.*.{host}.*", f"_INBOX.{host}.>"]},
-                "allow_responses": {"max": 1, "expires": "60s"}}})
+                "publish": {"allow": [f"{prefix}.rpc.{host}.*.*", f"{prefix}.service.{host}.>", "$SRV.INFO.hollywood"]},
+                "subscribe": {"allow": [f"{prefix}.rpc.*.{host}.*", f"_INBOX.{host}.>", f"{prefix}.service.*.>", "$SRV.>"]},
+                "allow_responses": {"max": response_max, "expires": "60s"}}})
         config = {"host": "127.0.0.1", "port": number, "max_payload": 524288,
                   "max_connections": 8, "authorization": {"users": users}}
         config_path = root / "nats.json"

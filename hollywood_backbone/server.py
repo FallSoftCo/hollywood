@@ -529,6 +529,7 @@ class SupervisionAck(Input):
 
 
 STORE = web.AppKey("store", Store)
+FEDERATED_MESSAGES = web.AppKey("federated_messages", object)
 
 
 @web.middleware
@@ -540,6 +541,7 @@ async def boundary(request, handler):
                 raise Denied("Bearer authentication required")
             actor = await asyncio.to_thread(request.app[STORE].authenticate, authorization[7:])
             request["actor"] = actor["id"]
+            request["actorKind"] = actor["kind"]
             request["tokenDigest"] = digest(authorization[7:])
             scope = await asyncio.to_thread(request.app[STORE].context_token_scope, request["tokenDigest"])
             own_context = scope and request.path == f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}"
@@ -956,6 +958,21 @@ async def post(request):
     p = await body(request, Message)
     if not p.body.strip() or len(p.body.encode()) > 6000:
         raise ValueError("Invalid message body")
+    federation = request.app.get(FEDERATED_MESSAGES)
+    if federation is not None and request["actorKind"] == "agent":
+        from .backplane import BackplaneError
+        try:
+            value = await federation.send(actor_id=request["actor"],
+                token_digest=request["tokenDigest"],
+                room_id=str(UUID(request.match_info["room"])), message=await request.json(),
+                native_source=native_effects.source(request.headers.get(native_effects.HEADER)))
+            return web.json_response(value)
+        except BackplaneError as error:
+            status = {"AGENT_ACCESS_DENIED": 403, "OPERATION_CONFLICT": 409,
+                      "INVALID_PARAMETERS": 400}.get(error.code, 503)
+            return web.json_response({"error": error.code,
+                "mayApply": error.code in {"REPLY_UNKNOWN", "HANDLER_FAILED"},
+                "operationId": p.operationId, "next": "read-original-operation"}, status=status)
     return await invoke(
         request,
         "post",
@@ -1626,9 +1643,11 @@ async def context_seed_control(request):
     return await invoke(request, name, *args)
 
 
-def application(store):
+def application(store, *, federated_messages=None):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
+    if federated_messages is not None:
+        app[FEDERATED_MESSAGES] = federated_messages
     app.add_routes(
         [
             web.get("/health", health),

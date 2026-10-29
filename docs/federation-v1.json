@@ -16,11 +16,11 @@
     "hosts": "One persistent authenticated NATS connection per Hollywood node. Agents call its local API; node credentials never reach models or clients.",
     "rpcSubject": "hollywood.v1.<authorityId>.rpc.<authenticatedSourceHostId>.<targetHostId>.<normal|control>",
     "eventSubject": "hollywood.v1.authority.<authorityId>.room.<roomId>.events",
-    "discovery": "Advertise host identity, supported runtime modes/protocol versions and canonical authority. Liveness observations do not alter work recency or trigger models.",
-    "durability": "NATS/JetStream transport acknowledgements distinct from canonical admission and completion. Existing canonical request IDs and receipts deduplicate operations. Unknown native submission reconciled, never blindly repeated.",
+    "discovery": "Standard NATS Services API ($SRV.INFO/PING/STATS). No custom KV registry, application-owned membership lease or new consensus protocol.",
+    "durability": "Existing canonical request IDs/receipts are the source of truth. A transactional outbox may relay durable JetStream notices; neither broker receipt nor service discovery proves model execution.",
     "bulkData": "Git/artifact storage references with exact revision/checksum; not bulk NATS payloads.",
     "auth": "TLS server verification plus individually authenticated host credentials and exact source-subject ACLs; application human/agent authorization remains mandatory. No credential in transport payload or events.",
-    "firstImplementation": "Core NATS RPC, bounded normal/control lanes, one attempt only. No JetStream persistence or execution ownership is claimed by this module."
+    "firstImplementation": "Standard authenticated NATS request/reply and queue groups; canonical operation receipts determine admission/completion. Request timeout is unknown, never an automatic replay."
   },
   "envelope": [
     "protocolVersion",
@@ -59,7 +59,7 @@
     "Qualify existing CPU and GPU backends without replacement",
     "Authenticated host routing and discovery",
     "Single-context native Hollywood human/agent send and receive, including idle peer completion",
-    "Run CPU and GPU Hollywood nodes with local agent endpoints, durable transport receipts and NATS routing into the first multi-host room",
+    "Extend existing Hollywood instances with NATS service discovery and addressed request/reply, combined room/agent catalog and preserved native authorship; do not redesign storage.",
     "Explicitly transfer this implementation work into the qualified room, with only one implementation owner",
     "Initiate and verify a real NextComp update through host-local agents, then complete remaining host coverage"
   ],
@@ -73,10 +73,10 @@
   ],
   "topology": {
     "userDirection": "Hollywood node on every execution host; host selection transparent in NextComp and peer communication.",
-    "localNode": "Agents use a stable host-local Hollywood API. The node owns local durable transport inbox/outbox, host discovery and dispatch to its registered local runtimes.",
-    "roomAuthority": "A room has one explicit canonical owner at a time. Other nodes route to it and retain original IDs; independent writable copies of a room are forbidden. Owner failover/sharding requires an explicit fenced ownership protocol, not inference from stale liveness.",
-    "firstPerHostSlice": "CPU and GPU each run a node; the first cross-host room remains CPU-authoritative. This proves local endpoints and NATS routing, not independent per-room sharding or high availability.",
-    "sharedDirectory": "Stable authority/room/agent identities plus host placement and explicit room-owner routes. Discovery never grants membership or changes execution ownership.",
+    "localNode": "An existing Hollywood API/store plus a thin NATS Services adapter. Agents use the local API; nodes discover services and route to the original authority without exposing broker credentials to models.",
+    "roomAuthority": "Existing canonical instance authorityId plus roomId remains the routing identity. Independent stores must retain distinct authority IDs. Federation exposes them together; it does not create independent writable copies under the same identity.",
+    "firstPerHostSlice": "CPU and GPU Hollywood instances retain separate original stores and stable authority IDs. Both are discoverable and routable over NATS. Stopping one instance must not break the other; its unavailable rooms remain clearly identified.",
+    "sharedDirectory": "Assemble the combined authorized view from standard service discovery and existing catalogs. Host is placement metadata. No host scan or parallel invented directory database.",
     "deliveryPath": [
       "local Codex agent",
       "local Hollywood node",
@@ -86,8 +86,9 @@
       "recipient local Codex app server using native agent input"
     ],
     "client": "NextComp exposes one combined list with host badges and room/session distinction. A browser/device receives no broker or administrator credentials.",
-    "currentState": "The isolated native test currently uses one CPU Hollywood API over HTTPS plus CPU/GPU connectors. NATS routing is separately qualified. Per-host Hollywood services and NATS room delivery are not yet deployed.",
-    "slotMeaning": "A slot is a simultaneous inference/execution admission limit, not a CPU core or open session. Verified awaited control-agent replies must use the reserved control lane while retaining agent authorship."
+    "currentState": "Thin standard NATS Services adapter qualified against an actual authenticated broker with two logical service instances. Physical independent Hollywood stores and combined NextComp catalog remain to integrate; no physical host-independence claim.",
+    "slotMeaning": "A slot is a simultaneous inference/execution admission limit, not a CPU core or open session. Verified awaited control-agent replies must use the reserved control lane while retaining agent authorship.",
+    "discoveryBoundary": "Owner tailnet: all authenticated enrolled Hollywood nodes contribute to one discoverable directory. Any connected node exposes every authorized room and agent, independent of execution placement."
   },
   "executionCapacity": {
     "userDirection": "Transparent multi-node Hollywood with NATS is the priority; fixed worker/control slot partitions are not the product architecture.",
@@ -96,5 +97,12 @@
     "continuations": "An awaited peer response retains its original causal context and typed agent authorship. Queue or resume it without requiring a second execution reservation for the still-held parent. Release execution capacity when a turn stops waiting; retain durable conversation identity.",
     "limits": "No unbounded native process spawning. Broker transport backpressure and host execution capacity are distinct concerns. NATS does not schedule inference.",
     "currentState": "The isolated QA still has the older static admission policy. Its immediate classification bug is fixed; replacement of the partition policy is not yet implemented or deployed."
+  },
+  "availability": {
+    "requirement": "No fixed host is required for discovery or communication between other available Hollywood nodes. Each instance retains its existing authoritative store.",
+    "scope": "Federation, not a database-HA or cross-host automatic agent-migration project. A room whose owning instance is offline remains identifiable with truthful unavailable status; it cannot claim to have accepted a new message.",
+    "broker": "Use standard NATS cluster reconnect and service discovery. JetStream is used only when durable transport delivery is required; canonical operation receipts remain authoritative.",
+    "deferred": "The database-HA exploration is retained privately and removed from the current extension. No database migration, Patroni/etcd deployment or new consensus mechanism belongs to this slice.",
+    "proof": "Actual CPU/GPU host-local endpoints, combined discovery/catalog, attributed original-request/reply routing, one node disconnected without breaking unrelated nodes, original-operation reconciliation after lost replies."
   }
 }

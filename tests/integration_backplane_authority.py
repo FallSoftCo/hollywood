@@ -102,6 +102,49 @@ async def main(config_path, binary):
                         assert connection.execute('SELECT count(*) AS n FROM hb_event').fetchone()['n'] == before
                     checks.append('Host credential alone cannot publish; native effect boundary retained with zero events')
 
+                    # Existing HTTP API -> standard NATS service -> actual domain
+                    # authorization. Agent input must not acquire human authority.
+                    from aiohttp import ClientSession, web
+                    from hollywood_backbone.server import application
+                    from hollywood_backbone.federation_ingress import AgentMessages
+                    from hollywood_backbone.federation_service import Service, Client
+                    service=Service(b.connection,authority_id=authority,host_id=b.host_id,handlers=reads.handlers())
+                    await service.start()
+                    rpc=Client(a.connection,authority_id=authority,host_id=a.host_id)
+                    runner=web.AppRunner(application(store,federated_messages=AgentMessages(bindings,rpc)))
+                    await runner.setup();site=web.TCPSite(runner,'127.0.0.1',0);await site.start()
+                    address='http://127.0.0.1:'+str(site._server.sockets[0].getsockname()[1])
+                    try:
+                        remote=await rpc.request('hollywood.rooms.list',{'actorId':cpu_agent},request_id=str(uuid4()))
+                        assert {r['id'] for r in remote['rooms']}=={shared_room}
+                        history=await rpc.request('hollywood.room.history',{'actorId':cpu_agent,'roomId':shared_room,'view':'conversation'},request_id=str(uuid4()))
+                        assert isinstance(history['events'],list)
+                        try:
+                            await rpc.request('hollywood.agents.list',{'actorId':cpu_agent,'limit':10},request_id=str(uuid4()))
+                            raise AssertionError('Ordinary member acquired administrator directory access')
+                        except BackplaneError as error:assert error.code=='AGENT_ACCESS_DENIED'
+                        for operation,payload,code in [
+                            ('hollywood.room.history',{'actorId':cpu_agent,'roomId':private_room},'AGENT_ACCESS_DENIED'),
+                            ('hollywood.room.history',{'actorId':cpu_agent,'roomId':shared_room,'limit':True},'INVALID_PARAMETERS'),
+                            ('hollywood.command.read',{'actorId':cpu_agent,'operationId':'not-a-committed-operation'},'AGENT_ACCESS_DENIED')]:
+                            try:
+                                await rpc.request(operation,payload,request_id=str(uuid4()))
+                                raise AssertionError('Unexpected remote read permission')
+                            except BackplaneError as error:assert error.code==code,(operation,error.code)
+                        async with ClientSession() as session:
+                            path=address+'/hollywood/v3/rooms/'+shared_room+'/messages'
+                            payload={'operationId':'http-nats-no-native-source','kind':'message','body':'Denied peer fixture','audience':'room'}
+                            async with session.post(path,json=payload,headers={'Authorization':'Bearer '+cpu_token}) as response:
+                                assert response.status==403 and (await response.json())['error']=='AGENT_ACCESS_DENIED'
+                            async with session.get(address+'/hollywood/v3/rooms') as response:
+                                assert response.status==403
+                            payload['operationId']='synthetic-authenticated-human-fixture';payload['body']='QA human path preserved'
+                            async with session.post(path,json=payload,headers={'Authorization':'Bearer '+first['credentials']['Owner']['token']}) as response:
+                                assert response.status==200,(response.status,await response.text())
+                        checks.append('Existing authenticated HTTP ingress uses NATS for agents, preserves human path and refuses unauthenticated/native-less peer input')
+                    finally:
+                        await runner.cleanup();await service.stop()
+
                     def resolve():
                         return bindings.resolve(authority_id=authority,authenticated_host_id=a.host_id,principal_id=cpu_agent)
                     with store.pool.connection() as connection:

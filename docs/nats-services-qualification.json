@@ -1,0 +1,32 @@
+{
+  "schema": "hollywood-nats-services-qualification/v1",
+  "date": "2026-10-29",
+  "candidateVersion": "0.3.0.dev148",
+  "scope": "Thin existing-API/domain adapter to standard NATS Services, isolated real-broker and PostgreSQL qualification",
+  "passed": {
+    "standardServiceDiscovery": true,
+    "serviceStopSurvivorRouting": true,
+    "sourceHostPreserved": true,
+    "oneAttemptAfterLostReply": true,
+    "existingAuthenticatedHttpIngress": true,
+    "peerInputCannotBecomeHumanInput": true,
+    "nativeSourceRequiredForPeerMutation": true,
+    "privateRoomHistoryDenied": true,
+    "directoryAdministratorPolicyPreserved": true,
+    "originalOperationReadScopedToActor": true
+  },
+  "limits": {
+    "physicalIndependentHollywoodInstances": false,
+    "crossAuthorityIdentityDelegation": false,
+    "combinedNextCompCatalog": false,
+    "nativeCrossHostThroughThisAdapter": false,
+    "deployedToExistingServices": false
+  },
+  "modelsStarted": 0,
+  "testSources": [
+    "tests/integration_federation_service.py",
+    "tests/integration_backplane_authority.py"
+  ],
+  "databaseHaInScope": false,
+  "customDiscoveryRegistryInScope": false
+}

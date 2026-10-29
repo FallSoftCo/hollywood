@@ -26,11 +26,67 @@ class AgentRoomReads:
                 return await asyncio.to_thread(self.bindings.store.catalog, actor)
         except Denied:
             raise BackplaneError("AGENT_ACCESS_DENIED") from None
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, KeyError):
+            raise BackplaneError("INVALID_PARAMETERS") from None
+
+    async def _read(self, request, method, path, args):
+        actor = str(UUID(request.payload["actorId"]))
+        binding = await asyncio.to_thread(self.bindings.resolve,
+            authority_id=request.authority_id, authenticated_host_id=request.source_host_id,
+            principal_id=actor)
+        with native_effects.transport(actor, binding.token_digest, "GET", method,
+                                      path, None, None, admission=binding):
+            return await asyncio.to_thread(getattr(self.bindings.store, method), actor, *args)
+
+    async def agents(self, request):
+        try:
+            if set(request.payload) - {"actorId", "after", "limit"}:
+                raise ValueError("Unknown directory parameters")
+            after = request.payload.get("after")
+            after = str(UUID(after)) if after is not None else None
+            limit = request.payload.get("limit", 50)
+            if type(limit) is not int or not 1 <= limit <= 100:
+                raise ValueError("Invalid directory limit")
+            return await self._read(request, "agent_directory", "agents", (after, limit))
+        except Denied:
+            raise BackplaneError("AGENT_ACCESS_DENIED") from None
+        except (ValueError, TypeError, KeyError):
+            raise BackplaneError("INVALID_PARAMETERS") from None
+
+    async def history(self, request):
+        try:
+            p = request.payload
+            if set(p) - {"actorId", "roomId", "after", "before", "limit", "view"}:
+                raise ValueError("Unknown history parameters")
+            room = str(UUID(p["roomId"]))
+            after, before, limit, view = p.get("after", 0), p.get("before"), p.get("limit", 100), p.get("view", "all")
+            if (type(after) is not int or not 0 <= after <= 9007199254740991
+                    or before is not None and (type(before) is not int or not 1 <= before <= 9007199254740991)
+                    or "after" in p and "before" in p
+                    or type(limit) is not int or not 1 <= limit <= 100
+                    or view not in {"all", "conversation", "activity"}):
+                raise ValueError("Invalid history page")
+            return await self._read(request, "history", f"rooms/{room}/history",
+                                    (room, after, limit, before, view))
+        except Denied:
+            raise BackplaneError("AGENT_ACCESS_DENIED") from None
+        except (ValueError, TypeError, KeyError):
+            raise BackplaneError("INVALID_PARAMETERS") from None
+
+    async def command(self, request):
+        try:
+            p = request.payload
+            if set(p) != {"actorId", "operationId"} or not isinstance(p["operationId"], str) or not 1 <= len(p["operationId"]) <= 128:
+                raise ValueError("Invalid original operation")
+            return await self._read(request, "command", "commands/"+p["operationId"], (p["operationId"],))
+        except Denied:
+            raise BackplaneError("AGENT_ACCESS_DENIED") from None
+        except (ValueError, TypeError, KeyError):
             raise BackplaneError("INVALID_PARAMETERS") from None
 
     def handlers(self):
-        return {"hollywood.rooms.list": self.catalog}
+        return {"hollywood.rooms.list": self.catalog, "hollywood.agents.list": self.agents,
+                "hollywood.room.history": self.history, "hollywood.command.read": self.command}
 
 
 class AgentRoomTransport(AgentRoomReads):
