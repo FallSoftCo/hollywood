@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "realPostgreSQLAndHTTP": true,
+  "originalActualStoppedNativeExecutor": true,
+  "ownControllerCaptureRead": true,
+  "wrongControllerDenied": true,
+  "nonAdministratorAgentDenied": true,
+  "staleGenerationDenied": true,
+  "revokedCredentialDenied": true,
+  "defaultStatusUnchanged": true,
+  "noCredentialsReturned": true,
+  "readDoesNotAdmitExecution": true,
+  "modelsStarted": 0,
+  "authorizationFixturesRolledBack": true
+}

@@ -216,9 +216,9 @@ class Store:
 
         return attach(self, actor_id, identity, payload)
 
-    def executor_read(self, actor_id, identity):
+    def executor_read(self, actor_id, identity, view="status"):
         from .executors import read
-        return read(self, actor_id, identity)
+        return read(self, actor_id, identity, view)
 
     def executor_list(self, actor_id, host, after=None, limit=256):
         from .executors import listing

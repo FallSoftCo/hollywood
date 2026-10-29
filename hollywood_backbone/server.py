@@ -851,7 +851,12 @@ async def executor_attach(request):
 
 
 async def executor_read(request):
-    return await invoke(request, "executor_read", str(UUID(request.match_info["executor"])))
+    if set(request.query) - {"view"}:
+        raise ValueError("Unknown executor read query")
+    view = request.query.get("view", "status")
+    if view not in {"status", "capture"}:
+        raise ValueError("Unknown executor view")
+    return await invoke(request, "executor_read", str(UUID(request.match_info["executor"])), view)
 
 
 async def executor_list(request):

@@ -168,7 +168,9 @@ def attach(store, actor_id, identity, payload):
         return finish(c, actor, payload["operationId"], fingerprint, value(row, d))
 
 
-def read(store, actor_id, identity):
+def read(store, actor_id, identity, view="status"):
+    if view not in {"status", "capture"}:
+        raise ValueError("Unknown executor view")
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
         row = c.execute(
@@ -181,7 +183,11 @@ def read(store, actor_id, identity):
         d = c.execute("SELECT * FROM hb_delivery WHERE id=%s", (row["delivery"],)).fetchone()
         if actor["id"] == row["agent"]:
             store.readable_event(c, actor, d["event"])
-        return value(row, d)
+        result = value(row, d)
+        if view == "capture":
+            from .host_execution_capture import snapshot
+            result["capture"] = snapshot(store, c, actor, row)
+        return result
 
 
 def listing(store, actor_id, host, after=None, limit=256):
