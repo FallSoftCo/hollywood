@@ -365,6 +365,8 @@ def observe(store, actor_id, host, capabilities):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
         presence(store, c, actor, host, capabilities)
+        from .single_context_messages import enqueue
+        enqueue(store,c,actor,host,capabilities)
         return json_value(diagnose(store, c, actor, host, capabilities, record=True))
 
 

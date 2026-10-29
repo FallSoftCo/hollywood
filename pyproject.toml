@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hollywood-cli"
-version = "0.3.0.dev145"
+version = "0.3.0.dev146"
 description = "Durable human and agent room communication backbone"
 readme = "README.md"
 requires-python = ">=3.10"

@@ -992,3 +992,6 @@ INSERT INTO hb_schema VALUES (35) ON CONFLICT DO NOTHING;
 ALTER TABLE hb_goal ADD COLUMN IF NOT EXISTS definition_resolution jsonb NOT NULL DEFAULT '{}'::jsonb
  CHECK(jsonb_typeof(definition_resolution)='object');
 INSERT INTO hb_schema VALUES (38) ON CONFLICT DO NOTHING;
+
+CREATE INDEX IF NOT EXISTS hb_peer_completion_recipient_seq ON hb_event(authority,recipient,seq) WHERE data->>'type'='peerCompletion';
+CREATE INDEX IF NOT EXISTS hb_delivery_result_event ON hb_delivery(result_event) WHERE result_event IS NOT NULL;

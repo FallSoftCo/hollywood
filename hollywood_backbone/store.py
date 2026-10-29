@@ -1506,13 +1506,15 @@ class Store:
             goal_id = e["data"].get("goalId")
             from .context_role_work import origin as role_origin
             role_work = role_origin(c, a, e)
+            from .single_context_messages import origin as peer_completion_origin
+            peer_reply = peer_completion_origin(c, a, d, e)
             execution_origin = ({
                 "schema": "lax-role-work/v1", "kind": "standing-role",
                 "roleRevision": e["data"]["roleRevision"],
                 "roleSha256": e["data"]["roleSha256"],
                 "sourceEventId": str(e["source"]),
                 "observationId": e["data"]["observationId"],
-            } if role_work else None)
+            } if role_work else peer_reply)
             if goal_id and cooperation_row(c, goal_id):
                 parent = c.execute("SELECT room FROM hb_goal WHERE id=%s", (goal_id,)).fetchone()
                 self.room(c, a, parent["room"])
@@ -1553,8 +1555,8 @@ class Store:
                     "generation": d["generation"],
                     "deliveryState": d["state"],
                     "executionOrigin": execution_origin,
-                    "obligation": "role_work" if role_work else "respond" if e["kind"] == "request" else "observe",
-                    "requiresResponse": (role_work or e["kind"] == "request") and d["agent"] == a["id"],
+                    "obligation": "role_work" if role_work else "peer_reply" if peer_reply else "respond" if e["kind"] == "request" else "observe",
+                    "requiresResponse": bool(role_work or peer_reply or e["kind"] == "request") and d["agent"] == a["id"],
                     "observationPolicy": "silent-unless-material",
                     "membershipStartsExecution": False,
                     "peerBodyAuthority": "tool",

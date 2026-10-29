@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "realPostgreSQL": true,
+  "nativeClaimFacts": "SYNTHETIC rollback-only; not provider execution proof",
+  "onlyExplicitlyRequestedPeerCompletionQueued": true,
+  "oldCapabilitiesAndPurposeRuntimesUnchanged": true,
+  "originalCancellationAndMembershipHonored": true,
+  "restartDeduplication": true,
+  "noNewRoomEventOrHumanInput": true,
+  "samePersistentContextTargeted": true,
+  "nativeAgentMessageCodecPreservesCanonicalEventAuthorBody": true,
+  "noReplyObligationLoop": true,
+  "modelsStarted": 0,
+  "databaseFixturesRolledBack": true
+}
