@@ -1,0 +1,13 @@
+{
+  "passed": true,
+  "realPostgreSQLAndHTTP": true,
+  "explicitAdministratorAttestationRequired": true,
+  "exactStoppedReservedOriginalExecutorRequired": true,
+  "servicePrincipalDenied": true,
+  "attachedOrUnsettledLaunchDenied": true,
+  "cancellationPreserved": true,
+  "originalRequestAndAttemptPreserved": true,
+  "acceptedOperationReplaysReceiptOnly": true,
+  "databaseFixturesRolledBack": true,
+  "modelsStarted": 0
+}

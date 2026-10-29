@@ -137,8 +137,20 @@ class DeliveryRecovery(Input):
     operationId: str = Field(min_length=1, max_length=128)
     revision: int = Field(ge=1)
     generation: int = Field(ge=1)
-    resultEventId: UUID
+    resultEventId: UUID | None
     note: str = Field(min_length=1, max_length=1000)
+    executorId: UUID | None = None
+    reconciliationSha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    outcome: Literal["native_launch_not_dispatched"] | None = None
+
+    @model_validator(mode="after")
+    def complete_launch_reconciliation(self):
+        supplied = [self.executorId is not None, self.reconciliationSha256 is not None, self.outcome is not None]
+        if any(supplied) and not all(supplied):
+            raise ValueError("Complete explicit prelaunch reconciliation required")
+        if not any(supplied) and self.resultEventId is None:
+            raise ValueError("Original failed result required")
+        return self
 
 
 class Room(Input):
