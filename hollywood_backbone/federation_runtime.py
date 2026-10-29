@@ -8,6 +8,8 @@ from .backplane_auth import AgentBindings
 from .backplane_rooms import AgentRoomTransport
 from .federation_catalog import Catalog
 from .federation_ingress import AgentMessages
+from .federation_agent_gateway import LocalAgentGateway
+from .federation_domain import AgentDomain
 from .federation_service import Service, Client
 
 
@@ -55,12 +57,16 @@ async def application(store, config_path):
             local_subjects=config.get('localSubjects',{}),trusted_viewers=config.get('trustedViewers',{}),
             known_authorities=config.get('knownAuthorities',[]))
         handlers=AgentRoomTransport(bindings).handlers()
+        domain=AgentDomain(bindings)
+        handlers["hollywood.agent.authenticate"]=domain.authenticate
+        handlers["hollywood.agent.domain"]=domain.invoke
         handlers['hollywood.catalog.read']=catalog.receive
         handlers['hollywood.viewer.room.read']=catalog.receive_room
         service=Service(connection,authority_id=config['authorityId'],host_id=config['hostId'],handlers=handlers)
         await service.start()
         client=Client(connection,authority_id=config['authorityId'],host_id=config['hostId'])
-        app=http_application(store,federated_messages=AgentMessages(bindings,client),federated_catalog=catalog)
+        app=http_application(store,federated_messages=AgentMessages(bindings,client),federated_catalog=catalog,
+            federated_agent_gateway=LocalAgentGateway(connection, authority_id=config["authorityId"], host_id=config["hostId"]))
         async def close(app):
             await service.stop()
             await connection.close()

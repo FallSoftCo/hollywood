@@ -127,3 +127,27 @@ origins return an explicit error rather than another room or stale history.
 This read-only mapping does not authorize agent mutation or impersonate a
 foreign sender. Cross-node agent credential routing and native-source admission
 are required before claiming the full local-node execution journey.
+
+## Native agent through a local instance
+
+An existing agent retains its original authority, identity, credential, context
+and explicit execution placement. Its local HTTP connection includes
+`X-Hollywood-Authority` and `X-Hollywood-Agent`. The local node forwards only
+the credential digest over its own authenticated NATS source subject. The owning
+store resolves the current exact host-agent binding; human credentials and
+purpose-context credentials cannot enter this single-context route.
+
+The existing HTTP handlers validate routes and schemas. Their common domain
+invocation crosses NATS; the original store rechecks the credential/placement
+inside its native-effect transaction. Exported operations are explicit; arbitrary
+Store attributes and GET mutations are rejected. Native provenance is retained;
+viewer mappings never authorize writes. Operation IDs and original wire data
+are preserved. Replies are not retried after uncertainty. SSE uses the original
+history cursors and rechecks authorization for every page. This retains the
+existing bounded history stream cadence; NATS event-hint fanout is not claimed.
+
+Host-local routing is not a foreign-principal import or automatic membership.
+An existing agent's home authority remains its execution/receipt owner. Native
+agents from independent authorities joining each other's rooms require explicit
+federated membership/provenance integration; that separate path is not yet
+qualified by the current transport tests.

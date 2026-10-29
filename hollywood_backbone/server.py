@@ -531,36 +531,12 @@ class SupervisionAck(Input):
 STORE = web.AppKey("store", Store)
 FEDERATED_MESSAGES = web.AppKey("federated_messages", object)
 FEDERATED_CATALOG = web.AppKey("federated_catalog", object)
+FEDERATED_AGENT_GATEWAY = web.AppKey("federated_agent_gateway", object)
 
 
-@web.middleware
-async def boundary(request, handler):
+async def public_response(action):
     try:
-        if request.path != "/health":
-            authorization = request.headers.get("Authorization", "")
-            if not authorization.startswith("Bearer "):
-                raise Denied("Bearer authentication required")
-            actor = await asyncio.to_thread(request.app[STORE].authenticate, authorization[7:])
-            request["actor"] = actor["id"]
-            request["actorKind"] = actor["kind"]
-            request["tokenDigest"] = digest(authorization[7:])
-            scope = await asyncio.to_thread(request.app[STORE].context_token_scope, request["tokenDigest"])
-            own_context = scope and request.path == f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}"
-            own_receipt = scope and request.method == "GET" and request.path.startswith(
-                f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}/operations/")
-            native_read = scope and scope["purpose"] == "writer" and request.method == "GET" and request.path.startswith("/hollywood/v3/")
-            writer=scope and scope["purpose"]=="writer"
-            executor_metadata=writer and request.method=="POST" and (
-                request.path.startswith("/hollywood/v3/connector/deliveries/") and
-                request.path.endswith(("/executor","/executor/reserve"))
-                or request.path.startswith("/hollywood/v3/executors/") and request.path.endswith("/native")
-                or request.path=="/hollywood/v3/attention"
-                or request.path.startswith("/hollywood/v3/attention/") and request.path.endswith("/acknowledge"))
-            native_effect=writer and request.method in ("POST","PUT","PATCH","DELETE") and (
-                native_effects.source(request.headers.get(native_effects.HEADER)) or {}).get("schema")=="hollywood-native-source/v3"
-            if scope and not (own_context or own_receipt or native_read or executor_metadata or native_effect):
-                raise Denied("Purpose credential has no general mutation authority")
-        return await handler(request)
+        return await action()
     except web.HTTPRequestEntityTooLarge:
         return web.json_response({"error": "Request body exceeds limit; nothing admitted"}, status=413)
     except ResponseNotFound:
@@ -594,33 +570,70 @@ async def boundary(request, handler):
         return web.json_response({"error": "Invalid request"}, status=400)
 
 
+@web.middleware
+async def boundary(request, handler):
+    async def dispatch():
+        return await authenticated_dispatch(request, handler)
+    return await public_response(dispatch)
+
+
+async def authenticated_dispatch(request, handler):
+    if request.path != "/health":
+        authorization = request.headers.get("Authorization", "")
+        if not authorization.startswith("Bearer "):
+            raise Denied("Bearer authentication required")
+        gateway = request.app.get(FEDERATED_AGENT_GATEWAY)
+        from .federation_agent_gateway import AUTHORITY_HEADER
+        authority = str(UUID(request.headers[AUTHORITY_HEADER])) if AUTHORITY_HEADER in request.headers else None
+        remote = gateway is not None and authority is not None and authority != gateway.authority_id
+        if remote:
+            actor = await gateway.authenticate(request, authority)
+            request['federatedAuthority'] = authority
+        else:
+            actor = await asyncio.to_thread(request.app[STORE].authenticate, authorization[7:])
+        request["actor"] = actor["id"]
+        request["actorKind"] = actor["kind"]
+        request["tokenDigest"] = digest(authorization[7:])
+        scope = None if remote else await asyncio.to_thread(request.app[STORE].context_token_scope, request["tokenDigest"])
+        own_context = scope and request.path == f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}"
+        own_receipt = scope and request.method == "GET" and request.path.startswith(
+            f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}/operations/")
+        native_read = scope and scope["purpose"] == "writer" and request.method == "GET" and request.path.startswith("/hollywood/v3/")
+        writer=scope and scope["purpose"]=="writer"
+        executor_metadata=writer and request.method=="POST" and (
+            request.path.startswith("/hollywood/v3/connector/deliveries/") and
+            request.path.endswith(("/executor","/executor/reserve"))
+            or request.path.startswith("/hollywood/v3/executors/") and request.path.endswith("/native")
+            or request.path=="/hollywood/v3/attention"
+            or request.path.startswith("/hollywood/v3/attention/") and request.path.endswith("/acknowledge"))
+        native_effect=writer and request.method in ("POST","PUT","PATCH","DELETE") and (
+            native_effects.source(request.headers.get(native_effects.HEADER)) or {}).get("schema")=="hollywood-native-source/v3"
+        if scope and not (own_context or own_receipt or native_read or executor_metadata or native_effect):
+            raise Denied("Purpose credential has no general mutation authority")
+    return await handler(request)
+
+
 async def body(request, model):
     return model.model_validate(await request.json())
 
 
 async def invoke(request, method, *args):
-    kwargs = {}
-    if method in ("post", "workflow", "decision_write", "report_scope_read"):
-        kwargs["wire"] = {
-            "method": request.method,
-            "path": request.path.removeprefix("/hollywood/v3/"),
-            "body": await request.json(),
-        }
-    if method in ("context_configure", "delivery_recover", "delivery_edit_reconcile", "mutation_reconcile", "principal", "create_room", "membership", "placement", "role", "communication_set", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "work_resource", "placement_state"):
-        raw = await request.json()
-        if raw.get("operationId"):
-            from .store import digest
-            wire = {"method": request.method,
-                    "path": request.path.removeprefix("/hollywood/v3/"), "body": raw}
-            kwargs["command"] = {
-                "operationId": raw["operationId"], "method": wire["method"],
-                "path": wire["path"], "wireDigest": digest(wire),
-            }
-    # read() returns the cached bytes even after body() validated the request.
-    # can_read_body is false once the underlying stream has been consumed.
     raw_body = await request.read()
     payload = json.loads(raw_body) if raw_body else None
     provenance = native_effects.source(request.headers.get(native_effects.HEADER))
+    from .federation_domain import kwargs_for, remote_call
+    if 'federatedAuthority' in request:
+        from .backplane import BackplaneError
+        try:
+            reply = await remote_call(request.app[FEDERATED_AGENT_GATEWAY],request,method,args,payload,provenance)
+            return web.json_response(reply['body'],status=reply['status'])
+        except BackplaneError as error:
+            return web.json_response({'error':error.code,
+                'mayApply':request.method!='GET' and error.code in {'REPLY_UNKNOWN','HANDLER_FAILED'},
+                **({'operationId':payload['operationId'],'next':'read-original-operation'}
+                   if isinstance(payload,dict) and 'operationId' in payload else {})},
+                status=403 if error.code=='AGENT_ACCESS_DENIED' else 503)
+    kwargs = kwargs_for(method,request.method,request.path.removeprefix('/hollywood/v3/'),payload)
     with native_effects.transport(
         request["actor"], request["tokenDigest"], request.method, method,
         request.path.removeprefix("/hollywood/v3/"), payload, provenance,
@@ -800,8 +813,14 @@ async def collaboration_command(request):
 
 
 async def edit_invoke(request, method, *args):
-    try:
+    async def call():
         return await invoke(request, method, *args)
+    return await edit_response(call)
+
+
+async def edit_response(action):
+    try:
+        return await action()
     except RecordedRejection as error:
         return web.json_response(error.receipt, status=error.receipt["httpStatus"])
     except EditError as error:
@@ -906,7 +925,7 @@ async def health(request):
 
 async def rooms(request):
     catalog = request.app.get(FEDERATED_CATALOG)
-    if catalog is not None:
+    if catalog is not None and 'federatedAuthority' not in request:
         return web.json_response(await catalog.combined(request["actor"], request["actorKind"]))
     return await invoke(request, "catalog")
 
@@ -992,7 +1011,7 @@ async def post(request):
     if not p.body.strip() or len(p.body.encode()) > 6000:
         raise ValueError("Invalid message body")
     federation = request.app.get(FEDERATED_MESSAGES)
-    if federation is not None and request["actorKind"] == "agent":
+    if federation is not None and request["actorKind"] == "agent" and "federatedAuthority" not in request:
         from .backplane import BackplaneError
         try:
             value = await federation.send(actor_id=request["actor"],
@@ -1040,8 +1059,26 @@ async def stream(request):
     if batch not in ("0", "1"):
         raise ValueError("Choose batch 0 or 1")
     store = request.app[STORE]
-    # Authorize and validate before opening a stream, and again for each page.
-    page = await asyncio.to_thread(store.history, request["actor"], room, cursor, 100, None, view)
+    from .backplane import BackplaneError
+    class SourceUnavailable(Exception):
+        def __init__(self, status, body):self.status,self.body=status,body
+    async def read_page():
+        if 'federatedAuthority' in request:
+            from .federation_domain import remote_call
+            try:
+                reply=await remote_call(request.app[FEDERATED_AGENT_GATEWAY],request,
+                    'history',(room,cursor,100,None,view),None,None)
+            except BackplaneError as error:
+                raise SourceUnavailable(503,{'error':error.code,'mayApply':False}) from None
+            if reply['status']!=200:raise SourceUnavailable(reply['status'],reply['body'])
+            return reply['body']
+        await asyncio.to_thread(store.authenticate,request.headers['Authorization'][7:])
+        return await asyncio.to_thread(store.history,request['actor'],room,cursor,100,None,view)
+    # Canonical audience/token checks apply before opening and to every page.
+    try:
+        page=await read_page()
+    except SourceUnavailable as error:
+        return web.json_response(error.body,status=error.status)
     response = web.StreamResponse(
         headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"}
     )
@@ -1065,10 +1102,13 @@ async def stream(request):
             # Drain a bounded backlog without an artificial one-second pause per
             # page. Every write/page yields; idle connections retain their cadence.
             await asyncio.sleep(0 if len(page["events"]) == 100 else 1)
-            await asyncio.to_thread(store.authenticate, request.headers["Authorization"][7:])
-            page = await asyncio.to_thread(
-                store.history, request["actor"], room, cursor, 100, None, view
-            )
+            page = await read_page()
+    except SourceUnavailable as error:
+        try:
+            await response.write(('event: sourceUnavailable\ndata: '+json.dumps(error.body)+'\n\n').encode())
+        except ConnectionResetError:
+            pass
+        return response
     except (ConnectionResetError, asyncio.CancelledError, Denied):
         return response
 
@@ -1372,8 +1412,14 @@ async def attention_command(request):
 
 
 async def report_invoke(request, method, *args):
-    try:
+    async def call():
         return await invoke(request, method, *args)
+    return await report_response(call)
+
+
+async def report_response(action):
+    try:
+        return await action()
     except ScopeError as error:
         return web.json_response({"error": error.code, "message": str(error),
             "newExecutionAdmitted": False, "receiptOnly": True}, status=409)
@@ -1679,9 +1725,11 @@ async def context_seed_control(request):
     return await invoke(request, name, *args)
 
 
-def application(store, *, federated_messages=None, federated_catalog=None):
+def application(store, *, federated_messages=None, federated_catalog=None, federated_agent_gateway=None):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
+    if federated_agent_gateway is not None:
+        app[FEDERATED_AGENT_GATEWAY] = federated_agent_gateway
     if federated_catalog is not None:
         app[FEDERATED_CATALOG] = federated_catalog
     if federated_messages is not None:
