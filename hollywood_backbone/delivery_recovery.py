@@ -88,3 +88,22 @@ def change(store, c, actor, identity, payload):
         "explicitReservedLaunchReconciliation": reconciled,
         "meaning": "Explicit re-admission requested; normal current host, role, context and cancellation checks still apply",
     }
+
+
+def projection(c, delivery):
+    """Expose only the accepted prelaunch lineage needed by its existing reader."""
+    if delivery['state']!='pending' or delivery['claim_id'] is not None or delivery['native_thread'] is not None:
+        return None
+    row=c.execute('SELECT * FROM hb_delivery_recovery WHERE delivery=%s AND generation=%s',
+                  (delivery['id'],delivery['generation'])).fetchone()
+    if not row:return None
+    before=row['before_snapshot'];proof=before.get('preNativeReconciliation')
+    if not proof:return None
+    return json_value({'schema':'hollywood-accepted-pre-native-recovery/v1',
+        'authorityId':delivery['authority'],'deliveryId':delivery['id'],
+        'agentId':delivery['agent'],'hostId':before['host'],
+        'sourceRequestId':delivery['event'],'previousGeneration':row['generation'],
+        'previousClaimId':before['claim_id'],'operationId':row['operation'],
+        'executorId':proof['executor']['id'],'outcome':proof['outcome'],
+        'reconciliationSha256':proof['reconciliationSha256'],
+        'originalAttemptPreserved':True,'nativeReplayAdmitted':False})

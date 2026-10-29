@@ -1269,11 +1269,14 @@ class Store:
         agent_binding = execution(c, identity, d["generation"])
         from .purpose_effects import accepted_scope
         purpose_scope = accepted_scope(c, d)
+        from .delivery_recovery import projection as recovery_projection
+        pre_native_recovery = recovery_projection(c, d)
         from .admission import trace
         from .native_edit_contract import contract as native_edit_contract
 
         return {
             "admissionTrace": json_value(trace(c, identity)),
+            **({"preNativeRecovery": pre_native_recovery} if pre_native_recovery else {}),
             "nativeEditContract": native_edit_contract(),
             "delivery": json_value(d),
             "request": json_value(e),
