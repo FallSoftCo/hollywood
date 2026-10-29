@@ -55,8 +55,14 @@ class Service:
             request_id = identity(raw['requestId'])
             result = await self.handlers[operation](HostRequest(self.authority_id, source,
                 self.host_id, request_id, operation, raw['payload'], 'normal'))
-            await request.respond(encode({'version': 1, 'ok': True, 'requestId': request_id,
-                                          'hostId': self.host_id, 'result': result}))
+            try:
+                body = encode({'version': 1, 'ok': True, 'requestId': request_id,
+                               'hostId': self.host_id, 'result': result})
+            except BackplaneError:
+                # Domain work may already be committed. A response-size failure
+                # is not a rejection and must never authorize a fresh replay.
+                raise BackplaneError('REPLY_UNKNOWN') from None
+            await request.respond(body)
         except (ValueError, TypeError, KeyError, BackplaneError) as error:
             code = error.code if isinstance(error, BackplaneError) else 'INVALID_ENVELOPE'
             await request.respond(encode({'version': 1, 'ok': False, 'requestId': request_id, 'error': code}))
