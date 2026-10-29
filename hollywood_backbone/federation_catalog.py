@@ -24,14 +24,7 @@ class Catalog:
         self.known_authorities = set(known_authorities)
 
     def _mapped_read(self, subject, kind):
-        local = self.trusted_viewers.get(subject)
-        if not local:
-            raise Denied('Viewer is not enrolled at this instance')
-        with self.store.pool.connection() as c:
-            actor = self.store.actor(c, local)
-            if actor['kind'] != kind or str(actor['authority']) != self.authority_id:
-                raise Denied('Viewer kind/authority does not match local enrollment')
-        return self._local_read(local)
+        return self._local_read(self._viewer(subject, kind))
 
     def _local_read(self, actor):
         rooms = self.store.catalog(actor)
@@ -54,6 +47,59 @@ class Catalog:
             raise BackplaneError('VIEWER_ACCESS_DENIED') from None
         except (ValueError, KeyError, TypeError):
             raise BackplaneError('INVALID_PARAMETERS') from None
+
+    def _viewer(self, subject, kind):
+        local = self.trusted_viewers.get(subject)
+        if not local:
+            raise Denied('Viewer is not enrolled at this instance')
+        with self.store.pool.connection() as c:
+            actor = self.store.actor(c, local)
+            if actor['kind'] != kind or str(actor['authority']) != self.authority_id:
+                raise Denied('Viewer kind/authority does not match local enrollment')
+        return local
+
+    async def receive_room(self, request):
+        from uuid import UUID
+        try:
+            p = request.payload
+            if (set(p) != {'subject', 'kind', 'roomId', 'read', 'page'}
+                    or p['kind'] not in {'human', 'agent'}
+                    or not isinstance(p['subject'], str) or not 1 <= len(p['subject']) <= 200
+                    or p['read'] not in {'detail', 'history'} or not isinstance(p['page'], dict)):
+                raise ValueError('Invalid room read')
+            room = str(UUID(p['roomId']))
+            actor = await asyncio.to_thread(self._viewer, p['subject'], p['kind'])
+            if p['read'] == 'detail':
+                if p['page']: raise ValueError('Detail has no page')
+                return await asyncio.to_thread(self.store.room_detail, actor, room)
+            page = p['page']
+            if set(page) - {'after', 'before', 'limit', 'view'}:
+                raise ValueError('Unknown history parameters')
+            after, before = page.get('after', 0), page.get('before')
+            limit, view = page.get('limit', 100), page.get('view', 'all')
+            if (type(after) is not int or not 0 <= after <= 9007199254740991
+                    or before is not None and (type(before) is not int or not 1 <= before <= 9007199254740991)
+                    or 'after' in page and 'before' in page
+                    or type(limit) is not int or not 1 <= limit <= 100
+                    or view not in {'all', 'conversation', 'activity'}):
+                raise ValueError('Invalid history page')
+            return await asyncio.to_thread(self.store.history, actor, room, after, limit, before, view)
+        except Denied:
+            raise BackplaneError('VIEWER_ACCESS_DENIED') from None
+        except (ValueError, TypeError, KeyError):
+            raise BackplaneError('INVALID_PARAMETERS') from None
+
+    async def room_read(self, actor_id, kind, authority_id, room_id, read, page):
+        from uuid import uuid4
+        from .backplane import identity
+        identity(authority_id); identity(room_id)
+        subject = self.local_subjects.get(actor_id)
+        if not subject:
+            raise BackplaneError('VIEWER_ACCESS_DENIED')
+        client = Client(self.connection, authority_id=authority_id, host_id=self.host_id)
+        return await client.request('hollywood.viewer.room.read',
+            {'subject': subject, 'kind': kind, 'roomId': room_id, 'read': read, 'page': page},
+            request_id=str(uuid4()), timeout=2)
 
     async def combined(self, actor_id, kind):
         local = await asyncio.to_thread(self._local_read, actor_id)

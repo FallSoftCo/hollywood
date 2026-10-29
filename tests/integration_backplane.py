@@ -26,8 +26,8 @@ async def qualify(binary, *, authority_id=None, configure=None, response_max=1, 
         passwords = {host: secrets.token_urlsafe(32) for host in (cpu, gpu)}
         prefix = f"hollywood.v1.{authority}"
         users = []
-        foreign_reads = lambda host: [f"hollywood.v1.{a}.service.{host}.hollywood.catalog.read" for a in additional_authorities]
-        foreign_subscriptions = [f"hollywood.v1.{a}.service.*.hollywood.catalog.read" for a in additional_authorities]
+        foreign_reads = lambda host: [f"hollywood.v1.{a}.service.{host}.hollywood.catalog.read" for a in additional_authorities] + [f"hollywood.v1.{a}.service.{host}.hollywood.viewer.room.read" for a in additional_authorities]
+        foreign_subscriptions = [f"hollywood.v1.{a}.service.*.hollywood.catalog.read" for a in additional_authorities] + [f"hollywood.v1.{a}.service.*.hollywood.viewer.room.read" for a in additional_authorities]
         for host in (cpu, gpu):
             users.append({"user": host, "password": passwords[host], "permissions": {
                 "publish": {"allow": [f"{prefix}.rpc.{host}.*.*", f"{prefix}.service.{host}.>", "$SRV.INFO.hollywood", *foreign_reads(host)]},

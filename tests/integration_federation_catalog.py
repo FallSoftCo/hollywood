@@ -45,7 +45,8 @@ async def main(database,binary,root):
                             known_authorities=[first,second])
                         catalogs.append(catalog)
                         service=Service(transport.connection,authority_id=intents[idx]['authorityId'],
-                            host_id=transport.host_id,handlers={'hollywood.catalog.read':catalog.receive})
+                            host_id=transport.host_id,handlers={'hollywood.catalog.read':catalog.receive,
+                                'hollywood.viewer.room.read':catalog.receive_room})
                         await service.start();services.append(service)
                         runner=web.AppRunner(application(stores[idx],federated_catalog=catalog))
                         await runner.setup();runners.append(runner)
@@ -63,6 +64,22 @@ async def main(database,binary,root):
                             assert {r['id'] for r in view['rooms']}==expected,view
                             assert {str(r['authority']) for r in view['rooms']}=={first,second}
                             assert len(view['agents'])==2 and view['federationStatus']=='connected'
+                        for entry, destination in ((0,1),(1,0)):
+                            token=intents[entry]['credentials']['Owner']['token']
+                            room=intents[destination]['globalRoomId']
+                            origin=intents[destination]['authorityId']
+                            headers={'Authorization':'Bearer '+token}
+                            base=urls[entry]+'/hollywood/v3/rooms/'+room
+                            async with session.get(base,params={'authority':origin},headers=headers) as response:
+                                assert response.status==200,await response.text()
+                            async with session.get(base+'/history',params={'authority':origin,'limit':1,'view':'conversation'},headers=headers) as response:
+                                assert response.status==200,await response.text()
+                                history=await response.json();assert 'events' in history and 'nextCursor' in history
+                            agent_headers={'Authorization':'Bearer '+intents[entry]['credentials']['Global']['token']}
+                            async with session.get(base+'/history',params={'authority':origin},headers=agent_headers) as response:
+                                assert response.status==403,await response.text()
+                            async with session.get(base+'/history',params={'authority':origin,'before':1,'after':0},headers=headers) as response:
+                                assert response.status==400,await response.text()
                         denied=await get(0,'Global')
                         assert {r['id'] for r in denied['rooms']}=={intents[0]['globalRoomId']}
                         assert any(s.get('reason')=='VIEWER_ACCESS_DENIED' for s in denied['sources'])
@@ -79,7 +96,9 @@ async def main(database,binary,root):
                         'originalAuthorityIdsPreserved':True,'agentCannotAssumeHumanViewer':True,
                         'offlineSourceExplicitAndOtherSourceUsable':True,'reconnectRestoresCatalog':True,
                         'rawCredentialsForwarded':False,'modelsStarted':0,'physicalTwoHostProof':False,
-                        'crossAuthorityMutationsQualified':False}
+                        'crossAuthorityMutationsQualified':False,
+                        'originQualifiedDetailAndHistoryThroughEitherNode':True,
+                        'remoteHistoryCannotElevateAgentToHuman':True}
                     (root/'qualification.json').write_text(json.dumps(result,indent=2)+'\n')
                     return result
                 finally:

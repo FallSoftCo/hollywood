@@ -56,6 +56,7 @@ async def application(store, config_path):
             known_authorities=config.get('knownAuthorities',[]))
         handlers=AgentRoomTransport(bindings).handlers()
         handlers['hollywood.catalog.read']=catalog.receive
+        handlers['hollywood.viewer.room.read']=catalog.receive_room
         service=Service(connection,authority_id=config['authorityId'],host_id=config['hostId'],handlers=handlers)
         await service.start()
         client=Client(connection,authority_id=config['authorityId'],host_id=config['hostId'])

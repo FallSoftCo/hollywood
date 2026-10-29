@@ -38,7 +38,12 @@ replication of an offline host's entire history or migration of its executors.
 Actual authenticated NATS qualification discovers two service instances, stops
 one and reads through the survivor, preserves original source identity, reports
 no responders, and makes exactly one attempt on a lost reply. This is a transport
-adapter qualification on one host, not physical/native/NextComp product proof.
+adapter qualification. Independent CPU/GPU instances are now also running as
+additive private QA services. Standard Services discovery sees both authorities;
+the restored combined HTTP catalog returns both sources in 621 ms. With the CPU
+QA API and broker stopped, the GPU API cold-started in 1621 ms and served its own
+room while reporting the CPU source unavailable. This is not a whole-host power
+failure, cross-authority native execution, or NextComp phone qualification.
 
 Before handover: actual independent CPU/GPU Hollywood instances; cross-authority
 actor authorization/delegation; combined room/agent catalog through either entry;
@@ -80,8 +85,9 @@ permission to mutate another authority.
 
 The actual two-store HTTP integration now verifies the combined rooms and agents
 through either instance, source loss/reconnect, original authority IDs and
-agent-to-human elevation denial. Physical independent-host and native
-cross-authority work delivery remain separate qualification requirements.
+agent-to-human elevation denial. Physical independent-host catalog/outage qualification is now recorded privately.
+Native cross-authority work delivery and the client product journey remain
+separate qualification requirements.
 
 `ops/build-node-zipapp.py` packages the reviewed wheel with Python's standard
 zipapp tooling. Native dependencies remain in an existing pinned runtime; no new
@@ -92,3 +98,32 @@ zipapp. Build and dependency preparation remain on OZZZ-OS.
 Node discovery and executor placement are separate: an API/catalog-only node
 can join without provisioning a model worker. Agent mutations still require
 the existing exact host/placement/native-source enrollment.
+
+## Host-local Codex runtime boundary
+
+Each execution host retains its own managed resident Codex app-server and
+protected account profile. Hollywood API nodes and NATS discovery do not launch
+models. Catalog reads, reconnects and peer transport messages must not create
+another app-server or inference turn. Runtime/process identity belongs to the
+existing execution lifecycle, not NATS membership.
+
+The existing native implementation already captures a resident app-server before
+inference admission (`execution_lifecycle.capture_resident`). Reuse this lifecycle;
+do not add a per-message launcher. Multiple isolated account/runtime profiles may
+need separate resident processes, but neither a room nor a discovered host alone
+is a reason to spawn one. NextComp routes control to the owning host and retains
+origin-qualified session IDs, receipts and drafts.
+
+## Origin-qualified room reads
+
+`GET /hollywood/v3/rooms/{id}` and its `/history` resource accept
+`authority=<original-authority-id>` on a federated node. Omission preserves the
+existing local API. Foreign reads use `hollywood.viewer.room.read` over NATS;
+the destination resolves the explicitly enrolled viewer and checks ordinary
+room/private-audience permissions. No bearer token crosses the bus. History
+keeps its original event IDs, cursor, direction, limit and view. Unavailable
+origins return an explicit error rather than another room or stale history.
+
+This read-only mapping does not authorize agent mutation or impersonate a
+foreign sender. Cross-node agent credential routing and native-source admission
+are required before claiming the full local-node execution journey.

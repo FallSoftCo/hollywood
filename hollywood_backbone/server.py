@@ -911,7 +911,36 @@ async def rooms(request):
     return await invoke(request, "catalog")
 
 
+async def federated_room_read(request, read):
+    catalog = request.app.get(FEDERATED_CATALOG)
+    authority = request.query.get('authority')
+    if authority is None:
+        return None
+    authority = str(UUID(authority))
+    if catalog is None:
+        raise ValueError('Federation is not configured')
+    if authority == catalog.authority_id:
+        return None
+    allowed = {'authority'} | ({'after', 'before', 'limit', 'view'} if read == 'history' else set())
+    if set(request.query) - allowed:
+        raise ValueError('Unknown room parameters')
+    page = {k: int(v) if k in {'after', 'before', 'limit'} else v
+            for k, v in request.query.items() if k != 'authority'}
+    from .backplane import BackplaneError
+    try:
+        value = await catalog.room_read(request['actor'], request['actorKind'], authority,
+            str(UUID(request.match_info['room'])), read, page)
+        return web.json_response(value)
+    except BackplaneError as error:
+        status = {'VIEWER_ACCESS_DENIED': 403, 'INVALID_PARAMETERS': 400}.get(error.code, 503)
+        return web.json_response({'error': error.code, 'authorityId': authority,
+                                  'mayApply': False}, status=status)
+
+
 async def room_detail(request):
+    remote = await federated_room_read(request, "detail")
+    if remote is not None:
+        return remote
     return await invoke(request, "room_detail", str(UUID(request.match_info["room"])))
 
 
@@ -987,6 +1016,9 @@ async def post(request):
 
 
 async def history(request):
+    remote = await federated_room_read(request, "history")
+    if remote is not None:
+        return remote
     if "before" in request.query and "after" in request.query:
         raise ValueError("Choose one history direction")
     return await invoke(
