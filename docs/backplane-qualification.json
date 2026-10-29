@@ -1,0 +1,47 @@
+{
+  "passed": true,
+  "realTlsBroker": true,
+  "actualLocalBackendConnected": true,
+  "disconnectImmediatelyUnavailable": true,
+  "reconnected": true,
+  "oldOperationInvocations": 1,
+  "noAutomaticOperationReplay": true,
+  "healthyStateClearsOldError": true,
+  "modelOrNativeWorkersStarted": false,
+  "transitions": [
+    {
+      "state": "connecting",
+      "error": null
+    },
+    {
+      "state": "ready",
+      "error": null
+    },
+    {
+      "state": "unavailable",
+      "error": "NATS_DISCONNECTED"
+    },
+    {
+      "state": "unavailable",
+      "error": "NATS_DISCONNECTED"
+    },
+    {
+      "state": "unavailable",
+      "error": "NATS_DISCONNECTED"
+    },
+    {
+      "state": "waiting_for_connection",
+      "error": "NATS_DISCONNECTED"
+    },
+    {
+      "state": "connecting",
+      "error": null
+    },
+    {
+      "state": "ready",
+      "error": null
+    }
+  ],
+  "scope": "Isolated host-service qualification; no production service change or model execution",
+  "messageSchemaAstIdentical": true
+}

@@ -110,13 +110,13 @@ def source(raw):
 
 
 @contextlib.contextmanager
-def transport(actor, token_digest, method, action, path, body, native_source):
+def transport(actor, token_digest, method, action, path, body, native_source, *, admission=None):
     if method not in ("GET", "POST", "PUT", "DELETE", "PATCH"):
         raise ValueError("Unknown transport method")
     token = _request.set({
         "actor": str(actor), "tokenDigest": token_digest, "method": method,
         "action": action, "path": path, "body": body, "source": native_source,
-        "entered": False,
+        "entered": False, "admission": admission,
     })
     try:
         yield
@@ -154,6 +154,9 @@ def enter(c, identity):
         ).fetchone()
         if not principal:
             raise Denied("Credential changed")
+        if request.get("admission") is not None:
+            from .backplane_auth import validate_admission
+            validate_admission(c, request["admission"], identity, request["tokenDigest"])
         value = request["source"]
         if write and principal["kind"] == "agent" and request["action"] in BUSINESS:
             if value:

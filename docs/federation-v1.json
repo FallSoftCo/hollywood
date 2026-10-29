@@ -1,7 +1,7 @@
 {
   "schema": "hollywood-federation-design/v1",
   "status": "implementation_contract_not_deployed",
-  "owner": "01a0f2bc-ff5a-70c2-b682-10f0987dab80",
+  "owner": "NextComp implementation owner",
   "runtimeModes": {
     "singleContext": "Primary requested mode: Codex-compatible execution plus native Hollywood human/peer admission, tool dispatch and idle delivery. No synthesized human message for peer input.",
     "purposeContexts": "Deferred. Preserve source, histories and original operation receipts; no new development or implicit conversion."
@@ -14,12 +14,13 @@
   "transport": {
     "client": "NextComp HTTPS/WebSocket owner-authenticated tailnet entry; browsers do not receive NATS credentials.",
     "hosts": "One persistent authenticated NATS client per host connector, concurrent work scoped by agent/delivery.",
-    "rpcSubject": "hollywood.v1.authority.<authorityId>.host.<hostId>.rpc",
+    "rpcSubject": "hollywood.v1.<authorityId>.rpc.<authenticatedSourceHostId>.<targetHostId>.<normal|control>",
     "eventSubject": "hollywood.v1.authority.<authorityId>.room.<roomId>.events",
     "discovery": "Advertise host identity, supported runtime modes/protocol versions and canonical authority. Liveness observations do not alter work recency or trigger models.",
     "durability": "NATS/JetStream transport acknowledgements distinct from canonical admission and completion. Existing canonical request IDs and receipts deduplicate operations. Unknown native submission reconciled, never blindly repeated.",
     "bulkData": "Git/artifact storage references with exact revision/checksum; not bulk NATS payloads.",
-    "auth": "Per-host service credentials and subject permissions plus Hollywood sender/audience authorization; tailnet membership is not application authority."
+    "auth": "TLS server verification plus individually authenticated host credentials and exact source-subject ACLs; application human/agent authorization remains mandatory. No credential in transport payload or events.",
+    "firstImplementation": "Core NATS RPC, bounded normal/control lanes, one attempt only. No JetStream persistence or execution ownership is claimed by this module."
   },
   "envelope": [
     "protocolVersion",
@@ -53,5 +54,20 @@
     "One disconnected host does not block unrelated agent events or control",
     "No agent executes remote work via SSH once its supported destination capability exists"
   ],
-  "rollout": "Add isolated QA before any production listener/profile/runtime replacement; preserve existing NextComp and Codex paths until actual native proof."
+  "rollout": "Add isolated QA before any production listener/profile/runtime replacement; preserve existing NextComp and Codex paths until actual native proof.",
+  "implementationOrder": [
+    "Qualify existing CPU and GPU backends without replacement",
+    "Authenticated host routing and discovery",
+    "Single-context native Hollywood human/agent send and receive",
+    "Create a room with lead agent and qualify cross-host work",
+    "Explicitly transfer this implementation work into the qualified room",
+    "Complete remaining host coverage from that room"
+  ],
+  "handoverAcceptance": [
+    "One original human request is visible and admitted exactly once",
+    "Native attributed peer exchange on CPU and GPU with private audience preserved",
+    "Questions, cancellation and reconnect retain original receipts",
+    "Room lead initiates a real NextComp update with host-local execution, canary health and rollback",
+    "Only one implementation owner remains after explicit handover"
+  ]
 }

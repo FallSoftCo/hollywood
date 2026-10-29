@@ -39,6 +39,7 @@ hollywood-bootstrap = "hollywood_backbone.bootstrap:main"
 hollywood-import-v2 = "hollywood_backbone.import_v2:main"
 
 [project.optional-dependencies]
+backplane = ["nats-py>=2.12,<3"]
 enterprise = ["psycopg[binary,pool]>=3.3,<4", "aiohttp>=3.12,<4", "pydantic>=2.12,<3"]
 room = ["aiohttp>=3.12,<4", "pydantic>=2.12,<3", "filelock>=3.20,<4", "jsonschema>=4.26,<5"]
 push = ["firebase-admin>=7,<8"]

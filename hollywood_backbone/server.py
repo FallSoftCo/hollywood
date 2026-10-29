@@ -33,28 +33,11 @@ from .context_material import MaterialReadConflict
 from .context_room_observations import ObservationAudienceDenied
 from .context_seed_models import SeedCreate, SeedMark, SeedControl
 from .context_seeds import SeedConflict
+from .message_input import EvidenceReferences, Message
 
 
 class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-
-class EvidenceReferences(Input):
-    version: int = Field(strict=True, ge=1, le=1)
-    deliveryId: UUID
-    eventIds: list[UUID] = Field(max_length=8)
-    contextOperationIds: list[str] = Field(max_length=8)
-
-
-class Message(Input):
-    operationId: str = Field(min_length=1, max_length=128)
-    kind: Literal["message", "request"]
-    body: str = Field(min_length=1, max_length=6000)
-    audience: Literal["room", "direct"] = "room"
-    recipientId: UUID | None = None
-    sourceEventId: UUID | None = None
-    expectsReply: bool = False
-    evidenceReferences: EvidenceReferences | None = None
 
 
 class ExternalResponse(Input):
