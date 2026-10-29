@@ -58,12 +58,16 @@ def authorize(store, c, actor_id, token_digest, agent, purpose):
 
 
 def source(c, store, actor, target, purpose, binding, reference):
-    if reference.startswith("exec:"):
-        raise Denied("Native action review requires its separate whole-item protocol")
     # Existing purpose ceilings apply, including no automatic writer room inbox.
     record = context_selection.material(
         c, store, target, purpose, binding, "human-seed-preview", reference)
-    if reference.startswith("event:"):
+    if reference.startswith("exec:"):
+        # Reuse only the target's already-adopted whole-item metadata. The
+        # enrolled host still resolves/verifies the original payload and the
+        # joint native packet; a human mark cannot invent a new native pin.
+        metadata = record["content"]["nativeAction"]
+        store.readable_event(c, actor, metadata["sourceRequestId"])
+    elif reference.startswith("event:"):
         store.readable_event(c, actor, reference[6:])
     elif reference.startswith(("goal:", "work:")):
         from .work import goal_row, work_row
@@ -195,9 +199,12 @@ def build_preview(c, store, actor, target, binding, row, purpose):
                                 "currentRevision": record["revision"],
                                 "currentSha256": record["sha256"]})
         if reference != "role":
-            marks.append({"reference": reference, "reason": pin["reason"],
-                          "selected_revision": pin["revision"], "sha256": pin["sha256"],
-                          "markedBy": pin["markedBy"], "authorKind": pin["authorKind"]})
+            mark = {"reference": reference, "reason": pin["reason"],
+                    "selected_revision": pin["revision"], "sha256": pin["sha256"],
+                    "markedBy": pin["markedBy"], "authorKind": pin["authorKind"]}
+            if reference.startswith("exec:"):
+                mark["native_action"] = record["content"]["nativeAction"]
+            marks.append(mark)
     kind = {"reader": "input", "writer": "work", "responder": "need"}[purpose]
     ids = [str(value["id"]) for value in c.execute("""SELECT id
         FROM hb_context_material WHERE agent=%s AND id=ANY(%s::uuid[])
@@ -255,7 +262,21 @@ def list_sources(store, actor_id, token_digest, agent, purpose, value):
             data = labels[entry["id"]]
             title = data.get("objective") or data.get("material") or data.get("interpretation") or "Saved context"
             visible.append({**entry, "title": str(title)[:180]})
+        # A bounded, separate index exposes the agent's existing marks for
+        # human review without changing the runtime selection or room inbox.
+        retained = []
+        unavailable = 0
+        for mark in context_selection.selected(c, target, purpose, binding)["marks"]:
+            try:
+                record = source(c, store, actor, target, purpose, binding, mark["reference"])
+            except Denied:
+                unavailable += 1
+                continue
+            retained.append({"reference": mark["reference"], "revision": record["revision"],
+                             "sha256": record["sha256"], "reason": mark["reason"],
+                             "kind": "native_action" if "native_action" in mark else "canonical"})
         return {"schema": "lax-human-seed-sources/v1", "agentId": agent,
                 "purpose": purpose, "view": page["view"], "sources": visible,
+                "retainedSources": retained, "unavailableRetainedCount": unavailable,
                 "nextCursor": page["nextCursor"], "nativeWindowChanged": False,
                 "meaning": "Authorized source index. Read exact content and revision before marking."}

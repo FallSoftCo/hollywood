@@ -35,7 +35,13 @@ def hint(store, c, actor, event):
     elif event["author"] != actor["id"]:
         if event["audience"] == "direct" and event["recipient"] == actor["id"]:
             notify, reason = True, "direct_message" if event["kind"] == "message" else "work_result"
-        elif event["source"] and event["kind"] == "result":
+        elif event["source"] and (event["kind"] == "result" or (
+            event["kind"] == "message" and c.execute(
+                """SELECT 1 FROM hb_delivery WHERE event=%s AND agent=%s
+                   AND result_event=%s AND state='completed' AND NOT cancellation_requested""",
+                (event["source"], event["author"], event["id"]),
+            ).fetchone()
+        )):
             # A human's request has one terminal response. Delegated descendants
             # and intermediate contributions stay in rooms; ancestry is not an
             # instruction to interrupt the human for every agent's activity.

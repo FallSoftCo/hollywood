@@ -5,6 +5,8 @@ with authenticated `/hollywood/v3` rooms, principals, communication/execution
 receipts, goals and accountable work. LAX owns native execution through its
 connector; NextComp is a human client. See [candidate architecture and evidence](hollywood_backbone/ARCHITECTURE.md). Deployment and qualification apply to their recorded release. See the [room conversation/activity contract](hollywood_backbone/ROOM_FEEDS.md).
 
+See the [typed completion, Reader admission and upgrade contract](docs/typed-completion-and-reader-admission.md) for the current native communication path and its qualification limits.
+
 The following CLI documentation describes the retained v1/v2 SQLite services;
 it does not describe the enterprise candidate's storage or authority boundary.
 

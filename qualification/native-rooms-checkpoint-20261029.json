@@ -1,0 +1,58 @@
+{
+  "schema": "lax-hollywood-source-checkpoint/v1",
+  "at": 1793247213.655333,
+  "status": "paused-at-user-request",
+  "objective": "Complete the existing Hollywood-native LAX operating architecture, not another coordinator: independent Reader/Writer/Responder, authentic human/agent room communication, durable Goal/Plan acceptance, same-tree native cooperation, reviewed context refresh, actual product delivery through NextComp and eventual repeatable multihost enterprise installation. Preserve the full user objective and limitations in main plan.",
+  "source": {
+    "laxVersion": "0.1.0.dev192",
+    "hollywoodVersion": "0.3.0.dev141",
+    "nativeRuntime": "R11 unchanged"
+  },
+  "production": {
+    "SDK": 187,
+    "Hollywood": 140,
+    "native": "R11",
+    "changedThisContinuation": false
+  },
+  "QA": {
+    "SDK": 192,
+    "Hollywood": 141,
+    "installed": true,
+    "allOwnedServicesStopped": true,
+    "allPlacementsPaused": true,
+    "modelAttemptsCumulative": 375,
+    "newModelCallsThisContinuation": 0
+  },
+  "implemented": [
+    "Reader original-view/terminal recovery and supported original upgrade reconciliation",
+    "Native approved peer-profile inheritance",
+    "Scoped same-Goal physical ownership inspection with unchanged mutation permissions",
+    "Durable typed collaboration rejection events and original receipt recovery",
+    "Known terminal context acknowledgement recovery, without native turn or effect replay",
+    "Preserved native context acquisition/refill source and generated protocol changes from completed native-owner work"
+  ],
+  "evidence": {
+    "protocol": "Real HTTP/PostgreSQL component checks pass; native terminal/participation inputs in those checks are explicitly synthetic.",
+    "actualNative": "Same original Reader recovered earlier with actual model activity. This continuation verified the real original interrupted Writer history and acknowledged its exact end with zero new inference.",
+    "sharedEditing": "R35 failed after one verified Global protected edit; Contributor contribution and independent review not completed.",
+    "laterRuns": "R38 and R39 failed host/service readiness before model admission; no semantic/multi-agent success claimed.",
+    "setupAssistance": "Exact existing Global read-only reviewer-report grant mirrored to Unix ACLs, disclosed; no deliverable/report content repair.",
+    "sourcePackage": "Source/wheel/installed Python bytes and package file sets verified equal. Prior native R11 qualification retained; no new Rust build/test was run for this source checkpoint."
+  },
+  "notEstablished": [
+    "Full Codex replacement",
+    "Complete native shared-editing/review workflow",
+    "Fresh multi-slot semantic proof",
+    "Enterprise/multihost readiness",
+    "Physical phone push/voice qualification in this continuation"
+  ],
+  "privateRuntimeCheckpoint": "/var/lib/lax-kernel-incarnation-20261028-r355/r02/ROOT-CONTINUATION-USER-PAUSED-20261029.json",
+  "privateRoot": "/var/lib/lax-kernel-incarnation-20261028-r355/r02",
+  "doNotReplay": [
+    "Original R35 request or factory provisioning",
+    "R38 ordinary context update",
+    "Settled APPLIED Global edit/permit",
+    "Accepted bridge/purpose/dependency upgrades"
+  ],
+  "resumeRequiresNewUserAuthorization": true
+}

@@ -15,10 +15,12 @@ from uuid import uuid4
 import psycopg
 from psycopg import sql
 from psycopg.types.json import Jsonb
-from aiohttp import ClientSession, WSMsgType, web
+from aiohttp import ClientSession, TraceConfig, WSMsgType, web
 from hollywood_backbone.store import Store, digest
 from hollywood_backbone.server import application
 from lax_connector.rpc import AppServer
+from lax_connector.context_runtime import ContextAgent, ContextRunner
+from lax_connector.errors import HttpFailure
 from lax_connector.idle_context_rebuild import IdleContextRebuild
 from lax_connector.reviewed_context_control import ReviewedContextControl
 
@@ -53,6 +55,14 @@ async def main(args):
     contexts = {n: uid() for n in tokens}
     (out/"credentials-private.json").write_text(json.dumps({"plans":plans,"purposeTokens":tokens}))
     received, http_receipts, native_events, checks = [], [], [], []
+    transport_observations = []
+    def generations():
+        return [message for message in received if message.get("generate") is not False]
+    def observe_transport(phase):
+        transport_observations.append({"phase":phase,"wireRequests":len(received),
+            "generations":len(generations()),
+            "nonGeneratingWarmups":sum(message.get("generate") is False for message in received)})
+
     process_records = []
     stop, complete = asyncio.Event(), asyncio.Event()
     state, home = out/"state", out/"home"; state.mkdir(); home.mkdir()
@@ -63,7 +73,17 @@ async def main(args):
     r.trace = lambda event, data: native_events.append({"event":event,"data":data})
     r.agent = SimpleNamespace(stop=stop)
     servers = []
-    session = ClientSession()
+    trace = TraceConfig()
+    async def http_observed(_session, _context, params):
+        result = await params.response.json()
+        path = params.url.path.removeprefix("/hollywood/v3/")
+        if params.url.query_string:
+            path += "?" + params.url.query_string
+        http_receipts.append({"method":params.method,"path":path,
+                              "status":params.response.status,"result":result})
+        (out/"http-private.json").write_text(json.dumps(http_receipts,indent=2))
+    trace.on_request_end.append(http_observed)
+    session = ClientSession(trace_configs=[trace])
 
     async def serve(app):
         runner=web.AppRunner(app,access_log=None);await runner.setup()
@@ -122,8 +142,6 @@ async def main(args):
             async with session.request(method,backend+"/hollywood/v3/"+path,
                    headers={"Authorization":"Bearer "+token},json=data) as response:
                 result=await response.json()
-                http_receipts.append({"method":method,"path":path,"status":response.status,"result":result})
-                (out/"http-private.json").write_text(json.dumps(http_receipts,indent=2))
                 assert response.status==status,(method,path,response.status,result)
                 return result
 
@@ -140,12 +158,18 @@ async def main(args):
                 current = await call(owner,"GET",path+"/control")
                 await call(owner,"POST",path+"/control",{"operationId":"cancel-during-prepare",
                   "action":"cancel","revision":current["control"]["revision"]})
-            result = await purpose("writer",action,value,operation=operation,turn=turn)
+            result = await ContextRunner.request(r,action,value,operation=operation,turn=turn)
             if action == "seed_apply" and fault["mutateAfterAdmission"]:
                 r.config["changedAfterAdmission"] = True
             return result
         r.request=request
-        r.agent.http=lambda name,method,path:call(tokens[name],method,path)
+        r.turn=None
+        r.config.update(tokens=tokens,hollywoodUrl=backend)
+        r.agent.config=r.config
+        r.agent.session=session
+        async def agent_http(name,method,path,payload=None,**kwargs):
+            return await ContextAgent.http(r.agent,name,method,path,payload,**kwargs)
+        r.agent.http=agent_http
 
         await call(owner,"POST","principals",{"id":peer,"name":"Unstarted disposable native-review agent",
           "kind":"agent","enrollmentCredential":__import__("secrets").token_urlsafe(40)})
@@ -157,10 +181,14 @@ async def main(args):
           "workspaceId":"disposable-no-daemon","bindings":[{"purpose":n,"contextId":contexts[n],
              "credentialDigest":digest(tokens[n])} for n in tokens]})
         r.rpc=AppServer(str(args.binary),home,state/"rpc",event,callback,
-                       on_submission=submitted,on_spawn=spawned,isolated_process_group=True)
+                       on_submission=submitted,on_spawn=spawned,isolated_process_group=True,
+              rollout_trace_root=out/"native-traces" if args.native_trace else None)
         await r.rpc.start()
-        started=await r.rpc.call("thread/start",{"automaticContextRefill":{
-          "type":"canonicalRetainedActions","contextId":contexts["writer"],"purpose":"writer"},"cwd":str(out)})
+        initial_settings={"cwd":str(out)}
+        if not args.legacy_acquisition:
+            initial_settings["automaticContextRefill"]={
+              "type":"canonicalRetainedActions","contextId":contexts["writer"],"purpose":"writer"}
+        started=await r.rpc.call("thread/start",initial_settings)
         r.thread=started["thread"]["id"];history=Path(started["thread"]["path"])
         r.automatic.idle=IdleContextRebuild(r)
         bridge=ReviewedContextControl(r)
@@ -178,6 +206,105 @@ async def main(args):
 
         await turn("UNSELECTED_ORIGINAL_WINDOW_CANARY -- declared native recording fixture")
         original=history.read_bytes()
+
+        generation_offset = 0
+        if args.legacy_acquisition:
+            from lax_connector.automatic_context_refill import AutomaticContextRefill
+            from lax_connector.native_context_acquisition import PRODUCER_REFUSAL
+            from lax_connector.rpc import RpcError
+            assert b'"native_context_producer"' not in original
+            await r.rpc.close()
+
+            async def resume_native():
+                rpc = AppServer(str(args.binary),home,state/"rpc",event,callback,
+                    on_submission=submitted,on_spawn=spawned,isolated_process_group=True,
+              rollout_trace_root=out/"native-traces" if args.native_trace else None)
+                await rpc.start()
+                resumed = await rpc.call("thread/resume", {"threadId":r.thread,
+                    "automaticContextRefill":{"type":"canonicalRetainedActions",
+                        "contextId":contexts["writer"],"purpose":"writer"},
+                    "cwd":str(out), "excludeTurns":True})
+                assert resumed["thread"]["id"] == r.thread
+                return rpc
+
+            r.rpc = await resume_native()
+            r.automatic = AutomaticContextRefill(r)
+            queued = await purpose("writer","rebuild_request",operation="original-legacy-refresh")
+            observe_transport("before-legacy-pure-preflight")
+            try:
+                await r.automatic.idle.rebuild(queued["requestOperationId"],[])
+            except RpcError as error:
+                assert str(error) == PRODUCER_REFUSAL, str(error)
+            else:
+                raise AssertionError("Legacy preflight silently acquired a producer")
+            journal = r.automatic.idle.path(r.automatic.idle.pending["operationId"])
+            rejected = json.loads(journal.read_text())
+            snapshot_id = rejected["snapshotOperationId"]
+            accepted_snapshot = rejected["snapshot"]
+            assert "preflight" not in rejected and r.failed and len(generations())==1
+            observe_transport("after-legacy-pure-refusal")
+            # A new adapter starts from disk, not from an operator clearing its hold.
+            r = SimpleNamespace(**{**vars(r), "failed":False, "effect_lock":asyncio.Lock()})
+            r.agent = SimpleNamespace(**{**vars(r.agent),"rebuild_only":True,
+                                      "acquire_context_operation":"legacy-capture-original"})
+            r.automatic = AutomaticContextRefill(r)
+            await r.automatic.idle.startup()
+            assert not r.automatic.idle.held
+            assert r.automatic.idle.retryable[rejected["operationId"]]
+            raw_call = r.rpc.call
+
+            async def lose_original_reply(method,params,**kwargs):
+                result = await raw_call(method,params,**kwargs)
+                if method == "thread/contextWindow/acquireIdle":
+                    raise TimeoutError("Declared reply-loss injection AFTER actual native result")
+                return result
+
+            r.rpc.call = lose_original_reply
+            try:
+                await r.automatic.acquisition.run("legacy-capture-original")
+            except TimeoutError:
+                pass
+            else:
+                raise AssertionError("Lost acquisition reply was not held")
+            assert r.automatic.acquisition.blocked
+            observe_transport("after-original-acquisition-result-lost")
+            await r.rpc.close()
+            r.rpc = await resume_native()
+            r = SimpleNamespace(**{**vars(r), "failed":False, "effect_lock":asyncio.Lock()})
+            r.automatic = AutomaticContextRefill(r)
+            await r.automatic.idle.startup()
+            recovered = await r.automatic.acquisition.run("legacy-capture-original")
+            assert recovered["state"]=="confirmed" and not r.automatic.acquisition.blocked
+            assert recovered["nativeObservation"]["operationId"]=="legacy-capture-original"
+            prepared = await r.automatic.idle._prepare(
+                queued["requestOperationId"],[],reviewed=False)
+            assert prepared["preflight"]["state"]["producerSha256"] == recovered["after"]["producerSha256"]
+            assert rejected["nativeState"].get("producerSha256") is None
+            before_stale_probe = history.read_bytes()
+            try:
+                await r.rpc.call("thread/contextWindow/preflight",{
+                    "threadId":r.thread,"state":rejected["nativeState"],
+                    "packet":prepared["response"]})
+            except RpcError:
+                pass
+            else:
+                raise AssertionError("Original producer-less cut accepted after acquisition/cold reopen")
+            assert history.read_bytes()==before_stale_probe and len(generations())==1
+            receipt = await r.automatic.idle.apply_prepared(prepared)
+            assert receipt["generation"]==1 and receipt["snapshotOperationId"]==snapshot_id
+            assert r.automatic.idle.pending is None and not r.failed and len(generations())==1
+            final_journal = json.loads(journal.read_text())
+            assert final_journal["snapshot"]==accepted_snapshot
+            assert final_journal["state"]=="native_result_confirmed"
+            assert sum(x["method"]=="POST" and x["path"]==f"agents/{peer}/contexts/writer"
+                and x["result"].get("schema")=="lax-context-rebuild-snapshot/v1"
+                for x in http_receipts)==1
+            observe_transport("after-cold-observation-and-original-snapshot-install")
+            generation_offset=1
+            original=history.read_bytes()
+            bridge=ReviewedContextControl(r)
+            checks.append("Actual old-format rollout and queued rebuild: pure refusal, one accepted snapshot, explicit original-operation acquisition, injected lost reply, cold native/SDK observation, same snapshot installed with no priming inference/recollection")
+
         source=await call(owner,"POST",f"rooms/{room}/messages",{"operationId":"declared-source",
           "kind":"message","body":"Declared closing-window material fixture, not model-discovered.",
           "audience":"room"})
@@ -221,7 +348,7 @@ async def main(args):
         assert status["control"]["state"]=="prepared"
         prepared=r.automatic.idle.pending
         assert prepared["approvalDigest"]==status["control"]["approvalDigest"]
-        assert history.read_bytes()==original and len(received)==1
+        assert history.read_bytes()==original and len(generations())==1
         content=await call(owner,"GET",path+"/control/content")
         assert content["snapshot"]["sha256"]==prepared["snapshot"]["sha256"]
         assert "SELECTED_NAUTICAL_LOCALE" in json.dumps(content)
@@ -241,22 +368,22 @@ async def main(args):
         assert receipt==approved
         await bridge.advance(approved)
         installed=await call(owner,"GET",path+"/control")
-        assert installed["control"]["state"]=="installed" and installed["control"]["generation"]==1
+        assert installed["control"]["state"]=="installed" and installed["control"]["generation"]==1+generation_offset
         assert installed["control"]["nativeReceipt"]==prepared["installed"]
         archived = await call(owner,"GET",path+"/control/content")
         assert archived["historical"] is True and archived["snapshot"] == content["snapshot"]
         await call(owner,"POST",path+"/control",{"operationId":"cannot-cancel-installed",
           "action":"cancel","revision":installed["control"]["revision"]},status=409)
         await turn("Continue from the reviewed fresh window")
-        assert len(received)==2
-        body=json.dumps(received[-1])
+        assert len(generations())==2
+        body=json.dumps(generations()[-1])
         assert "SELECTED_NAUTICAL_LOCALE" in body and "KEEP_ORIGINAL_LEDGER_IDS" in body
         assert "UNSELECTED_ORIGINAL_WINDOW_CANARY" not in body
-        assert received[-1].get("previous_response_id") is None
+        assert generations()[-1].get("previous_response_id") is None
         with store.pool.connection() as c:
             binding=c.execute("SELECT * FROM hb_purpose_context WHERE agent=%s AND purpose='writer'",(peer,)).fetchone()
             assert str(binding["context_id"])==contexts["writer"] and binding["native_thread"]==r.thread
-            assert binding["rebuild_generation"]==1 and binding["seed_review"] is None and binding["rebuild_requested"] is None
+            assert binding["rebuild_generation"]==1+generation_offset and binding["seed_review"] is None and binding["rebuild_requested"] is None
             delivery=c.execute("SELECT state,generation,event FROM hb_delivery WHERE event=%s AND agent=%s",
                               (incoming["event"]["id"],peer)).fetchone()
             assert delivery["state"]=="pending" and delivery["generation"]==0
@@ -282,7 +409,7 @@ async def main(args):
                 with store.pool.connection() as c:
                     c.execute("UPDATE hb_token SET revoked=true WHERE digest=%s",(digest(owner),))
                 try:await bridge.advance(approved)
-                except AssertionError as error:assert "403" in str(error),str(error)
+                except HttpFailure as error:assert error.status==403,str(error)
                 else:raise AssertionError("Revoked reviewer admitted dispatch")
                 assert history.read_bytes()==before
                 with store.pool.connection() as c:
@@ -307,19 +434,19 @@ async def main(args):
             await bridge.advance(cancel)
             done=await call(owner,"GET",path+"/control")
             assert done["control"]["state"]=="cancelled"
-            assert history.read_bytes()==before and len(received)==2
+            assert history.read_bytes()==before and len(generations())==2
         path,summary=await draft()
         before=history.read_bytes()
         fault["cancelPath"] = path
         try: await bridge.advance(summary)
-        except AssertionError as error: assert "409" in str(error),str(error)
+        except HttpFailure as error: assert error.status==409,str(error)
         else: raise AssertionError("Cancelled snapshot preparation was admitted")
         assert not r.failed and r.automatic.idle.pending["state"]=="review_refused"
         cancelled=await call(owner,"GET",path+"/control")
         assert cancelled["control"]["state"]=="cancel_requested"
         await bridge.advance(cancelled)
         assert (await call(owner,"GET",path+"/control"))["control"]["state"]=="cancelled"
-        assert history.read_bytes()==before and len(received)==2
+        assert history.read_bytes()==before and len(generations())==2
         checks.append("Prepared/cancel-during-preparation and post-admission no-dispatch recovery preserve history; changed source and revoked reviewer refuse before write")
         path,summary=await draft(pin=True)
         unchanged=history.read_bytes()
@@ -339,7 +466,7 @@ async def main(args):
         assert (await call(owner,"GET",path+"/control"))["control"]["state"]=="superseded"
         assert (await call(owner,"GET",path+"/control/content"))["historical"] is True
         await purpose("writer","reserve",{"materialIds":[material]},operation="transferred-still-held",status=409)
-        assert history.read_bytes()==unchanged and len(received)==2
+        assert history.read_bytes()==unchanged and len(generations())==2
         await bridge.advance(transferred)
         ready=await call(owner,"GET",replacement_path+"/control")
         content=await call(owner,"GET",replacement_path+"/control/content")
@@ -348,13 +475,13 @@ async def main(args):
           "action":"approve","revision":ready["control"]["revision"],
           "approvalDigest":ready["control"]["approvalDigest"]})
         await bridge.advance(approved)
-        assert (await call(owner,"GET",replacement_path+"/control"))["control"]["generation"]==2
+        assert (await call(owner,"GET",replacement_path+"/control"))["control"]["generation"]==2+generation_offset
         await turn("Continue with the revised approved seed")
-        assert len(received)==3
-        body=json.dumps(received[-1])
+        assert len(generations())==3
+        body=json.dumps(generations()[-1])
         assert "REVIEWED_REPLACEMENT_FACT" in body and "KEEP_ORIGINAL_LEDGER_IDS" in body
         assert "SELECTED_NAUTICAL_LOCALE" not in body and "UNSELECTED_ORIGINAL_WINDOW_CANARY" not in body
-        assert received[-1].get("previous_response_id") is None
+        assert generations()[-1].get("previous_response_id") is None
         checks.append("Canonical source edit and replacement draft transfer the admission hold without a runnable gap; second native generation adopts new source and omits prior seed fact")
         disabled=await purpose("writer","bind",{"runtimeProtocol":"lax-purpose-runtime/v3",
           "workScheduling":2,"toolCompletion":1,"nativeActionRetention":1,"manualSeedControl":0},
@@ -372,8 +499,12 @@ async def main(args):
         result={"state":"authenticated_native_review_passed","checks":checks,
           "realPostgres":True,"authenticatedHumanHttp":True,"actualNative":True,
           "providerRequestTypes":[x.get("type") for x in received],"scriptedProviderRequests":len(received),
+          "scriptedGenerations":len(generations()),
+          "nonGeneratingTransportWarmups":sum(message.get("generate") is False for message in received),
           "realModel":False,"semanticContinuityProved":False,"activeTurnReview":False,
-          "physicalPhone":False,"productionChanged":False,"httpRequests":len(http_receipts),
+          "physicalPhone":False,"productionChanged":False,"legacyAcquisition":args.legacy_acquisition,
+          "nativeTraceEnabled":args.native_trace,
+          "httpRequests":len(http_receipts),
           "schema":schema,"nativeThread":r.thread,"contextId":contexts["writer"]}
         (out/"result.json").write_text(json.dumps(result,indent=2))
         print(json.dumps(result))
@@ -383,6 +514,7 @@ async def main(args):
         for server in reversed(servers):await server.cleanup()
         store.close()
         (out/"provider-requests.json").write_text(json.dumps(received,indent=2))
+        (out/"transport-accounting.json").write_text(json.dumps(transport_observations,indent=2))
         (out/"native-events.json").write_text(json.dumps(native_events,indent=2))
         (out/"processes.json").write_text(json.dumps(process_records,indent=2))
         assert all(not Path("/proc/"+str(p["pid"])).exists() or
@@ -395,4 +527,6 @@ if __name__=="__main__":
     p.add_argument("--database-config",type=Path,required=True)
     p.add_argument("--evidence",type=Path,required=True)
     p.add_argument("--binary",type=Path,required=True)
+    p.add_argument("--legacy-acquisition",action="store_true")
+    p.add_argument("--native-trace",action="store_true")
     asyncio.run(asyncio.wait_for(main(p.parse_args()),150))

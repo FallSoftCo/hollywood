@@ -161,6 +161,7 @@ def read(c, store, actor, purpose, binding, turn, value, *, track=True):
             if event["data"].get("type") == "peerCompletion" and event["source"]:
                 material["peerResult"] = json_value(store.readable_event(c,actor,event["source"]))
         if row["kind"] == "work":
+            material["materialDomain"] = "lax.context-responsibility/v1"
             if event["data"].get("workId"):
                 material["canonicalWorkReference"]={k:event["data"][k] for k in ("workId","goalId","attemptId")
                                                    if event["data"].get(k) is not None}

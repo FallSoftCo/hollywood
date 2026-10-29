@@ -137,6 +137,10 @@ def item(c, store, actor, identity, kind=None):
     return row
 
 def change(c, row, state, value):
+    if row["kind"] == "work" and state in ("pending", "running"):
+        from .context_human_wait import outstanding
+        if outstanding(c, row["agent"], value):
+            state = "waiting"
     c.execute("""UPDATE hb_context_material SET state=%s,value=%s,revision=revision+1,
        updated_at=clock_timestamp() WHERE id=%s""",(state,Jsonb(value),row["id"]))
 
@@ -169,8 +173,9 @@ def transaction(store, actor_id, token_digest, agent, purpose, p):
         if str(actor["id"])!=agent or actor["kind"]!="agent" or purpose not in PURPOSES:
             raise Denied("Own native context required")
         c.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s,0))",("context:"+agent,))
-        system=c.execute("""SELECT s.* FROM hb_context_system s JOIN hb_placement l
-          ON l.agent=s.agent AND l.host=s.host AND l.enabled
+        system=c.execute("""SELECT s.*,l.enabled AS placement_enabled
+          FROM hb_context_system s JOIN hb_placement l
+          ON l.agent=s.agent AND l.host=s.host
           JOIN hb_agent_role r ON r.principal=s.agent
           WHERE s.agent=%s AND s.enabled""",(agent,)).fetchone()
         binding=c.execute("""SELECT b.* FROM hb_purpose_context b JOIN hb_token t
@@ -179,6 +184,12 @@ def transaction(store, actor_id, token_digest, agent, purpose, p):
           (agent,purpose,token_digest)).fetchone()
         if not system or not binding:
             raise Denied("Purpose credential or installed placement unavailable")
+        # Pausing execution does not revoke the original purpose's ability to
+        # settle an admitted turn or retain its execution log. It grants no new
+        # input, work, model admission, continuation or outward publication.
+        if not system["placement_enabled"] and p["action"] not in {
+                "close", "end", "release_reservation", "activity"}:
+            raise Denied("Paused placement admits only original execution settlement")
         role=c.execute("SELECT revision FROM hb_agent_role WHERE principal=%s",(actor["id"],)).fetchone()
         if system["role_revision"]!=role["revision"]:
             c.execute("UPDATE hb_context_system SET role_revision=%s WHERE agent=%s",
@@ -207,6 +218,9 @@ def transaction(store, actor_id, token_digest, agent, purpose, p):
                 from .context_automatic_refill import lookup
                 lookup(c,store,actor,purpose,binding,old["result"])
             return old["result"]
+        if (not system["placement_enabled"] and p["action"] in ("close", "end")
+                and binding["active_turn"] != p["nativeTurn"]):
+            raise Conflict("Paused settlement requires the exact original active turn")
         if p["action"]=="bind":
             if {k:v for k,v in p["value"].items() if k not in ("nativeActionRetention","manualSeedControl")} not in ({"runtimeProtocol":"lax-purpose-runtime/v3"},
                     {"runtimeProtocol":"lax-purpose-runtime/v3","workScheduling":2},
@@ -233,7 +247,7 @@ def transaction(store, actor_id, token_digest, agent, purpose, p):
             c.execute("UPDATE hb_purpose_context SET native_thread=%s WHERE agent=%s AND purpose=%s",
                       (p["nativeThread"],agent,purpose))
             result={"contextId":str(binding["context_id"]),"nativeThread":p["nativeThread"],"purpose":purpose,
-                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1,"roleDecisionOwner":1,"contextSelection":1,"contextRebuildSnapshot":1,"completeMaterialRead":1,"goalReviewFrontier":1,"activeContextRefill":1,"interruptedContinuation":1,"toolCompletion":completion,"failedPreModelRefillRecovery":1,"explicitUnsettledContinuation":1,"providerRejectionRecovery":1,"writerOutcomeReview":2,"writerEvidenceRead":1,"primaryInput":1,"nativeActionRetention":retention}
+                    "runtimeProtocol":"lax-purpose-runtime/v3","workUpdates":1,"workScheduling":scheduling,"roleWork":1,"roleDecisionOwner":1,"contextSelection":1,"contextRebuildSnapshot":1,"completeMaterialRead":1,"goalReviewFrontier":1,"activeContextRefill":1,"interruptedContinuation":1,"toolCompletion":completion,"failedPreModelRefillRecovery":1,"explicitUnsettledContinuation":1,"providerRejectionRecovery":1,"readerFailureReview":1,"writerOutcomeReview":2,"writerEvidenceRead":1,"primaryInput":1,"nativeActionRetention":retention}
             result["manualSeedControl"] = manual
             if retention == 1:
                 result["nativeIdleContextReplacement"] = 1
@@ -353,6 +367,9 @@ def perform(store,c,actor,purpose,binding,p):
     if action == "resume_failed_preturn":
         from .context_work_frontier import resume_failed_preturn
         return resume_failed_preturn(store, c, actor, purpose, binding, p)
+    if action == "acknowledge_reader_failure":
+        from .context_reader_failure import acknowledge
+        return acknowledge(store, c, actor, purpose, binding, p)
     if action == "acknowledge_provider_rejection":
         from .context_provider_recovery import acknowledge
         return acknowledge(store, c, actor, purpose, binding, p)
@@ -416,7 +433,7 @@ def perform(store,c,actor,purpose,binding,p):
         raise Conflict("Original native turn no longer admits callbacks")
     permitted={
       "reader":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","accept","answer","announce","peer_result","amend","directory","observe","initiative","room_list","room_history","review_writer_outcome","writer_evidence_authorize"},
-      "writer":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","progress","complete","announce","peer_request","wait_peers","wait_goals","directory","response_material"},
+      "writer":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","progress","complete","announce","peer_request","wait_peers","wait_goals","wait_human","directory","response_material"},
       "responder":{"pending","selection","select","rebuild_request","snapshot","read","read_complete","publish","suppress"},
     }
     if action not in permitted[purpose]:
@@ -436,9 +453,12 @@ def perform(store,c,actor,purpose,binding,p):
         from .context_room_observations import record
         from .context_role_work import initiate
         return (record if action == "observe" else initiate)(c,store,actor,binding,p)
-    target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers","wait_goals","response_material") else v.get("inputId") if action in ("accept","answer","peer_result","amend") else v.get("communicationId")
+    target=v.get("workId") if action in ("progress","complete","peer_request","wait_peers","wait_goals","wait_human","response_material") else v.get("inputId") if action in ("accept","answer","peer_result","amend") else v.get("communicationId")
     if target and target not in {str(x) for x in binding["active_material"]}:
         raise Denied("Material does not belong to this captured native turn")
+    if action=="wait_human":
+        from .context_human_wait import wait
+        return wait(c,store,actor,binding,p)
     if action=="wait_goals":
         from .context_goal_dependencies import wait
         return wait(c,store,actor,binding,p)

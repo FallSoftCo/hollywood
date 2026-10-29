@@ -5,6 +5,15 @@ from .store import Conflict, Denied
 from .context_system import item, change
 from .context_peers import require_current_read
 
+class ObservationAudienceDenied(Denied):
+    """Safe guidance for an already-authorized observation/Work pair."""
+    code = "PRIVATE_OBSERVATION_AUDIENCE"
+    next_action = ("Record the private observation without workId/workRevision to retain its "
+                   "relevance without sharing it into another responsibility. Do not copy its "
+                   "content into a public or different private conversation without explicit "
+                   "source-author authorization. This does not authorize execution or a reply.")
+
+
 def enroll(c, actor):
     c.execute("""INSERT INTO hb_context_observation_cursor(agent,seq)
         SELECT %s,next_seq FROM hb_authority WHERE id=%s ON CONFLICT(agent) DO NOTHING""",
@@ -82,7 +91,7 @@ def record(c,store,actor,binding,p):
         if incoming["audience"]=="direct" and (
                 original["audience"]!="direct" or incoming["room"]!=original["room"]
                 or {incoming["author"],incoming["recipient"]}!={original["author"],original["recipient"]}):
-            raise Denied("Private observation cannot expand its audience")
+            raise ObservationAudienceDenied("Private observation cannot expand its audience")
         entry={"observationId":str(source["id"]),"sourceEventId":str(incoming["id"]),
           "authorId":str(incoming["author"]),"authorKind":incoming["data"].get("authorKind"),
           "roomId":str(incoming["room"]),"audience":incoming["audience"],"interpretation":body}

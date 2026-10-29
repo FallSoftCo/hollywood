@@ -54,7 +54,7 @@ def snapshot(c, store, actor, purpose, binding, p):
 def prepared(c, store, actor, purpose, binding, p):
     value = row(c, actor, purpose, binding)
     control, data = value["review"], p["value"]
-    from .context_native_idle import PREFLIGHT, STATE
+    from .context_native_idle import validate_preflight
     if set(data) != {"draftId", "approvalDigest", "preflight", "snapshotSha256", "runtime", "historySha256"}:
         raise ValueError("Exact prepared native metadata required")
     if data["draftId"] != str(value["id"]) or control["state"] != "requested":
@@ -65,11 +65,8 @@ def prepared(c, store, actor, purpose, binding, p):
     sha(data["approvalDigest"])
     sha(data["historySha256"])
     preflight = data["preflight"]
-    if not isinstance(preflight, dict) or set(preflight) != PREFLIGHT:
-        raise ValueError("Exact native preflight required")
+    validate_preflight(preflight)
     state = preflight["state"]
-    if not isinstance(state, dict) or set(state) != STATE:
-        raise ValueError("Exact native state required")
     if (state["threadId"] != binding["native_thread"] or state["contextId"] != str(binding["context_id"])
             or state["purpose"] != purpose or state["idle"] is not True
             or state["activeTurnId"] is not None or state["heldOperationId"] is not None

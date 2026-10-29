@@ -21,6 +21,26 @@ STATE = {"threadId", "contextId", "purpose", "windowId", "historyVersion",
          "lastStartedTurnId", "activeTurnId", "idle", "heldOperationId"}
 
 
+def validate_preflight(preflight):
+    """Accept historical receipts or the complete-producer pair, never half a pair."""
+    complete = PREFLIGHT | {"nextWindowId", "producerSha256"}
+    if (not isinstance(preflight, dict) or set(preflight) not in (PREFLIGHT, complete)
+            or not isinstance(preflight.get("state"), dict)
+            or set(preflight["state"]) not in (STATE, STATE | {"producerSha256"})):
+        raise ValueError("Exact native preflight fields required")
+    if "producerSha256" in preflight:
+        sha(preflight["producerSha256"])
+        if preflight["state"].get("producerSha256") != preflight["producerSha256"]:
+            raise ValueError("Prepared native state and producer digest differ")
+        text(preflight["nextWindowId"], "Reviewed native target")
+        identity = UUID(preflight["nextWindowId"])
+        if (str(identity) != preflight["nextWindowId"] or identity.version != 8
+                or preflight["nextWindowId"] == preflight["state"]["windowId"]):
+            raise ValueError("Canonical reviewed native v8 target required")
+    elif preflight["state"].get("producerSha256") is not None:
+        raise ValueError("A complete producer cannot be recorded as a legacy preflight")
+
+
 def installed(c, store, actor, purpose, binding, p, *, selection=None):
     from .context_selection import material, selected
 
@@ -38,10 +58,8 @@ def installed(c, store, actor, purpose, binding, p, *, selection=None):
         raise Conflict("Original inference reservation remains unsettled")
     native = value["nativeReceipt"]
     preflight = value["preflight"]
-    if (not isinstance(native, dict) or set(native) != NATIVE
-            or not isinstance(preflight, dict) or set(preflight) != PREFLIGHT
-            or not isinstance(preflight.get("state"), dict)
-            or set(preflight["state"]) != STATE):
+    validate_preflight(preflight)
+    if not isinstance(native, dict) or set(native) != NATIVE:
         raise ValueError("Exact native receipt and preflight fields required")
     state = preflight["state"]
     for name in ("operationId", "turnId", "threadId", "contextId",
@@ -65,8 +83,12 @@ def installed(c, store, actor, purpose, binding, p, *, selection=None):
     for name in ("previousWindowId", "windowId"):
         text(native[name], name)
         identity = UUID(native[name])
-        if str(identity) != native[name] or identity.version != 7:
-            raise ValueError("Canonical native v7 window identity required")
+        versions = (7, 8) if name == "previousWindowId" else (
+            (8,) if "producerSha256" in preflight else (7,))
+        if str(identity) != native[name] or identity.version not in versions:
+            raise ValueError("Canonical native window identity required")
+    if "nextWindowId" in preflight and preflight["nextWindowId"] != native["windowId"]:
+        raise Conflict("Installed native window differs from reviewed target")
     if (native["previousWindowId"] == native["windowId"]
             or native["threadId"] != p["nativeThread"]
             or native["threadId"] != binding["native_thread"]

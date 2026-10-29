@@ -1,6 +1,6 @@
 """Fresh SQL/HTTP edit-plan lifecycle; native/controller provenance is SYNTHETIC.
 
-The fixture mutates its own RAM bytes only after a first-response begin grant.
+The fixture mutates its own disk-backed bytes only after a first-response begin grant.
 This is not native execute_verified_patch or a genuine protected-bridge proof.
 """
 import asyncio
@@ -63,7 +63,19 @@ async def main():
         invalid['manifest']['slices'][1]['byteStart'] = 1
         invalid['manifest']['slices'][1]['byteEnd'] = 4
         bad = f.command(invalid, i, 'propose', planRevision=0, manifest=invalid['manifest'])
-        assert (await f.call(i, bad, status=409))['error'] == 'slice_conflict'
+        bad_wire = f.envelope(i, bad)
+        rejected_slice = await f.call(i, body=bad_wire, status=409)
+        assert rejected_slice['error'] == 'slice_conflict'
+        assert rejected_slice['code'] == 'COLLAB_SLICE_CONFLICT'
+        assert rejected_slice['schema'] == 'hollywood-collaboration-rejection/v1'
+        assert rejected_slice['state'] == 'rejected' and rejected_slice['mayApply'] is False
+        assert not f.sql('SELECT 1 FROM hb_edit_plan WHERE id=%s', (invalid['id'],))
+        assert await f.call(i, body=bad_wire, status=409) == rejected_slice
+        recovered_slice = await f.http(i['host']['token'], 'GET',
+            f"collaboration/commands/{i['id']}/{bad_wire['operationId']}")
+        assert recovered_slice['acceptedResult'] == rejected_slice
+        assert f.sql("SELECT count(*) n FROM hb_event WHERE data->'rejectionReceipt'->>'operationId'=%s",
+                     (bad_wire['operationId'],))['n'] == 1
         invalid['manifest']['slices'][1]['byteStart'] = 3
         invalid['manifest']['slices'][1]['byteEnd'] = 5
         bad_claim = invalid['manifest']['files'][0]['claimId']
@@ -83,7 +95,7 @@ async def main():
         assert state['plan']['state'] == 'ready' and len(state['consents']) == 4
         imports = next(v for v in state['consents'] if v['work'] == i['work'])['imports']
         assert len(imports) == 2  # Different host with same UUID, and same host/different workspace.
-        checks.append('Explicit producer and last integrator consent; foreign host/workspace artifact imports must match actual RAM bytes and canonical slice hashes')
+        checks.append('Explicit producer and last integrator consent; foreign host/workspace artifact imports must match actual disk-backed bytes and canonical slice hashes')
 
         await f.reserve(case, status=409, patchSha256='f' * 64)
         await f.reserve(case, status=409, sourceRevision='f' * 40)

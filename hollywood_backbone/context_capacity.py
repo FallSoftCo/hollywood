@@ -67,15 +67,17 @@ def reserve(store,c,actor,purpose,binding,p):
             if not runnable(m):
                 raise Conflict("No new continuation for this original work")
         e=store.readable_event(c,actor,m["source"])
-        observation=purpose=="reader" and m["kind"]=="input" and m["value"].get("roomObservation") is True
-        store.room(c,actor,e["room"],"can_read" if observation else "can_post")
+        reader_input=purpose=="reader"
+        store.room(c,actor,e["room"],"can_read" if reader_input else "can_post")
         d=c.execute("SELECT * FROM hb_delivery WHERE event=%s AND agent=%s",
                     (m["source"],actor["id"])).fetchone()
-        # An optional, canonical communication may originate from an observed
-        # fact, not an assigned task. Its room/read/post checks above still apply.
+        # A Reader consumes its canonical input, including communication that
+        # is not an execution request. Reading never grants Writer admission.
+        # Optional Responder communication also has no execution delivery.
+        # Current source read/post checks and real cancellation remain binding.
         optional_communication=(purpose=="responder" and m["kind"]=="need"
                                 and m["value"].get("required") is False)
-        if (not d and not (observation or optional_communication)) or d and d["cancellation_requested"]:
+        if (not d and not (reader_input or optional_communication)) or d and d["cancellation_requested"]:
             raise Conflict("Original request cancelled")
         if purpose=="writer" and (d["state"] not in ("claimed","running") or not c.execute(
                 "SELECT 1 FROM hb_claim WHERE agent=%s AND delivery=%s AND operation=%s",
@@ -143,7 +145,7 @@ def reserve(store,c,actor,purpose,binding,p):
                 LEFT JOIN hb_delivery d ON d.event=m.source AND d.agent=q.agent
                 LEFT JOIN hb_event e ON e.id=m.source
                 WHERE m.id IS NULL OR (d.id IS NULL AND NOT
-                    (q.purpose='reader' AND m.value->>'roomObservation'='true'
+                    (q.purpose='reader'
                      OR q.purpose='responder' AND m.kind='need' AND m.value->'required'='false'::jsonb))
                   OR d.cancellation_requested
                   OR m.kind<>CASE q.purpose WHEN 'reader' THEN 'input' WHEN 'writer' THEN 'work' ELSE 'need' END
@@ -151,7 +153,7 @@ def reserve(store,c,actor,purpose,binding,p):
                     WHEN 'writer' THEN ARRAY['pending','running'] ELSE ARRAY['ready'] END))
                   OR (NOT a.administrator AND NOT EXISTS(SELECT 1 FROM hb_membership z
                     WHERE z.room=e.room AND z.principal=q.agent AND z.can_read
-                      AND (z.can_post OR q.purpose='reader' AND m.value->>'roomObservation'='true')))
+                      AND (z.can_post OR q.purpose='reader')))
                   OR (NOT a.administrator AND e.audience='direct' AND e.author<>q.agent AND e.recipient<>q.agent))
             ORDER BY q.ticket LIMIT 1""",(host,cls,policy["connector_max_age"])).fetchone()
         if counts["total"]>=total:

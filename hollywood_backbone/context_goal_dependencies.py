@@ -78,7 +78,10 @@ def refresh(c,store,actor):
              AND e.data->>'type'='goalOrigin' AND e.data->>'scope'='explicit-planning-intent/v1'
              AND e.data->>'originRequestId'=m.source::text AND e.data->>'goalId'=g.id::text))))
        AND NOT EXISTS(SELECT 1 FROM hb_delivery d WHERE d.event=m.source AND d.agent=m.agent
-           AND d.cancellation_requested) ORDER BY created_at LIMIT 100 FOR UPDATE""",(actor["id"],actor["authority"])).fetchall()
+           AND d.cancellation_requested)
+       AND NOT EXISTS(SELECT 1 FROM hb_purpose_context b WHERE b.agent=m.agent
+           AND b.purpose='writer' AND b.active_turn IS NOT NULL AND m.id=ANY(b.active_material))
+       ORDER BY created_at LIMIT 100 FOR UPDATE""",(actor["id"],actor["authority"])).fetchall()
     for work in rows:
         ids=source_goals(c,actor,work)
         if not ids:continue
@@ -88,8 +91,11 @@ def refresh(c,store,actor):
         snapshot=[review_snapshot(c,store,actor,g) for g in current]
         previous=work["value"].get("goalResults",[])
         terminal=all(g["state"] in TERMINAL for g in current)
-        if not terminal and not changed(previous,snapshot):continue
         if snapshot==previous:continue
-        change(c,work,"pending" if work["state"]=="waiting" else work["state"],
+        wake=terminal or changed(previous,snapshot)
+        # Observe the current cut even when it is no longer actionable. While
+        # this Work executes, its own intermediate planning cuts cannot queue
+        # a second turn; the next idle read evaluates the final current cut.
+        change(c,work,"pending" if wake and work["state"]=="waiting" else work["state"],
             {**work["value"],"goalResults":snapshot,
-             "resumeRevision":work["value"].get("resumeRevision",0)+1})
+             "resumeRevision":work["value"].get("resumeRevision",0)+int(wake)})

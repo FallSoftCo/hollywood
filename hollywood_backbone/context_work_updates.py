@@ -51,9 +51,6 @@ def apply(c,store,actor,binding,p):
     updates=(work["value"].get("updates",[])+[entry])[-16:]
     # The original objective/acceptance and canonical input remain intact. A
     # version change is visible at the writer's next read, never a turn/steer.
-    change(c,work,"pending" if work["state"]=="waiting" else work["state"],
-        {**work["value"],"updates":updates,
-         "resumeRevision":work["value"].get("resumeRevision",0)+1})
     if source["value"].get("unadmittedWorkId"):
         child=item(c,store,actor,source["value"]["unadmittedWorkId"],"work")
         if (child["source"]!=source["source"] or child["state"]!="pending"
@@ -73,6 +70,11 @@ def apply(c,store,actor,binding,p):
         need=need_for(c,store,actor,source["source"])
         change(c,need,"waiting",{**need["value"],"workId":str(work["id"]),
             "prerequisites":["result:"+str(work["id"])]})
+    # Close the exact interpreted question before exposing its same-Work wake.
+    # Other unresolved human prerequisites still keep this Work waiting.
+    change(c,work,"pending" if work["state"]=="waiting" else work["state"],
+        {**work["value"],"updates":updates,
+         "resumeRevision":work["value"].get("resumeRevision",0)+1})
     return {"inputId":str(source["id"]),"workId":str(work["id"]),"state":"recorded",
         "objectiveReplaced":False,"writerSteered":False,"workRevision":work["revision"]+1,
         "responseRequired":not question}

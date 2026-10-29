@@ -11,6 +11,7 @@ from psycopg.types.json import Jsonb
 
 from . import collaboration as claims
 from .edit_plan_models import CAPABILITY, EditPlanCall, MutationObservation
+from .collaboration_outcomes import RecordedRejection, original_result, record_rejection
 from .edit_plan_scope import (EditError, claims_snapshot, consent_digest, consents, need, now,
                               observed, observed_scope, participant_fences, pending, plan_row, record, revision,
                               validate_manifest)
@@ -330,11 +331,21 @@ def call(store, actor_id, payload):
         old = original_command(c, actor, payload, PATH)
         if old:
             store.readable_event(c, actor, old["event"])
-            return {"receipt": old["accepted_result"], "admission": None, "replayed": True}
+            return {"receipt": original_result(old["accepted_result"]), "admission": None, "replayed": True}
         need(work["revision"] == command["workRevision"], "work_changed", "Current work revision required")
-        result, admission = mutate(store, c, relay, actor, source, binding, work, goal, payload)
-        receipt = record(store, c, actor, source, payload, {"schema": CAPABILITY, **result}, PATH, work["room"])
-        return {"receipt": receipt, "admission": admission, "replayed": False}
+        rejected = None
+        try:
+            with c.transaction():
+                result, admission = mutate(store, c, relay, actor, source, binding, work, goal, payload)
+        except EditError as error:
+            wire = {"method": "POST", "path": PATH, "body": payload}
+            rejected = record_rejection(store, c, actor, source, payload,
+                PATH, work["room"], error, digest(wire))
+        else:
+            receipt = record(store, c, actor, source, payload, {"schema": CAPABILITY, **result}, PATH, work["room"])
+    if rejected is not None:
+        raise RecordedRejection(rejected)
+    return {"receipt": receipt, "admission": admission, "replayed": False}
 
 
 def observe(store, actor_id, payload):
@@ -353,7 +364,7 @@ def observe(store, actor_id, payload):
         need(profile["protocol"] == CAPABILITY, "capability_missing", "Edit-plan observation profile required")
         old = original_command(c, relay, payload, OBSERVATIONS)
         if old:
-            return {"receipt": old["accepted_result"], "admission": None, "replayed": True}
+            return {"receipt": original_result(old["accepted_result"]), "admission": None, "replayed": True}
         need(permit["state"] != "settled" and permit["revision"] == payload["permitRevision"],
              "stale_revision", "Exact unsettled permit required")
         resource = c.execute("SELECT * FROM hb_executor WHERE id=%s AND delivery=%s AND generation=%s AND claim_id=%s",

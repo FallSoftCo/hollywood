@@ -50,8 +50,9 @@ try:
   delivery=c.execute("UPDATE hb_delivery SET state='completed',result_event=%s WHERE id=%s RETURNING *",(result,child['id'])).fetchone()
   continuation=completion(store,c,peer,request,delivery,result,'completed')
   assert continuation
-  continuation_row=c.execute('SELECT * FROM hb_delivery WHERE id=%s',(continuation,)).fetchone()
-  incoming=item(c,store,a,str(continuation_row['event']),'input')
+  continuation_row=c.execute('SELECT * FROM hb_event WHERE id=%s',(continuation,)).fetchone()
+  assert continuation_row['kind']=='result' and not c.execute('SELECT id FROM hb_delivery WHERE event=%s',(continuation,)).fetchone()
+  incoming=item(c,store,a,str(continuation_row['id']),'input')
   assert incoming['value']['responseRequired'] is False and incoming['value']['parentWorkId']==workid
   assert not c.execute("SELECT 1 FROM hb_context_material WHERE source=%s AND kind='need'",(incoming['source'],)).fetchone()
   count=c.execute('SELECT count(*) AS n FROM hb_event').fetchone()['n']

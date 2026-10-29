@@ -1,7 +1,6 @@
 """Reply obligations are explicit communication, not recurring model supervision."""
 
 import json
-from .store import uid
 
 
 def completion(store, c, actor, request, delivery, result, state, *, result_kind="native_execution"):
@@ -33,13 +32,14 @@ def completion(store, c, actor, request, delivery, result, state, *, result_kind
         if isinstance(error, Denied):
             return None
         raise
-    # Result and one response obligation commit with the original transition.
-    # The generated response has no expectsReply flag, so it cannot ping-pong.
+    # A result notice commits with the original transition. It is communication,
+    # never another execution request/delivery or acknowledgement obligation.
+    # Native Readers receive the same typed input; external agents use the inbox.
     event = store.event(
         c,
         actor,
         request["room"],
-        "request",
+        "result",
         json.dumps(
             {
                 "type": "peer_completion",
@@ -60,15 +60,11 @@ def completion(store, c, actor, request, delivery, result, state, *, result_kind
             **({"resultKind": result_kind, "communicationState": "answered",
                 "executionState": "not_attested"} if result_kind != "native_execution" else {}),
             "type": "peerCompletion",
+            "communicationVersion": 2,
             "replyToRequest": str(request["id"]),
             "replyToDelivery": str(delivery["id"]),
         },
     )
-    identity = uid()
-    c.execute(
-        "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
-        (identity, actor["authority"], event, target["id"]),
-    )
     from .context_system import ingest
     ingest(c, target["id"], event)
-    return identity
+    return event

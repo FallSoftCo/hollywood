@@ -11,6 +11,8 @@ from psycopg.types.json import Jsonb
 
 from . import native_effects
 from .collaboration_models import CollaborationCall
+from .collaboration_outcomes import (CollaborationConflict, RecordedRejection,
+                                     original_result, record_rejection)
 from .store import Conflict, Denied, digest, json_value
 
 CAPABILITY = "canonical-physical-claims/v2"
@@ -229,10 +231,10 @@ def apply(store, c, actor, source, binding, work, goal, command):
     if action != "inspect":
         path = canonical_path(command["relativePath"]) if action == "acquire" else claim["relative_path"] if claim else ""
         if lock_conflict(c, namespace, path):
-            raise Conflict("Unsettled all-file mutation holds claim metadata")
+            raise CollaborationConflict("mutation_held", "Unsettled all-file mutation holds claim metadata")
     if action == "acquire":
         if claim:
-            raise Conflict("Claim identity already exists; inspect original receipt")
+            raise CollaborationConflict("claim_exists", "Claim identity already exists; inspect original receipt")
         path = canonical_path(command["relativePath"])
         conflict = c.execute("""SELECT id FROM hb_path_claim WHERE authority=%s AND host=%s
             AND workspace_id=%s AND state<>'released' AND (relative_path=%s
@@ -240,7 +242,7 @@ def apply(store, c, actor, source, binding, work, goal, command):
             OR (%s='directory' AND left(relative_path,length(%s)+1)=%s||'/')) LIMIT 1""",
             (*namespace, path, path, command["kind"], path, path)).fetchone()
         if conflict:
-            raise Conflict("Overlapping path ownership remains active or held")
+            raise CollaborationConflict("path_claim_conflict", "Overlapping path ownership remains active or held")
         return c.execute("""INSERT INTO hb_path_claim
             (id,authority,work,owner,host,workspace_id,relative_path,kind,source_revision,content_sha256,
              expires_at,origin_delivery,target) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
@@ -254,7 +256,7 @@ def apply(store, c, actor, source, binding, work, goal, command):
     # Inspection reveals the current revision; it must not require knowing it.
     # Scope/owner checks still apply, and every ownership mutation retains CAS.
     if action != "inspect" and claim["revision"] != command["claimRevision"]:
-        raise Conflict("Claim revision changed")
+        raise CollaborationConflict("claim_revision_changed", "Claim revision changed")
     if action == "accept":
         if claim["state"] != "handoff" or claim["target_work"] != work["id"]:
             raise Denied("Explicit matching handoff offer required")
@@ -278,18 +280,30 @@ def apply(store, c, actor, source, binding, work, goal, command):
             (claim["origin_delivery"], claim["owner"], context_host(c, claim["origin_delivery"]), claim["owner"])).fetchone()
         if (origin_goal["id"] != goal["id"] or not origin or origin["cancellation_requested"]
                 or origin["state"] not in ("running", "completed")):
-            raise Conflict("Original handoff consent or effects remain unsettled")
+            raise CollaborationConflict("handoff_unsettled", "Original handoff consent or effects remain unsettled")
         settled_controls(c, claim)
         claim = c.execute("""UPDATE hb_path_claim SET owner=%s,work=%s,target_work=NULL,state='active',
             revision=revision+1,expires_at=%s+make_interval(secs=>%s),origin_delivery=%s,target=%s WHERE id=%s RETURNING *""",
             (actor["id"], work["id"], now, command["leaseSeconds"], source["deliveryId"], Jsonb(binding["physical_target"]), identity)).fetchone()
     else:
+        if action == "inspect":
+            if claim["owner"] != actor["id"] or claim["work"] != work["id"]:
+                other = c.execute("SELECT goal,room FROM hb_work WHERE id=%s AND authority=%s",
+                                  (claim["work"], actor["authority"])).fetchone()
+                access = c.execute("""SELECT 1 FROM hb_physical_grant g
+                    JOIN hb_physical_workspace r ON r.id=g.workspace
+                    WHERE g.workspace=%s AND g.work=%s AND g.owner=%s
+                      AND g.state='active' AND r.state='active'
+                      AND g.work_revision=%s""",
+                    (claim["workspace_id"], work["id"], actor["id"], work["revision"])).fetchone()
+                if not other or other["goal"] != goal["id"] or other["room"] != work["room"] or not access:
+                    raise Denied("Claim inspection outside authorized shared Goal/resource")
+                store.room(c, actor, other["room"], "can_read")
+            return claim
         if claim["owner"] != actor["id"] or claim["work"] != work["id"]:
             raise Denied("Exact canonical claim/work owner required")
-        if action == "inspect":
-            return claim
         if claim["state"] == "released":
-            raise Conflict("Released claim cannot resume")
+            raise CollaborationConflict("claim_released", "Released claim cannot resume")
         if action == "release":
             reviewed(c, claim, command)
             if str(claim["origin_delivery"]) != source["deliveryId"] and not c.execute(
@@ -301,7 +315,7 @@ def apply(store, c, actor, source, binding, work, goal, command):
                               (identity,)).fetchone()
         elif action == "renew":
             if claim["state"] != "active" or claim["expires_at"] <= now:
-                raise Conflict("Expired or handed-off claim remains held; explicitly reconcile")
+                raise CollaborationConflict("claim_lease_not_active", "Expired or handed-off claim remains held; explicitly reconcile")
             claim = c.execute("UPDATE hb_path_claim SET expires_at=%s+make_interval(secs=>%s),revision=revision+1 WHERE id=%s RETURNING *",
                               (now, command["leaseSeconds"], identity)).fetchone()
         elif action == "handoff":
@@ -346,34 +360,45 @@ def call(store, actor_id, payload):
             if old["digest"] != key:
                 raise Conflict("Original native collaboration operation changed")
             store.readable_event(c, actor, old["event"])
-            return old["accepted_result"]
+            return original_result(old["accepted_result"])
         if work["revision"] != command["workRevision"]:
             raise Conflict("Canonical work revision changed")
-        claim = apply(store, c, actor, source, binding, work, goal, command)
-        result = json_value({"schema": CAPABILITY, "claim": claim,
-            "source": source, "bridgeId": relay["id"], "bridgeRevision": payload["bridgeRevision"],
-            "leaseUsableAtReceipt": claim["state"] == "active" and claim["expires_at"] >
-                c.execute("SELECT clock_timestamp() AS value").fetchone()["value"],
-            "patchPermitIssued": False, "newExecutionAdmitted": False,
-            "inspectionIsHistorical": True})
-        event = store.event(c, actor, work["room"], "progress", "Canonical path claim: " + command["note"],
-                            source=source["requestId"], **protocol_audience(c, source),
-                            data={"type": "collaborationProtocol", "nativeAction": action_reference(source, operation), "collaborationReceipt": result})
-        result["eventId"] = str(event)
-        c.execute("UPDATE hb_event SET data=jsonb_set(data,'{collaborationReceipt}',%s) WHERE id=%s",
-                  (Jsonb(result), event))
-        wire = {"method": "POST", "path": "collaboration/path-claims", "body": payload}
-        c.execute("INSERT INTO hb_command(authority,principal,operation,digest,event,wire_request,accepted_result) VALUES(%s,%s,%s,%s,%s,%s,%s)",
-                  (actor["authority"], actor["id"], operation, key, event, Jsonb(wire), Jsonb(result)))
-        # Use the existing canonical native-effect ledger, not a second task store.
-        c.execute("INSERT INTO hb_native_effect_cursor(authority,last_seq) VALUES(%s,0) ON CONFLICT DO NOTHING", (actor["authority"],))
-        sequence = c.execute("UPDATE hb_native_effect_cursor SET last_seq=last_seq+1 WHERE authority=%s RETURNING last_seq", (actor["authority"],)).fetchone()["last_seq"]
-        c.execute("""INSERT INTO hb_native_effect(authority,principal,delivery,generation,fingerprint,source,
-            method,path,wire_digest,operation,authority_seq,wire_body_captured)
-            VALUES(%s,%s,%s,%s,%s,%s,'POST',%s,%s,%s,%s,true)""",
-            (actor["authority"], actor["id"], source["deliveryId"], source["generation"], digest([source, wire]),
-             Jsonb(source), wire["path"], digest(wire), operation, sequence))
-        return result
+        rejected = None
+        try:
+            with c.transaction():
+                claim = apply(store, c, actor, source, binding, work, goal, command)
+        except CollaborationConflict as error:
+            rejected = record_rejection(store, c, actor, source, payload,
+                "collaboration/path-claims", work["room"], error, key)
+        else:
+            result = json_value({"schema": CAPABILITY, "claim": claim,
+                "source": source, "bridgeId": relay["id"], "bridgeRevision": payload["bridgeRevision"],
+                "leaseUsableAtReceipt": claim["owner"] == actor["id"] and claim["work"] == work["id"]
+                    and claim["state"] == "active" and claim["expires_at"] >
+                    c.execute("SELECT clock_timestamp() AS value").fetchone()["value"],
+                "patchPermitIssued": False, "newExecutionAdmitted": False,
+                "inspectionIsHistorical": True})
+            event = store.event(c, actor, work["room"], "progress", "Canonical path claim: " + command["note"],
+                                source=source["requestId"], **protocol_audience(c, source),
+                                data={"type": "collaborationProtocol", "nativeAction": action_reference(source, operation), "collaborationReceipt": result})
+            result["eventId"] = str(event)
+            c.execute("UPDATE hb_event SET data=jsonb_set(data,'{collaborationReceipt}',%s) WHERE id=%s",
+                      (Jsonb(result), event))
+            wire = {"method": "POST", "path": "collaboration/path-claims", "body": payload}
+            c.execute("INSERT INTO hb_command(authority,principal,operation,digest,event,wire_request,accepted_result) VALUES(%s,%s,%s,%s,%s,%s,%s)",
+                      (actor["authority"], actor["id"], operation, key, event, Jsonb(wire), Jsonb(result)))
+            # Use the existing canonical native-effect ledger, not a second task store.
+            c.execute("INSERT INTO hb_native_effect_cursor(authority,last_seq) VALUES(%s,0) ON CONFLICT DO NOTHING", (actor["authority"],))
+            sequence = c.execute("UPDATE hb_native_effect_cursor SET last_seq=last_seq+1 WHERE authority=%s RETURNING last_seq", (actor["authority"],)).fetchone()["last_seq"]
+            c.execute("""INSERT INTO hb_native_effect(authority,principal,delivery,generation,fingerprint,source,
+                method,path,wire_digest,operation,authority_seq,wire_body_captured)
+                VALUES(%s,%s,%s,%s,%s,%s,'POST',%s,%s,%s,%s,true)""",
+                (actor["authority"], actor["id"], source["deliveryId"], source["generation"], digest([source, wire]),
+                 Jsonb(source), wire["path"], digest(wire), operation, sequence))
+    if rejected is not None:
+        raise RecordedRejection(rejected)
+    return result
+
 
 
 def read_command(store, actor_id, agent, operation):

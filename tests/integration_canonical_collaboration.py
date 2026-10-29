@@ -213,12 +213,41 @@ async def main():
             assert sql('SELECT * FROM hb_path_claim WHERE id=%s', (probe_id,)) == before_inspection
             await call(a, command(a, 'renew', probe_id, 1), status=409)
             assert sql('SELECT * FROM hb_path_claim WHERE id=%s', (probe_id,)) == before_inspection
+            shared_inspection = await call(b, command(b, 'inspect', probe_id, 0))
+            assert shared_inspection['claim']['owner'] == a['id']
+            assert shared_inspection['claim']['revision'] == 2
+            assert shared_inspection['leaseUsableAtReceipt'] is False
+            assert shared_inspection['patchPermitIssued'] is False
+            assert sql('SELECT * FROM hb_path_claim WHERE id=%s', (probe_id,)) == before_inspection
+            # Explicitly synthetic foreign-Goal fixture state, with no native
+            # or workflow admission. Same root/room alone must not authorize it.
+            other_goal, other_work = identity(), identity()
+            sql("""INSERT INTO hb_goal SELECT
+                (jsonb_populate_record(NULL::hb_goal, to_jsonb(g) ||
+                 jsonb_build_object('id',%s::text))).* FROM hb_goal g WHERE g.id=%s""",
+                (other_goal, ids['goal']))
+            sql("""INSERT INTO hb_work SELECT
+                (jsonb_populate_record(NULL::hb_work, to_jsonb(w) ||
+                 jsonb_build_object('id',%s::text,'goal',%s::text,'state','planned',
+                                    'delivery',NULL,'request_event',NULL))).*
+                FROM hb_work w WHERE w.id=%s""", (other_work, other_goal, a['work']))
+            sql('UPDATE hb_path_claim SET work=%s WHERE id=%s', (other_work, probe_id))
             await call(b, command(b, 'inspect', probe_id, 0), status=403)
+            sql('UPDATE hb_path_claim SET work=%s WHERE id=%s', (a['work'], probe_id))
+            assert sql('SELECT * FROM hb_path_claim WHERE id=%s', (probe_id,)) == before_inspection
+            await call(b, command(b, 'renew', probe_id, 2), status=403)
+            await call(b, command(b, 'release', probe_id, 2), status=403)
+            sql('UPDATE hb_membership SET can_read=false WHERE room=%s AND principal=%s', (ids['room'], b['id']))
+            await call(b, command(b, 'inspect', probe_id, 0), status=403)
+            sql('UPDATE hb_membership SET can_read=true WHERE room=%s AND principal=%s', (ids['room'], b['id']))
+            sql("UPDATE hb_physical_grant SET state='revoked' WHERE workspace=%s AND work=%s", (b['resource']['id'], b['work']))
+            await call(b, command(b, 'inspect', probe_id, 0), status=403)
+            sql("UPDATE hb_physical_grant SET state='active' WHERE workspace=%s AND work=%s", (b['resource']['id'], b['work']))
             await call(c, command(c, 'inspect', probe_id, 0), status=403)
             await call(a, command(a, 'release', probe_id, 2))
             assert await call(a, body=read_wire) == inspected
             assert sql('SELECT state FROM hb_path_claim WHERE id=%s', (probe_id,))['state'] == 'released'
-            checks.append('Inspection reveals current revision without claim CAS; no claim mutation, stale mutation still409, foreign owner/workspace403, original inspection receipt remains historical')
+            checks.append('Inspection reveals current revision without claim CAS; no claim mutation, stale mutation still409, same-Goal collaborator inspection has no lease; foreign mutation/revoked read/grant/namespace denied; original inspection remains historical')
 
             original = envelope(a, command(a))
             receipt = await call(a, body=original)
@@ -233,7 +262,35 @@ async def main():
             assert recovered['wireDigest'] == digest(recovered['wireRequest'])
             for bad in ('src//x', '../x', '/src/x', 'C:/x', 'src\\x', 'x\x00y'):
                 await call(a, command(a, relativePath=bad), status=400)
-            await call(b, command(b), status=409)
+            overlap_wire = envelope(b, command(b))
+            unchanged_claim = sql('SELECT * FROM hb_path_claim WHERE id=%s', (claim_id,))
+            overlap = await call(b, body=overlap_wire, status=409)
+            assert overlap['schema'] == 'hollywood-collaboration-rejection/v1'
+            assert overlap['state'] == 'rejected' and overlap['code'] == 'COLLAB_PATH_CLAIM_CONFLICT'
+            assert overlap['newMutationPermitIssued'] is False and overlap['newExecutionAdmitted'] is False
+            assert overlap['priorFilesystemEffects'] == 'not_inferred'
+            assert sql('SELECT * FROM hb_path_claim WHERE id=%s', (claim_id,)) == unchanged_claim
+            assert not sql('SELECT 1 FROM hb_path_claim WHERE id=%s', (overlap_wire['command']['claimId'],))
+            assert not sql('SELECT 1 FROM hb_native_effect WHERE principal=%s AND operation=%s',
+                           (b['id'], overlap_wire['operationId']))
+            assert await call(b, body=overlap_wire, status=409) == overlap
+            original_rejection = await http(b['host']['token'], 'GET',
+                f"collaboration/commands/{b['id']}/{overlap_wire['operationId']}")
+            assert original_rejection['acceptedResult'] == overlap
+            assert original_rejection['eventId'] == overlap['eventId']
+            assert sql("SELECT count(*) n FROM hb_event WHERE data->'rejectionReceipt'->>'operationId'=%s",
+                       (overlap_wire['operationId'],))['n'] == 1
+            from hollywood_backbone.execution_evidence import snapshot as evidence_snapshot
+            with store.pool.connection() as connection:
+                selected = evidence_snapshot(connection, store, store.actor(connection, b['id']),
+                    {'version': 1, 'deliveryId': b['source']['deliveryId'],
+                     'eventIds': [overlap['eventId']], 'contextOperationIds': []})
+            assert selected['records'][0]['event']['data']['rejectionReceipt'] == overlap
+            altered = copy.deepcopy(overlap_wire);altered['command']['note'] = 'Changed rejected original'
+            await call(b, body=altered, status=409)
+            assert sql('SELECT accepted_result FROM hb_command WHERE principal=%s AND operation=%s',
+                       (b['id'], overlap_wire['operationId']))['accepted_result'] == overlap
+            checks.append('Typed overlap rejection commits one authority evidence/command receipt without claim/effect/permit mutation; same operation is stable and changed wire refused')
             await call(c, command(c))
             await call(d, command(d))
             checks.append('Stable canonical receipt/recovery and changed-payload conflict; same path conflicts only in exact host/workspace; canonical path validation')
@@ -397,7 +454,16 @@ async def main():
                 assert actual == rows
             assert sql('SELECT count(*) AS n FROM hb_delivery')['n'] == baseline_deliveries + 1
             assert sql('SELECT count(*) AS n FROM hb_work_report_reconciliation')['n'] == 0
-            assert sql("SELECT count(*) AS n FROM hb_command WHERE wire_request->>'path'='collaboration/path-claims'")['n'] == sql("SELECT count(*) AS n FROM hb_native_effect WHERE path='collaboration/path-claims'")['n']
+            accepted = sql("""SELECT count(*) n FROM hb_command
+                WHERE wire_request->>'path'='collaboration/path-claims'
+                  AND accepted_result->>'schema' IS DISTINCT FROM 'hollywood-collaboration-rejection/v1'""")['n']
+            assert accepted == sql("SELECT count(*) n FROM hb_native_effect WHERE path='collaboration/path-claims'")['n']
+            assert sql("""SELECT count(*) n FROM hb_command c JOIN hb_native_effect e
+                ON e.principal=c.principal AND e.operation=c.operation
+                WHERE c.accepted_result->>'schema'='hollywood-collaboration-rejection/v1'""")['n'] == 0
+            assert sql("""SELECT count(*) n FROM hb_command c LEFT JOIN hb_event e ON e.id=c.event
+                WHERE c.accepted_result->>'schema'='hollywood-collaboration-rejection/v1'
+                  AND (e.data->'rejectionReceipt' IS DISTINCT FROM c.accepted_result)""")['n'] == 0
             checks.append('Original attempts/context/bindings unchanged; zero new work deliveries, report reconciliations or native admissions; existing command/effect ledgers reused')
             (out / 'result.json').write_text(json.dumps({'state': 'passed', 'groups': checks,
                 'actualPostgreSQL': True, 'actualAuthenticatedHTTP': True, 'actualNativeProof': False,

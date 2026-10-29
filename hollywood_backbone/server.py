@@ -16,6 +16,7 @@ from . import native_effects
 from .collaboration_models import BridgeConfiguration, CollaborationCall
 from .edit_plan_models import EditPlanCall, MutationObservation
 from .edit_plan_scope import EditError
+from .collaboration_outcomes import CollaborationConflict, RecordedRejection
 from .physical_models import WorkspaceConfiguration, WorkspaceGrant
 from .delivery_edit_models import AgentWorkspaceGrant, DeliveryEditCall, DeliveryReconcile
 from .placement_models import PlacementState
@@ -29,6 +30,7 @@ from .context_assignments import AssignmentConflict
 from .context_system import ContextOperationNotFound
 from .external_responses import ResponseNotFound
 from .context_material import MaterialReadConflict
+from .context_room_observations import ObservationAudienceDenied
 from .context_seed_models import SeedCreate, SeedMark, SeedControl
 from .context_seeds import SeedConflict
 
@@ -78,8 +80,8 @@ class ContextCall(Input):
     runtimeProtocol: Literal["lax-purpose-runtime/v3"]
     requiredCapability: Literal["scoped-execution-evidence/v1"] | None = None
     operationId: str = Field(min_length=1, max_length=256)
-    action: Literal["seed_revised", "seed_refused", "seed_prepared", "seed_apply", "seed_cancelled", "action_prepare", "action_commit", "selection", "select", "rebuild_request", "rebuild_snapshot", "rebuild_installed", "active_snapshot", "active_installed", "active_installed_reconcile", "active_terminal", "release_reservation", "resume_interrupted", "resume_failed_preturn", "resume_unsettled", "acknowledge_provider_rejection", "observe_writer_outcome", "review_writer_outcome", "writer_evidence_available", "writer_evidence_authorize", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "read_complete", "accept", "answer", "announce",
-                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "wait_goals", "peer_result", "amend", "activity", "response_material", "observe", "initiative", "room_list", "room_history"]
+    action: Literal["seed_revised", "seed_refused", "seed_prepared", "seed_apply", "seed_cancelled", "action_prepare", "action_commit", "selection", "select", "rebuild_request", "rebuild_snapshot", "rebuild_installed", "active_snapshot", "active_installed", "active_installed_reconcile", "active_terminal", "release_reservation", "resume_interrupted", "resume_failed_preturn", "resume_unsettled", "acknowledge_provider_rejection", "acknowledge_reader_failure", "observe_writer_outcome", "review_writer_outcome", "writer_evidence_available", "writer_evidence_authorize", "inbox", "inbox_adopt", "bind", "reserve", "ready", "admit", "begin", "close", "end", "pending", "snapshot", "read", "read_complete", "accept", "answer", "announce",
+                    "progress", "complete", "publish", "suppress", "directory", "peer_request", "wait_peers", "wait_goals", "wait_human", "peer_result", "amend", "activity", "response_material", "observe", "initiative", "room_list", "room_history"]
     nativeThread: str = Field(min_length=1, max_length=256)
     nativeTurn: str = Field(min_length=1, max_length=256)
     value: dict = Field(default_factory=dict)
@@ -563,6 +565,9 @@ async def boundary(request, handler):
             "scope": "canonical_context_receipt",
             "mayApply": False,
         }, status=404)
+    except ObservationAudienceDenied as error:
+        return web.json_response({"error": "Access denied", "code": error.code,
+                                  "next": error.next_action}, status=403)
     except Denied:
         return web.json_response({"error": "Access denied"}, status=403)
     except SeedConflict as error:
@@ -571,6 +576,10 @@ async def boundary(request, handler):
     except (ContractConflict,AssignmentConflict,MaterialReadConflict) as error:
         return web.json_response({"error": str(error), "code": error.code,
             **({"next": error.next_action} if getattr(error, "next_action", None) else {})}, status=409)
+    except RecordedRejection as error:
+        return web.json_response(error.receipt, status=error.receipt["httpStatus"])
+    except CollaborationConflict as error:
+        return web.json_response({"error": str(error), "code": error.public_code}, status=409)
     except (Conflict, pg_errors.UniqueViolation, pg_errors.SerializationFailure):
         return web.json_response({"error": "Identity, revision or operation conflict"}, status=409)
     except (ValidationError, ValueError, TypeError, KeyError):
@@ -785,6 +794,8 @@ async def collaboration_command(request):
 async def edit_invoke(request, method, *args):
     try:
         return await invoke(request, method, *args)
+    except RecordedRejection as error:
+        return web.json_response(error.receipt, status=error.receipt["httpStatus"])
     except EditError as error:
         return web.json_response({"error": error.code, "message": str(error), "mayApply": False,
                                   "retry": "read-original-operation-or-reconcile"}, status=409)

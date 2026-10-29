@@ -3,12 +3,11 @@ from psycopg.types.json import Jsonb
 
 from . import collaboration as claims
 from .store import Conflict, Denied, digest, json_value
+from .collaboration_outcomes import CollaborationConflict
 
 
-class EditError(Conflict):
-    def __init__(self, code, message):
-        super().__init__(message)
-        self.code = code
+class EditError(CollaborationConflict):
+    """Public bounded domain reason; no execution admission is inferred."""
 
 
 def need(condition, code, message):

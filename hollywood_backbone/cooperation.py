@@ -5,6 +5,7 @@ Automatic selection, lease handoff and collaborative editing are separate ports.
 """
 
 from .store import Conflict, Denied, json_value
+from .goal_contract import ContractConflict
 
 CAPABILITY = "cooperation-plan/v1"
 
@@ -39,6 +40,8 @@ def view(c, goal, actor=None):
             "revision": policy["revision"],
             "plannerId": policy["planner"],
             "reviewerId": policy["reviewer"],
+            "reviewAuthority": "independent-verifier" if policy["reviewer"] else "planner",
+            "reviewConstraint": "A designated independent verifier is distinct from planner and executors; null retains planner-led review.",
             "executorIds": [m["principal"] for m in members],
             "role": role,
             "observationStartsExecution": False,
@@ -50,7 +53,8 @@ def view(c, goal, actor=None):
 def configure(store, c, actor, goal, payload):
     old = row(c, goal["id"])
     if (old["revision"] if old else 0) != payload["cooperationRevision"]:
-        raise Conflict("Cooperation revision changed")
+        raise ContractConflict("COOPERATION_REVISION_CHANGED", "Cooperation revision changed",
+            next_action="Read the current Goal: use cooperation.revision, or 0 when cooperation is absent, together with the current Goal revision.")
     if c.execute(
         """SELECT 1 FROM hb_work w WHERE w.goal=%s AND EXISTS(
            SELECT 1 FROM hb_work_attempt a WHERE a.work=w.id) LIMIT 1""", (goal["id"],)
@@ -59,9 +63,13 @@ def configure(store, c, actor, goal, payload):
     ids = payload["executorIds"]
     reviewer = payload["reviewerId"]
     if reviewer in ids:
-        raise Conflict("Verifier cannot also own implementation in this cooperation contract")
+        raise ContractConflict("COOPERATION_REVIEWER_IS_EXECUTOR",
+            "The independent verifier cannot also be a listed executor",
+            next_action="Keep the designated independent verifier outside executorIds. Choose a distinct authorized verifier, or reviewerId=null for planner-led review when that meets the requested acceptance.")
     if str(goal["owner"]) == reviewer:
-        raise Conflict("Planner and independent verifier must be distinct")
+        raise ContractConflict("COOPERATION_REVIEWER_IS_PLANNER",
+            "A designated independent verifier must be distinct from the Goal planner",
+            next_action="For planner-led review of a distinct executor, use reviewerId=null; the Goal owner remains review authority. If independent third-party verification is required, select a different authorized verifier. This does not authorize creating another agent.")
     for identity in ids + ([reviewer] if reviewer else []):
         member = store.actor(c, identity)
         if member["authority"] != actor["authority"] or member["kind"] != "agent":

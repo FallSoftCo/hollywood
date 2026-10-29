@@ -79,7 +79,8 @@ def complete(store, actor_id, identity, payload):
             "responseEventId": answer["id"], "communicationState": "answered",
             "deliveryState": "completed", "resultKind": "external_agent_response",
             "executionState": "not_attested", "nativeExecutionAdmitted": False,
-            "workAcceptanceInferred": False, "completionDeliveryId": notification,
+            "workAcceptanceInferred": False, "completionDeliveryId": None,
+            "completionEventId": notification, "completionNoticeVersion": 2,
         })
         wire = {"method": "POST", "path": "deliveries/" + identity + "/external-response",
                 "body": payload}

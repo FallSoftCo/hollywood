@@ -1392,7 +1392,7 @@ class Store:
                 reply = completion(self,c,a,e,d,result,state)
             out = self.claim_receipt(c, identity)
             if reply:
-                out["replyDeliveryId"] = reply
+                out["replyEventId"] = reply
             c.execute(
                 "INSERT INTO hb_transition VALUES(%s,%s,%s,%s)",
                 (identity, operation, fingerprint, Jsonb(out)),

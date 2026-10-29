@@ -2,7 +2,7 @@
 
 SETTLEMENT_ACTIONS = {
     "accept", "answer", "observe", "initiative", "peer_result", "amend",
-    "rebuild_request", "review_writer_outcome", "complete", "wait_peers", "wait_goals", "publish", "suppress",
+    "rebuild_request", "review_writer_outcome", "complete", "wait_peers", "wait_goals", "wait_human", "publish", "suppress",
 }
 SETTLED = {
     "reader": {"handled", "unavailable", "cancelled"},

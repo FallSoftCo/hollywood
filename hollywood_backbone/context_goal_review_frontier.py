@@ -28,7 +28,7 @@ def native_parent(c, actor_id, goal):
 
 def snapshot(c, store, actor, goal):
     result = {"goalId":str(goal["id"]), "revision":goal["revision"], "state":goal["state"]}
-    if goal["state"] in ("accepted","cancelled"):
+    if goal["state"] in ("accepted","cancelled","paused"):
         return result
     policy=c.execute("SELECT reviewer FROM hb_goal_cooperation WHERE goal=%s",
                      (goal["id"],)).fetchone()

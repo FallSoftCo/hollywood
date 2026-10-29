@@ -152,7 +152,8 @@ def accept_goal(c,goal):
         WHERE goal=%s AND state='accepted' AND goal_definition_revision=%s""",
         (goal["id"],adopted)).fetchall()
     if set(x for row in rows for x in row["criterion_ids"])!=valid:
-        raise ContractConflict('GOAL_CRITERIA_UNCOVERED','Current accepted Work does not cover every adopted criterion')
+        raise ContractConflict('GOAL_CRITERIA_UNCOVERED','Current accepted canonical Work does not cover every adopted criterion',
+            next_action='An internal accept_work responsibility/progress record is not canonical Goal Work. Keep the original Goal and parent responsibility. Create criterion-bound canonical Work with hollywood_work_create, select its existing-Work frontier with hollywood_goal_plan, assign and report it through the normal native workflow, and obtain Work review before Goal acceptance. await_goal_results releases the parent Writer while those assignments execute. Do not weaken criteria, invent acceptance, or repeat completed external effects.')
 
     if any(w["state"] not in ("accepted","cancelled") or w["delivery_state"] in
            ("pending","claimed","running","unknown","cancel_requested") for w in all_work):
