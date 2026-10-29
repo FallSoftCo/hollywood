@@ -38,9 +38,12 @@ async def application(store, config_path):
     config,password=load(config_path)
     def enrolled():
         with store.pool.connection() as c:
-            row=c.execute('SELECT 1 FROM hb_host WHERE id=%s AND authority=%s',
-                          (config['hostId'],config['authorityId'])).fetchone()
-            if not row:raise ValueError('Federation node must use its existing enrolled host and authority')
+            row=c.execute('SELECT 1 FROM hb_authority WHERE id=%s',
+                          (config['authorityId'],)).fetchone()
+            if not row:raise ValueError('Federation node must use its existing local authority')
+            # A catalog/API node does not need a model executor enrollment.
+            # Actual agent operations still require their existing host-placement
+            # binding at AgentRoomTransport's native admission boundary.
     await asyncio.to_thread(enrolled)
     connection=await connect_host(server=config['servers'],host_id=config['hostId'],
         password=password,ca_file=config['caFile'],persistent=True)

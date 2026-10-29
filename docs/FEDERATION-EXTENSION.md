@@ -67,7 +67,7 @@ API serves its local store and joins NATS Services; `GET /hollywood/v3/rooms`
 assembles authorized catalogs from discovered authorities. Original entity IDs
 and per-authority pagination remain intact. Source failures are explicit.
 
-The private node configuration contains `authorityId`, existing enrolled
+The private node configuration contains `authorityId`, credential-bound
 `hostId`, TLS NATS `servers` seeds, owner-only `passwordFile`, `caFile`, and
 optional `localSubjects`, `trustedViewers`, `knownAuthorities`. `localSubjects`
 maps an already authenticated local principal to its global viewer subject.
@@ -88,3 +88,7 @@ zipapp tooling. Native dependencies remain in an existing pinned runtime; no new
 packages or profiles are installed on the execution host. Packaged SQL uses
 `importlib.resources`, so the same application works from a normal wheel or
 zipapp. Build and dependency preparation remain on OZZZ-OS.
+
+Node discovery and executor placement are separate: an API/catalog-only node
+can join without provisioning a model worker. Agent mutations still require
+the existing exact host/placement/native-source enrollment.
