@@ -1,0 +1,19 @@
+{
+  "passed": true,
+  "realPostgreSQLAndHTTP": true,
+  "nativeFacts": "SYNTHETIC rollback-only fixture, not native execution proof",
+  "ownHostCurrentWorkGrant": true,
+  "originalAcceptedReceiptSurvivesCompletionWithoutSecondMutation": true,
+  "completedWorkExecutionCannotObtainNewGrant": true,
+  "revokedGrantNotRestored": true,
+  "agentAccessRevocationHonored": true,
+  "stoppedExecutorDenied": true,
+  "revokedBridgeDenied": true,
+  "changedHostControllerDenied": true,
+  "pausedGoalDenied": true,
+  "workSnapshotLimitedToOriginalAssignment": true,
+  "broaderAdministrativeActionsDenied": true,
+  "grantDoesNotAdmitFileMutation": true,
+  "modelOrWorkerLaunches": 0,
+  "fixturesRolledBack": true
+}

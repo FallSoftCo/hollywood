@@ -9,7 +9,9 @@ def mutate(store, actor_id, action, arguments, command=None):
         raise ValueError("Unknown administrative primitive")
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
-        store.admin(actor)
+        delegated = not actor["administrator"]
+        if delegated and (actor["kind"] != "service" or action != "physical_grant" or not command):
+            raise Denied("Administrative authority required")
         if command:
             # Serialize the same actor/operation before checking/inserting its receipt.
             # Hash collisions only serialize unrelated commands, never equate them.
@@ -25,6 +27,9 @@ def mutate(store, actor_id, action, arguments, command=None):
                 ):
                     raise Conflict("Administrative operation contents changed")
                 return old["accepted_result"]
+        if delegated:
+            from .host_resource_grants import authorize
+            authorize(c, actor, *arguments)
         result = json_value(getattr(store, "_admin_" + action)(c, actor, *arguments))
         if command:
             c.execute(
@@ -39,7 +44,10 @@ def mutate(store, actor_id, action, arguments, command=None):
 def read(store, actor_id, operation):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
-        store.admin(actor)
+        # A service can reconcile only its own accepted command, never another
+        # actor's receipt or a new administrative effect.
+        if not actor["administrator"] and actor["kind"] != "service":
+            raise Denied("Administrative receipt unavailable")
         row = c.execute(
             "SELECT * FROM hb_administrative_command WHERE authority=%s AND principal=%s AND operation=%s",
             (actor["authority"], actor["id"], operation),

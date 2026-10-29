@@ -79,6 +79,8 @@ def read_bridge(store, actor_id, host):
         enabled = bool(row and row["state"] == "active" and row["protocol"] == "canonical-edit-plans/v2")
         return json_value({"schema": CAPABILITY, "bridge": row,
             "implemented": ["physical-claims", "receipt-recovery", "edit-plans", "mutation-permits", "stopped-observations"],
+            "hostExecutionCapture": True, "hostScopedWorkGrants": enabled,
+            "hostScopedWorkGrantContext": "persistent-agent-context/v1",
             "editPlans": enabled, "patchPermits": enabled, "nativeChildAdmission": False,
             "physicalTargets": enabled, "targetSchema": "hollywood-physical-target/v1",
             "deliveryEdits": enabled, "deliveryEditSchema": "canonical-delivery-edits/v1",
