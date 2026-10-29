@@ -43,5 +43,33 @@
     }
   ],
   "scope": "Isolated host-service qualification; no production service change or model execution",
-  "messageSchemaAstIdentical": true
+  "messageSchemaAstIdentical": true,
+  "canonicalAuthority": {
+    "application": {
+      "passed": true,
+      "checks": [
+        "Repeated explicit enrollment retains revision",
+        "Nonadministrator enrollment and human identity enrollment refused",
+        "Actual broker/domain read retains room privacy and excludes credentials",
+        "Wrong host, human impersonation and foreign authority denied over NATS",
+        "Host credential alone cannot publish; native effect boundary retained with zero events",
+        "Revocation between authentication and domain execution rejects stale admission",
+        "Credential revocation, placement disable/movement and binding revocation honored",
+        "Placement-generation replacement requires explicit current revision"
+      ],
+      "realPostgreSQL": true,
+      "isolatedSchema": true,
+      "modelsOrWorkersStarted": false
+    },
+    "realBroker": true,
+    "bidirectionalRouting": true,
+    "sourceForgeryDenied": true,
+    "oneAttemptAfterTimeout": true,
+    "boundedBusyAdmission": true,
+    "reservedControlLane": true,
+    "unregisteredOperationDenied": true,
+    "twoRequestsRoundtripMs": 1.324,
+    "controlDuringHeldWorkMs": 0.435,
+    "scope": "two logical hosts on CPU loopback; not physical two-host or native-agent proof"
+  }
 }

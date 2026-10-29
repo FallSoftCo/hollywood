@@ -24,5 +24,3 @@ class Message(Input):
     sourceEventId: UUID | None = None
     expectsReply: bool = False
     evidenceReferences: EvidenceReferences | None = None
-
-
