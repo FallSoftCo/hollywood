@@ -13,7 +13,7 @@
   },
   "transport": {
     "client": "NextComp HTTPS/WebSocket owner-authenticated tailnet entry; browsers do not receive NATS credentials.",
-    "hosts": "One persistent authenticated NATS client per host connector, concurrent work scoped by agent/delivery.",
+    "hosts": "One persistent authenticated NATS connection per Hollywood node. Agents call its local API; node credentials never reach models or clients.",
     "rpcSubject": "hollywood.v1.<authorityId>.rpc.<authenticatedSourceHostId>.<targetHostId>.<normal|control>",
     "eventSubject": "hollywood.v1.authority.<authorityId>.room.<roomId>.events",
     "discovery": "Advertise host identity, supported runtime modes/protocol versions and canonical authority. Liveness observations do not alter work recency or trigger models.",
@@ -58,16 +58,35 @@
   "implementationOrder": [
     "Qualify existing CPU and GPU backends without replacement",
     "Authenticated host routing and discovery",
-    "Single-context native Hollywood human/agent send and receive",
-    "Create a room with lead agent and qualify cross-host work",
-    "Explicitly transfer this implementation work into the qualified room",
-    "Complete remaining host coverage from that room"
+    "Single-context native Hollywood human/agent send and receive, including idle peer completion",
+    "Run CPU and GPU Hollywood nodes with local agent endpoints, durable transport receipts and NATS routing into the first multi-host room",
+    "Explicitly transfer this implementation work into the qualified room, with only one implementation owner",
+    "Initiate and verify a real NextComp update through host-local agents, then complete remaining host coverage"
   ],
   "handoverAcceptance": [
     "One original human request is visible and admitted exactly once",
     "Native attributed peer exchange on CPU and GPU with private audience preserved",
+    "Actual requests and replies traverse each host-local Hollywood node and NATS; a central-HTTPS-only prototype is insufficient.",
     "Questions, cancellation and reconnect retain original receipts",
     "Room lead initiates a real NextComp update with host-local execution, canary health and rollback",
     "Only one implementation owner remains after explicit handover"
-  ]
+  ],
+  "topology": {
+    "userDirection": "Hollywood node on every execution host; host selection transparent in NextComp and peer communication.",
+    "localNode": "Agents use a stable host-local Hollywood API. The node owns local durable transport inbox/outbox, host discovery and dispatch to its registered local runtimes.",
+    "roomAuthority": "A room has one explicit canonical owner at a time. Other nodes route to it and retain original IDs; independent writable copies of a room are forbidden. Owner failover/sharding requires an explicit fenced ownership protocol, not inference from stale liveness.",
+    "firstPerHostSlice": "CPU and GPU each run a node; the first cross-host room remains CPU-authoritative. This proves local endpoints and NATS routing, not independent per-room sharding or high availability.",
+    "sharedDirectory": "Stable authority/room/agent identities plus host placement and explicit room-owner routes. Discovery never grants membership or changes execution ownership.",
+    "deliveryPath": [
+      "local Codex agent",
+      "local Hollywood node",
+      "authenticated NATS route to room owner",
+      "canonical room commit and domain receipt",
+      "recipient host Hollywood inbox",
+      "recipient local Codex app server using native agent input"
+    ],
+    "client": "NextComp exposes one combined list with host badges and room/session distinction. A browser/device receives no broker or administrator credentials.",
+    "currentState": "The isolated native test currently uses one CPU Hollywood API over HTTPS plus CPU/GPU connectors. NATS routing is separately qualified. Per-host Hollywood services and NATS room delivery are not yet deployed.",
+    "slotMeaning": "A slot is a simultaneous inference/execution admission limit, not a CPU core or open session. Verified awaited control-agent replies must use the reserved control lane while retaining agent authorship."
+  }
 }

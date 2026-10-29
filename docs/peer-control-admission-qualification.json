@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "realPostgreSQLAndActualHostPolicy": true,
+  "maximumSlots": 1,
+  "reservedControlSlots": 1,
+  "ordinaryWorkerSlots": 0,
+  "awaitedPeerReplyEligibleInControlLane": true,
+  "senderRemainsAgent": true,
+  "ordinaryPeerRequestCannotTakeReservedSlot": true,
+  "parentCancellationRecheckedBeforeAdmission": true,
+  "unsettledExecutorStillBlocks": true,
+  "negativeFixtures": "SYNTHETIC rollback-only; no execution proof",
+  "modelsStarted": 0,
+  "databaseFixturesRolledBack": true
+}

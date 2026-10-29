@@ -278,13 +278,14 @@ def diagnose(store, c, actor, host, capabilities, record=False):
         }
         # Choose one head per available connector; stale, revoked, paused and
         # incompatible connectors cannot block unrelated ready rooms.
+        from .single_context_messages import CONTROL_INPUT_SQL, LINEAGE_SQL
         rows = c.execute(
             """WITH heads AS (
                 SELECT d.id,d.agent,e.room,e.seq,
-                  CASE WHEN h.agent IS NOT NULL AND e.data->>'authorKind'='human'
+                  CASE WHEN (__CONTROL_INPUT__)
                     THEN 'interactive' ELSE 'worker' END AS queue_class,
                   row_number() OVER(PARTITION BY d.agent ORDER BY
-                    CASE WHEN h.agent IS NOT NULL AND e.data->>'authorKind'='human' THEN 0 ELSE 1 END,e.seq) AS position
+                    CASE WHEN (__CONTROL_INPUT__) THEN 0 ELSE 1 END,e.seq) AS position
                 FROM hb_delivery d JOIN hb_event e ON e.id=d.event
                 JOIN hb_principal p ON p.id=d.agent AND p.active
                 JOIN hb_placement l ON l.agent=d.agent AND l.host=%s AND l.enabled
@@ -297,13 +298,14 @@ def diagnose(store, c, actor, host, capabilities, record=False):
                       AND m.source=d.event AND m.kind='work' AND m.state IN ('pending','running')))
                   AND o.observed_at>clock_timestamp()-(%s * interval '1 second')
                   AND o.capabilities @> %s
+                  AND (e.data->>'type' IS DISTINCT FROM 'peerCompletion' OR EXISTS(__PEER_LINEAGE__))
                   AND (p.administrator OR EXISTS(SELECT 1 FROM hb_membership m
                     WHERE m.room=e.room AND m.principal=p.id AND m.can_read AND m.can_post))
                   AND NOT EXISTS(SELECT 1 FROM hb_delivery b WHERE b.agent=d.agent
                     AND b.state IN ('claimed','running','unknown','cancel_requested'))
                   AND (EXISTS(SELECT 1 FROM hb_context_system s WHERE s.agent=d.agent AND s.enabled)
                     OR NOT EXISTS(SELECT 1 FROM hb_executor x WHERE x.agent=d.agent AND x.state<>'stopped'))
-            ) SELECT * FROM heads WHERE position=1""",
+            ) SELECT * FROM heads WHERE position=1""".replace('__CONTROL_INPUT__',CONTROL_INPUT_SQL).replace('__PEER_LINEAGE__',LINEAGE_SQL),
             (host, policy["connector_max_age"], Jsonb(sorted(CAPABILITIES))),
         ).fetchall()
         own_head = next((r for r in rows if r["agent"] == actor["id"]), None)
