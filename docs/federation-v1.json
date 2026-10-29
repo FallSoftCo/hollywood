@@ -1,0 +1,57 @@
+{
+  "schema": "hollywood-federation-design/v1",
+  "status": "implementation_contract_not_deployed",
+  "owner": "01a0f2bc-ff5a-70c2-b682-10f0987dab80",
+  "runtimeModes": {
+    "singleContext": "Primary requested mode: Codex-compatible execution plus native Hollywood human/peer admission, tool dispatch and idle delivery. No synthesized human message for peer input.",
+    "purposeContexts": "Deferred. Preserve source, histories and original operation receipts; no new development or implicit conversion."
+  },
+  "authority": {
+    "rooms": "Global identity is authorityId plus roomId; authoritative Hollywood storage commits membership/messages/delivery records. Host discovery does not merge independent histories or grant membership.",
+    "agents": "Global identity is authorityId plus agentId. HostId is execution placement, not agent identity. Native thread and profile stay local to current owner.",
+    "singleOwner": "Existing canonical placement/claim/generation checks remain authoritative; no second broker-side execution lease or domain ledger."
+  },
+  "transport": {
+    "client": "NextComp HTTPS/WebSocket owner-authenticated tailnet entry; browsers do not receive NATS credentials.",
+    "hosts": "One persistent authenticated NATS client per host connector, concurrent work scoped by agent/delivery.",
+    "rpcSubject": "hollywood.v1.authority.<authorityId>.host.<hostId>.rpc",
+    "eventSubject": "hollywood.v1.authority.<authorityId>.room.<roomId>.events",
+    "discovery": "Advertise host identity, supported runtime modes/protocol versions and canonical authority. Liveness observations do not alter work recency or trigger models.",
+    "durability": "NATS/JetStream transport acknowledgements distinct from canonical admission and completion. Existing canonical request IDs and receipts deduplicate operations. Unknown native submission reconciled, never blindly repeated.",
+    "bulkData": "Git/artifact storage references with exact revision/checksum; not bulk NATS payloads.",
+    "auth": "Per-host service credentials and subject permissions plus Hollywood sender/audience authorization; tailnet membership is not application authority."
+  },
+  "envelope": [
+    "protocolVersion",
+    "authorityId",
+    "sourceHostId",
+    "targetHostId",
+    "requestId",
+    "operation",
+    "authenticatedPrincipal",
+    "targetAgentId",
+    "roomId",
+    "originalDeliveryId",
+    "originalClaimId",
+    "generation",
+    "payload"
+  ],
+  "nativeBoundary": [
+    "Human input and agent communication remain distinct native types.",
+    "One agent can join multiple rooms without cloning its model context.",
+    "Room creation provisions at least one explicit agent on an eligible enrolled host; cancellation/failed provisioning preserves receipts.",
+    "Direct conversation resolves explicit human/agent recipient and source room audience.",
+    "No new turn from passive event receipt or catalog reads.",
+    "Authorized actionable input may admit execution through existing native lifecycle; explicit user stops remain enforced."
+  ],
+  "qualification": [
+    "Native single-context human conversation then peer delivery during idle and active execution",
+    "CPU/GPU concurrent agents in one canonical room",
+    "Private audience and cross-authority denial",
+    "Cancellation and questions attributed to original host/agent",
+    "Lost broker ACK, host reconnect and service restart preserve request identity with no duplicate admission",
+    "One disconnected host does not block unrelated agent events or control",
+    "No agent executes remote work via SSH once its supported destination capability exists"
+  ],
+  "rollout": "Add isolated QA before any production listener/profile/runtime replacement; preserve existing NextComp and Codex paths until actual native proof."
+}
