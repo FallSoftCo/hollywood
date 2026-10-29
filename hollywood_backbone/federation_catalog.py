@@ -8,6 +8,8 @@ inside the application, with source-subject ACLs enforced by the broker.
 """
 import asyncio
 
+from nats.errors import Error as NatsError
+
 from .backplane import BackplaneError
 from .federation_service import Client, discover
 from .store import Denied
@@ -59,7 +61,13 @@ class Catalog:
         if not subject:
             return {**local, 'sources': [{'authorityId': self.authority_id, 'status': 'connected'}],
                     'federationStatus': 'viewer_not_enrolled'}
-        services = await discover(self.connection, timeout=.5)
+        try:
+            services = await discover(self.connection, timeout=.5)
+        except NatsError:
+            sources=[{'authorityId': self.authority_id, 'status': 'connected'}]
+            sources.extend({'authorityId':a,'status':'unavailable','reason':'NATS_DISCONNECTED'}
+                           for a in sorted(self.known_authorities-{self.authority_id}))
+            return {**local,'sources':sources,'federationStatus':'partial'}
         self.known_authorities.update(s['authorityId'] for s in services)
         authorities = sorted(self.known_authorities - {self.authority_id})
         gate = asyncio.Semaphore(8)
