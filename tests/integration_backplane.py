@@ -15,7 +15,7 @@ from nats.errors import TimeoutError as NATSTimeout
 from hollywood_backbone.backplane import HostBackplane, BackplaneError, encode
 
 
-async def qualify(binary, *, authority_id=None, configure=None, response_max=1):
+async def qualify(binary, *, authority_id=None, configure=None, response_max=1, additional_authorities=()):
     with tempfile.TemporaryDirectory(prefix="hollywood-backplane-") as temporary:
         root = Path(temporary)
         with socket.socket() as port:
@@ -26,10 +26,12 @@ async def qualify(binary, *, authority_id=None, configure=None, response_max=1):
         passwords = {host: secrets.token_urlsafe(32) for host in (cpu, gpu)}
         prefix = f"hollywood.v1.{authority}"
         users = []
+        foreign_reads = lambda host: [f"hollywood.v1.{a}.service.{host}.hollywood.catalog.read" for a in additional_authorities]
+        foreign_subscriptions = [f"hollywood.v1.{a}.service.*.hollywood.catalog.read" for a in additional_authorities]
         for host in (cpu, gpu):
             users.append({"user": host, "password": passwords[host], "permissions": {
-                "publish": {"allow": [f"{prefix}.rpc.{host}.*.*", f"{prefix}.service.{host}.>", "$SRV.INFO.hollywood"]},
-                "subscribe": {"allow": [f"{prefix}.rpc.*.{host}.*", f"_INBOX.{host}.>", f"{prefix}.service.*.>", "$SRV.>"]},
+                "publish": {"allow": [f"{prefix}.rpc.{host}.*.*", f"{prefix}.service.{host}.>", "$SRV.INFO.hollywood", *foreign_reads(host)]},
+                "subscribe": {"allow": [f"{prefix}.rpc.*.{host}.*", f"_INBOX.{host}.>", f"{prefix}.service.*.>", "$SRV.>", *foreign_subscriptions]},
                 "allow_responses": {"max": response_max, "expires": "60s"}}})
         config = {"host": "127.0.0.1", "port": number, "max_payload": 524288,
                   "max_connections": 8, "authorization": {"users": users}}

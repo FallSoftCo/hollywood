@@ -7,7 +7,7 @@ No scheduling, database replication or new execution ownership lives here.
 from functools import partial
 
 from nats import micro
-from nats.errors import TimeoutError, NoRespondersError, ConnectionClosedError
+from nats.errors import Error as NatsError, TimeoutError, NoRespondersError
 
 from .backplane import HostRequest, BackplaneError, identity, encode, decode
 
@@ -87,7 +87,7 @@ class Client:
                 encode({'version': 1, 'requestId': request_id, 'payload': payload}), timeout=timeout)
         except NoRespondersError:
             raise BackplaneError('AUTHORITY_UNAVAILABLE') from None
-        except (TimeoutError, ConnectionClosedError):
+        except NatsError:
             raise BackplaneError('REPLY_UNKNOWN') from None
         value = decode(reply.data)
         if type(value.get('version')) is not int or value['version'] != 1 or value.get('requestId') != request_id or type(value.get('ok')) is not bool:

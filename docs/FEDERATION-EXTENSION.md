@@ -58,3 +58,33 @@ Tailscale Services is a possible stable redundant client entrypoint, not a
 replacement for Hollywood's catalog or authorization. Its tagged-host and
 approval prerequisites must be verified before use; do not change live device
 identity or Tailscale configuration merely to enable it.
+
+## Runnable instance
+
+The existing `hollywood-backbone` entrypoint accepts `--federation-config FILE`.
+Without that flag it retains the existing API and lifecycle. With it, the same
+API serves its local store and joins NATS Services; `GET /hollywood/v3/rooms`
+assembles authorized catalogs from discovered authorities. Original entity IDs
+and per-authority pagination remain intact. Source failures are explicit.
+
+The private node configuration contains `authorityId`, existing enrolled
+`hostId`, TLS NATS `servers` seeds, owner-only `passwordFile`, `caFile`, and
+optional `localSubjects`, `trustedViewers`, `knownAuthorities`. `localSubjects`
+maps an already authenticated local principal to its global viewer subject.
+`trustedViewers` maps that subject to an existing local principal. The destination
+rechecks kind, active state and ordinary local authorization. An agent assertion
+cannot become a human viewer; absent enrollment never grants admin access.
+These mappings grant reads only, not human command or native execution authority.
+Node credentials may publish only their own source subjects; discovery is not
+permission to mutate another authority.
+
+The actual two-store HTTP integration now verifies the combined rooms and agents
+through either instance, source loss/reconnect, original authority IDs and
+agent-to-human elevation denial. Physical independent-host and native
+cross-authority work delivery remain separate qualification requirements.
+
+`ops/build-node-zipapp.py` packages the reviewed wheel with Python's standard
+zipapp tooling. Native dependencies remain in an existing pinned runtime; no new
+packages or profiles are installed on the execution host. Packaged SQL uses
+`importlib.resources`, so the same application works from a normal wheel or
+zipapp. Build and dependency preparation remain on OZZZ-OS.

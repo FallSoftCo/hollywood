@@ -4,6 +4,7 @@ No model, shell, host provisioning or UI code belongs in this store.
 """
 
 import hashlib
+from importlib import resources
 import json
 import uuid
 from pathlib import Path
@@ -500,7 +501,7 @@ class Store:
     def migrate(self):
         with self.pool.connection() as c:
             c.execute("SELECT pg_advisory_xact_lock(1742014101)")
-            c.execute(Path(__file__).with_name("schema.sql").read_text())
+            c.execute(resources.files("hollywood_backbone").joinpath("schema.sql").read_text(encoding="utf-8"))
             from .context_system import SCHEMA
             c.execute(SCHEMA)
             from .work_resources import SCHEMA as WORK_RESOURCE_SCHEMA

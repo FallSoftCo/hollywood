@@ -207,7 +207,7 @@ class HostBackplane:
 
 
 async def connect_host(*, server: str, host_id: str, password: str,
-                       ca_file: str, timeout: float = 8, closed_cb=None,
+                       ca_file: str, timeout: float = 8, persistent: bool = False, closed_cb=None,
                        disconnected_cb=None, reconnected_cb=None):
     """Create an authenticated TLS connection with a bounded initial handshake.
 
@@ -219,20 +219,24 @@ async def connect_host(*, server: str, host_id: str, password: str,
     from nats.aio.client import Client
 
     host_id = identity(host_id)
-    address = urlsplit(server)
-    if (address.scheme != "tls" or not address.hostname or address.username
-            or address.password or address.path not in {"", "/"}
-            or address.query or address.fragment or not 0 < timeout <= 15
-            or not isinstance(password, str) or len(password) < 32):
-        raise ValueError("TLS host endpoint and private host credential required")
+    servers = [server] if isinstance(server, str) else list(server)
+    if not 1 <= len(servers) <= 16 or len(set(servers)) != len(servers):
+        raise ValueError("Explicit unique NATS seed endpoints required")
+    for endpoint in servers:
+        address = urlsplit(endpoint)
+        if (address.scheme != "tls" or not address.hostname or address.username
+                or address.password or address.path not in {"", "/"}
+                or address.query or address.fragment or not 0 < timeout <= 15
+                or not isinstance(password, str) or len(password) < 32):
+            raise ValueError("TLS host endpoint and private host credential required")
     context = ssl.create_default_context(cafile=ca_file)
     connection = Client()
     try:
         await asyncio.wait_for(connection.connect(
-            server, user=host_id, password=password, tls=context,
+            servers, user=host_id, password=password, tls=context,
             inbox_prefix=f"_INBOX.{host_id}".encode(),
-            allow_reconnect=disconnected_cb is not None, pending_size=0, reconnect_time_wait=2,
-            max_reconnect_attempts=1, connect_timeout=min(timeout, 3),
+            allow_reconnect=persistent or disconnected_cb is not None, pending_size=0, reconnect_time_wait=2,
+            max_reconnect_attempts=-1 if persistent else 1, connect_timeout=min(timeout, 3),
             ping_interval=10, max_outstanding_pings=2,
             error_cb=_quiet_connection_error, closed_cb=closed_cb,
             disconnected_cb=disconnected_cb, reconnected_cb=reconnected_cb), timeout=timeout)

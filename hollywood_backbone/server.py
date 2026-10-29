@@ -530,6 +530,7 @@ class SupervisionAck(Input):
 
 STORE = web.AppKey("store", Store)
 FEDERATED_MESSAGES = web.AppKey("federated_messages", object)
+FEDERATED_CATALOG = web.AppKey("federated_catalog", object)
 
 
 @web.middleware
@@ -904,6 +905,9 @@ async def health(request):
 
 
 async def rooms(request):
+    catalog = request.app.get(FEDERATED_CATALOG)
+    if catalog is not None:
+        return web.json_response(await catalog.combined(request["actor"], request["actorKind"]))
     return await invoke(request, "catalog")
 
 
@@ -1643,9 +1647,11 @@ async def context_seed_control(request):
     return await invoke(request, name, *args)
 
 
-def application(store, *, federated_messages=None):
+def application(store, *, federated_messages=None, federated_catalog=None):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
+    if federated_catalog is not None:
+        app[FEDERATED_CATALOG] = federated_catalog
     if federated_messages is not None:
         app[FEDERATED_MESSAGES] = federated_messages
     app.add_routes(
@@ -1788,11 +1794,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--database-config", type=Path, required=True)
     parser.add_argument("--port", type=int, default=18768)
+    parser.add_argument("--federation-config", type=Path)
     args = parser.parse_args()
     store = Store(json.loads(args.database_config.read_text()))
     store.migrate()
     try:
-        web.run_app(application(store), host="127.0.0.1", port=args.port, access_log=None)
+        if args.federation_config:
+            from .federation_runtime import application as federated_application
+            app = federated_application(store, args.federation_config)
+        else:
+            app = application(store)
+        web.run_app(app, host="127.0.0.1", port=args.port, access_log=None)
     finally:
         store.close()
 
