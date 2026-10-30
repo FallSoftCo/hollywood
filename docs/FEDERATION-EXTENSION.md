@@ -169,3 +169,18 @@ Host controllers retain their existing HTTP capacity/executor routes. For a fore
 Broker deployment must add v2 publish rules bound to each client's authenticated source UUID and v2 subscriptions bound to that client's own node UUID and explicitly served organizations. Validate and reload normal NATS configuration, then reconnect the owned API consumers; allowing a subject does not resurrect a previously rejected subscription. Never broaden source UUIDs to a wildcard.
 
 Native preparation recovery distinguishes a claimed request with no executor/admission from an uncertain native launch. The existing recover-before-native API accepts an explicit administrator no-dispatch reconciliation digest for a stopped, unreserved preparation, with original revision/generation CAS and all canonical native/effect tables empty. This retains the failed preparation snapshot, re-admits the same request and exposes its old-claim lineage; it emits no false task result or parent model continuation. Unknown actual launches and cancellations retain their existing stricter checks. Transport routing uses the HTTP router's captured room/delivery/executor identity, including connector-prefixed context, briefing and admission routes.
+
+#### Explicit host observation destinations (dev160)
+
+`X-Hollywood-Host-Node` selects one separately enrolled work-owning node for
+host policy reads, capacity samples and executor observations. It does not
+select a different physical host: the listener fixes that identity, the caller
+must be its current locally enrolled service controller, and the receiver
+revalidates the same credential/controller under its transaction fence.
+Agent and human credentials cannot use this controller transport. It cannot
+start execution, send messages, or perform administrative operations.
+
+SDK206 uses separate durable journals and independent bounded I/O lanes per
+reviewed observation node. Physical QA now demonstrates local GPU native work
+with the CPU QA API and broker absent. This does not imply global atomic
+multi-node capacity reservation, storage failover, or a finished human client.

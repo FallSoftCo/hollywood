@@ -225,6 +225,33 @@ async def main(database,binary,out):
                                 {'hostId':b.host_id,'credentialDigest':digest(controller_token)},request_id=str(uuid4()))
                             raise AssertionError('Other source host impersonated a controller')
                         except BackplaneError as error:assert error.code=='HOST_ACCESS_DENIED'
+                        # Once the controller is also enrolled locally, explicit
+                        # observation targets must not silently select that local
+                        # store in place of the original work-owning node.
+                        stores[1].principal(owner_b,controller,'QA original host controller','service',controller_token)
+                        stores[1].host_policy_set(owner_b,b.host_id,str(uuid4()),{
+                            'revision':0,'controllerId':controller,'machineIdentity':'a'*64,
+                            'maxConcurrent':1,'reservedInteractive':0,'controlAgentIds':[],
+                            'memoryPerTurnBytes':2147483648,'reserveMemoryBytes':4294967296,
+                            'sampleMaxAgeSeconds':15,'connectorMaxAgeSeconds':30})
+                        for target in (a.host_id,b.host_id):
+                            op=str(uuid4())
+                            async with session.post(urls[1]+'/hollywood/v3/hosts/'+b.host_id+'/capacity',
+                                headers={**host_headers,'X-Hollywood-Host-Node':target},
+                                json={**sample,'operationId':op}) as response:
+                                assert response.status==200,await response.text()
+                            for index,node in enumerate((a.host_id,b.host_id)):
+                                with stores[index].pool.connection() as connection:
+                                    count=connection.execute('SELECT count(*) n FROM hb_admission_command WHERE principal=%s AND operation=%s',
+                                        (controller,op)).fetchone()['n']
+                                    assert count==(1 if node==target else 0),(index,str(node),str(target),count,controller,op)
+                        async with session.get(urls[1]+'/hollywood/v3/hosts/'+b.host_id+'/admission',
+                            headers={**headers,'X-Hollywood-Host-Node':a.host_id}) as response:
+                            assert response.status==403
+                        async with session.put(urls[1]+'/hollywood/v3/hosts/'+b.host_id+'/admission',
+                            headers={**host_headers,'X-Hollywood-Host-Node':a.host_id},json={}) as response:
+                            assert response.status in (400,403)
+                        host_headers={**host_headers,'X-Hollywood-Host-Node':a.host_id}
                         # Revoke after RPC authentication but before the Store
                         # transaction. The shared HTTP/domain fence must reject
                         # this write, not trust the earlier host lookup.

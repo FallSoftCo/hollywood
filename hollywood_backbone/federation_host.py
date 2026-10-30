@@ -15,6 +15,8 @@ from .backplane import BackplaneError
 from .federation_service import Client,discover
 from .store import Denied,digest
 
+HOST_NODE_HEADER='X-Hollywood-Host-Node'
+
 METHODS={'host_policy':'GET','host_sample':'POST','executor_list':'GET','executor_observe':'POST'}
 
 
@@ -110,3 +112,25 @@ async def remote_call(gateway,request,action,args):
         'hostId':gateway.host_id,'credentialDigest':request['tokenDigest'],
         'action':action,'verb':request.method,'path':request.path.removeprefix('/hollywood/v3/'),
         'args':list(args)},request_id=str(uuid4()))
+
+
+async def target_observation(gateway, store, request, actor):
+    """Explicit observer destination, not authority to execute or administer.
+
+    One machine controller may have separately accepted bindings at several
+    work-owning nodes. The installed local host is fixed; each receiving node
+    still validates its own current controller and credential transactionally.
+    """
+    if HOST_NODE_HEADER not in request.headers:
+        return
+    target=str(UUID(request.headers[HOST_NODE_HEADER]))
+    if (gateway is None or actor['kind']!='service'
+            or not request.path.startswith('/hollywood/v3/hosts/'+gateway.host_id+'/')):
+        raise Denied('Only the installed machine controller may target observations')
+    policy=await asyncio.to_thread(store.host_policy,actor['id'],gateway.host_id)
+    if not policy.get('policy') or str(policy['policy']['controller'])!=str(actor['id']):
+        raise Denied('Current local machine controller binding required')
+    request['hostObservationTarget']=target
+    if target!=gateway.node_id:
+        request['federatedHostAuthority']=actor.get('authority',actor.get('authorityId'))
+        request['federatedHostNode']=target

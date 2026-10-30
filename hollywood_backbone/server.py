@@ -636,6 +636,8 @@ async def authenticated_dispatch(request, handler):
         request["actor"] = actor["id"]
         request["actorKind"] = actor["kind"]
         request["tokenDigest"] = digest(authorization[7:])
+        from .federation_host import target_observation
+        await target_observation(gateway,request.app[STORE],request,actor)
         scope = None if remote else await asyncio.to_thread(request.app[STORE].context_token_scope, request["tokenDigest"])
         own_context = scope and request.path == f"/hollywood/v3/agents/{scope['agent']}/contexts/{scope['purpose']}"
         own_receipt = scope and request.method == "GET" and request.path.startswith(
@@ -664,6 +666,10 @@ async def invoke(request, method, *args):
     payload = json.loads(raw_body) if raw_body else None
     provenance = native_effects.source(request.headers.get(native_effects.HEADER))
     from .federation_domain import kwargs_for, remote_call
+    if 'hostObservationTarget' in request:
+        from .federation_host import METHODS
+        if method not in METHODS or request.method!=METHODS[method]:
+            raise Denied('Host observation destination cannot execute or administer')
     if 'federatedHostAuthority' in request:
         from .federation_host import remote_call as host_call
         from .backplane import BackplaneError
