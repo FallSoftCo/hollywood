@@ -180,8 +180,16 @@ def enter(c, identity):
             if value:
                 validate(c, principal, value)
             else:
+                # Authenticated room publication is communication, not an
+                # execution effect. Store.post still enforces room/audience
+                # permissions and stable command receipts. Do not require a
+                # claimed task merely to speak. Supplied native provenance is
+                # still validated above; other business mutations remain gated.
+                plain_message = (request["action"] == "post"
+                    and isinstance(request["body"], dict)
+                    and request["body"].get("kind") == "message")
                 from .agent_context import communication_allowed
-                if not communication_allowed(c, request, principal):
+                if not plain_message and not communication_allowed(c, request, principal):
                     raise Denied("Enrolled communication transport or native execution source required")
         elif write and value and principal["kind"] != "agent":
             raise Denied("Only an agent may assert native provenance")

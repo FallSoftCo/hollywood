@@ -646,6 +646,11 @@ class Store:
             "UPDATE hb_authority SET next_seq=next_seq+1 WHERE id=%s RETURNING next_seq",
             (actor["authority"],),
         ).fetchone()["next_seq"]
+        from .conversation_inbox import recipients
+        audience_members = recipients(c, actor, room, kind, audience, recipient)
+        if audience_members is not None:
+            data = {**(data or {}), "conversationVersion": 1,
+                    "conversationRecipients": audience_members}
         identity = uid()
         c.execute(
             "INSERT INTO hb_event(id,authority,seq,room,author,recipient,kind,audience,body,source,data) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",

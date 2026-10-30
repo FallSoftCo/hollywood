@@ -30,6 +30,10 @@ async def main():
             start=await get('A');assert start['events']==[]
             public=store.post(owner,room,uid(),{'kind':'message','audience':'room','body':'Human room message for all members'})
             private=store.post(owner,room,uid(),{'kind':'message','audience':'direct','recipientId':actors['A']['id'],'body':'Private human input'})
+            # Runtime absent at send time still gets its outstanding input on first read.
+            assert [e['id'] for e in (await get('A'))['events']]==[public['event']['id'],private['event']['id']]
+            # Joining after publication is context/history, not fresh instruction replay.
+            store.membership(owner,room,actors['Outsider']['id'],{'can_read':True,'can_post':True,'can_request':True},0)
             one,two,out=await asyncio.gather(get('A',start['nextCursor']),get('B',start['nextCursor']),get('Outsider',start['nextCursor']))
             pub=public['event']['id'];priv=private['event']['id']
             assert [e['id'] for e in one['events']]==[pub,priv]
@@ -42,6 +46,16 @@ async def main():
             # Revocation applies even to previously unconsumed room traffic.
             store.membership(owner,room,actors['B']['id'],{'can_read':False,'can_post':False,'can_request':False},1)
             assert (await get('B',start['nextCursor']))['events']==[]
+            # A valid member can speak without an execution claim, but ordinary
+            # communication permission does not admit old business requests.
+            async def agent_post(kind,expected):
+                payload={'operationId':'publication-'+kind,'kind':kind,'audience':'room','body':'Synthetic agent communication','recipientId':actors['B']['id'] if kind=='request' else None}
+                async with session.post(base+'rooms/'+room+'/messages',json=payload,headers={'Authorization':'Bearer '+actors['A']['token']}) as response:
+                    value=await response.json();assert response.status==expected,(response.status,value)
+                    return value
+            spoken=await agent_post('message',200)
+            assert spoken['event']['author']==actors['A']['id'] and spoken['event']['data']['authorKind']=='agent'
+            await agent_post('request',403)
             with store.pool.connection() as c:
                 counts={table:c.execute('SELECT count(*) AS n FROM '+table+' WHERE authority=%s',(authority,)).fetchone()['n'] for table in ('hb_delivery','hb_executor')}
             assert counts=={'hb_delivery':0,'hb_executor':0},counts
