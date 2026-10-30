@@ -162,11 +162,29 @@ def kwargs_for(action, verb, path, body):
 class AgentDomain:
     def __init__(self, bindings):self.bindings=bindings
 
-    async def bound(self, request, payload):
+    async def bound(self, request, payload, *, allow_reference=True):
         if not isinstance(payload,dict):raise ValueError('Invalid actor envelope')
         actor=identity(payload['actorId'])
-        bound=await asyncio.to_thread(self.bindings.resolve,authority_id=request.authority_id,
-            authenticated_host_id=request.source_host_id,principal_id=actor)
+        def resolve():
+            with self.bindings.store.pool.connection() as c:
+                principal=c.execute('SELECT identity_reference FROM hb_principal WHERE id=%s AND authority=%s',
+                    (actor,request.authority_id)).fetchone()
+                if principal and principal['identity_reference']:
+                    if not allow_reference:raise Denied('Reference cannot authenticate at this node')
+                    from .federation_identity import resolve_in_transaction
+                    if (type(payload.get('homeRevision')) is not int
+                            or type(payload.get('homeRoleRevision')) is not int):
+                        raise Denied('Authenticated home revision required')
+                    reference=resolve_in_transaction(c,authority_id=request.authority_id,
+                        source_host=request.source_host_id,principal_id=actor,
+                        home_node=payload.get('homeNodeId',''),credential_digest=payload['credentialDigest'])
+                    if (reference.home_revision!=payload['homeRevision']
+                            or reference.role_revision!=payload['homeRoleRevision']):
+                        raise Denied('Home authorization revision changed')
+                    return reference
+            return self.bindings.resolve(authority_id=request.authority_id,
+                authenticated_host_id=request.source_host_id,principal_id=actor)
+        bound=await asyncio.to_thread(resolve)
         if not isinstance(payload['credentialDigest'],str) or not hmac.compare_digest(
                 bound.token_digest,payload['credentialDigest']):
             raise Denied('Incoming credential differs')
@@ -175,7 +193,7 @@ class AgentDomain:
     async def authenticate(self, request):
         try:
             if set(request.payload)!={'actorId','credentialDigest'}:raise ValueError('Invalid authentication')
-            actor,bound=await self.bound(request,request.payload)
+            actor,bound=await self.bound(request,request.payload,allow_reference=False)
             return {'id':actor,'kind':'agent','authorityId':request.authority_id}
         except Denied:raise BackplaneError('AGENT_ACCESS_DENIED') from None
         except (ValueError,TypeError,KeyError):raise BackplaneError('INVALID_PARAMETERS') from None
@@ -184,7 +202,8 @@ class AgentDomain:
         from .server import public_response, edit_response, report_response
         async def execute():
             p=request.payload
-            if (set(p)!={'actorId','credentialDigest','action','verb','path','body','args','nativeSource'}
+            required={'actorId','credentialDigest','action','verb','path','body','args','nativeSource'}
+            if (not required<=set(p) or set(p)-required-{'homeNodeId','homeRevision','homeRoleRevision'}
                     or p['action'] not in METHODS or not isinstance(p['args'],list)
                     or len(p['args'])>16 or not isinstance(p['path'],str) or len(p['path'])>1024
                     or p['verb'] not in {'GET','POST','PUT','PATCH','DELETE'}):
@@ -218,7 +237,10 @@ async def remote_call(gateway, request, action, args, body, provenance):
     operation=body.get('operationId') if isinstance(body,dict) else None
     request_id=(str(uuid5(UUID(authority),'domain:'+request['actor']+':'+request.method+':'+path+':'+operation))
         if isinstance(operation,str) else str(uuid4()))
-    return await Client(gateway.connection,authority_id=authority,host_id=gateway.host_id).request(
+    return await Client(gateway.connection,authority_id=authority,host_id=gateway.host_id,
+        target_node_id=request.get('federatedTargetNode')).request(
         'hollywood.agent.domain',{'actorId':request['actor'],'credentialDigest':request['tokenDigest'],
             'action':action,'verb':request.method,'path':path,'body':body,
-            'args':list(args),'nativeSource':provenance},request_id=request_id)
+            'args':list(args),'nativeSource':provenance,
+            **({'homeNodeId':request['actorHomeNodeId'],'homeRevision':request['actorHomeRevision'],
+                'homeRoleRevision':request['actorHomeRoleRevision']} if 'actorHomeNodeId' in request else {})},request_id=request_id)

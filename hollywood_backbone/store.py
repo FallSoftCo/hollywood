@@ -570,7 +570,7 @@ class Store:
     def authenticate(self, token):
         with self.pool.connection() as c:
             row = c.execute(
-                "SELECT p.* FROM hb_principal p JOIN hb_token t ON t.principal=p.id WHERE t.digest=%s AND NOT t.revoked AND p.active",
+                "SELECT p.* FROM hb_principal p JOIN hb_token t ON t.principal=p.id WHERE t.digest=%s AND NOT t.revoked AND p.active AND NOT p.identity_reference",
                 (digest(token),),
             ).fetchone()
             if not row:
@@ -597,7 +597,7 @@ class Store:
     @staticmethod
     def room(c, actor, identity, action="can_read"):
         row = c.execute(
-            "SELECT * FROM hb_room WHERE id=%s AND authority=%s", (identity, actor["authority"])
+            "SELECT * FROM hb_room WHERE id=%s AND authority=%s AND NOT room_reference", (identity, actor["authority"])
         ).fetchone()
         if not row:
             raise Denied("Room unavailable")
@@ -650,7 +650,8 @@ class Store:
                 audience,
                 body,
                 source,
-                Jsonb({**(data or {}), "authorKind": actor["kind"]}),
+                Jsonb({**(data or {}), "authorKind": actor["kind"],
+                       **({"authorHomeNodeId":str(actor["home_node"])} if actor.get("home_node") else {})}),
             ),
         )
         return identity
@@ -820,7 +821,7 @@ class Store:
             a = self.actor(c, actor_id)
             rows = c.execute(
                 """WITH readable_rooms AS (
-                       SELECT r.* FROM hb_room r WHERE r.authority=%s
+                       SELECT r.* FROM hb_room r WHERE r.authority=%s AND NOT r.room_reference
                        AND (%s OR EXISTS(SELECT 1 FROM hb_membership m
                          WHERE m.room=r.id AND m.principal=%s AND m.can_read))
                        ORDER BY r.name LIMIT 100
@@ -910,7 +911,7 @@ class Store:
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}
 
     def room_actors(self, c, a, room, *, after=None, limit=None):
-        query = """SELECT p.id,p.name,p.kind,r.primary_role,r.home_room,r.purpose
+        query = """SELECT p.id,p.name,p.kind,p.home_node,p.identity_reference,r.primary_role,r.home_room,r.purpose
                FROM hb_principal p LEFT JOIN hb_agent_role r ON r.principal=p.id
                WHERE p.authority=%s AND p.active AND (p.id=%s OR EXISTS
                 (SELECT 1 FROM hb_membership m WHERE m.room=%s AND m.principal=p.id AND m.can_read))"""

@@ -30,8 +30,8 @@ async def qualify(binary, *, authority_id=None, configure=None, response_max=1, 
         foreign_subscriptions = [f"hollywood.v1.{a}.service.*.hollywood.catalog.read" for a in additional_authorities] + [f"hollywood.v1.{a}.service.*.hollywood.viewer.room.read" for a in additional_authorities] + [f"hollywood.v1.{a}.service.*.hollywood.agent.route" for a in additional_authorities] + [f"hollywood.v1.{a}.service.*.{op}" for a in additional_authorities for op in ("hollywood.agent.authenticate","hollywood.agent.domain")]
         for host in (cpu, gpu):
             users.append({"user": host, "password": passwords[host], "permissions": {
-                "publish": {"allow": [f"{prefix}.rpc.{host}.*.*", f"{prefix}.service.{host}.>", "$SRV.INFO.hollywood", *foreign_reads(host)]},
-                "subscribe": {"allow": [f"{prefix}.rpc.*.{host}.*", f"_INBOX.{host}.>", f"{prefix}.service.*.>", "$SRV.>", *foreign_subscriptions]},
+                "publish": {"allow": [f"{prefix}.rpc.{host}.*.*", f"{prefix}.service.{host}.>", f"hollywood.v2.{authority}.node.*.service.{host}.>", "$SRV.INFO.hollywood", *foreign_reads(host)]},
+                "subscribe": {"allow": [f"{prefix}.rpc.*.{host}.*", f"_INBOX.{host}.>", f"{prefix}.service.*.>", f"hollywood.v2.{authority}.node.{host}.service.*.>", "$SRV.>", *foreign_subscriptions]},
                 "allow_responses": {"max": response_max, "expires": "60s"}}})
         config = {"host": "127.0.0.1", "port": number, "max_payload": 524288,
                   "max_connections": 8, "authorization": {"users": users}}

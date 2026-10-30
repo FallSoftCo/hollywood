@@ -1,4 +1,4 @@
-"""Fresh synthetic lifecycle, actual isolated SQL/HTTP and owned RAM artifacts."""
+"""Fresh synthetic lifecycle, actual isolated SQL/HTTP and owned qualification artifacts."""
 import copy
 import json
 import os
@@ -20,7 +20,18 @@ class Fixture:
     def __init__(self):
         self.out = Path(os.environ['CANONICAL_TEST_OUTPUT'])
         config = json.loads(Path(os.environ['CANONICAL_TEST_DATABASE']).read_text())
-        assert str(self.out).startswith('/dev/shm/') and config['host'].startswith('/dev/shm/')
+        legacy_ram = str(self.out).startswith('/dev/shm/') and config['host'].startswith('/dev/shm/')
+        if not legacy_ram:
+            # Disk-backed qualification may share the server, never its schema.
+            # Validate a fresh pre-created private namespace BEFORE migrate().
+            import re, psycopg
+            match=re.fullmatch(r'-c search_path=(qa_canonical_[a-f0-9]{32})',config.get('options','').strip())
+            assert match and self.out.is_absolute() and not self.out.exists()
+            assert str(self.out.resolve()).startswith(('/aosp/','/var/lib/'))
+            with psycopg.connect(**config) as connection:
+                row=connection.execute('SELECT current_schema()').fetchone()
+                assert row[0]==match.group(1)
+                assert connection.execute('SELECT count(*) FROM pg_class WHERE relnamespace=%s::regnamespace',(row[0],)).fetchone()[0]==0
         self.store = Store(config)
         self.store.migrate()
         self.ids = {n: uid() for n in ('authority','global','A','B','goal','host','controller')}

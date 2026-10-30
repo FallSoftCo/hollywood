@@ -5,7 +5,7 @@ Status: candidate, not yet a deployed multi-host product.
 Hollywood remains the application. Each instance keeps its existing API, store,
 room authority, operation receipts and native agent lifecycle. Add one NATS
 connection and a thin NATS Services adapter; do not replace the database or invent
-a distributed scheduler. Independent stores have independent authority IDs.
+a distributed scheduler. An authority identifies an organization, not a server. One organization can span independent stores; each store has a separately addressed node ID.
 
 All enrolled instances on the owner's tailnet are discoverable. Connecting to
 any instance assembles the same authorized room/agent catalog from those sources.
@@ -101,18 +101,20 @@ the existing exact host/placement/native-source enrollment.
 
 ## Host-local Codex runtime boundary
 
-Each execution host retains its own managed resident Codex app-server and
+Each execution host retains its own managed Codex execution runtime and
 protected account profile. Hollywood API nodes and NATS discovery do not launch
 models. Catalog reads, reconnects and peer transport messages must not create
 another app-server or inference turn. Runtime/process identity belongs to the
 existing execution lifecycle, not NATS membership.
 
-The existing native implementation already captures a resident app-server before
-inference admission (`execution_lifecycle.capture_resident`). Reuse this lifecycle;
-do not add a per-message launcher. Multiple isolated account/runtime profiles may
-need separate resident processes, but neither a room nor a discovered host alone
-is a reason to spawn one. NextComp routes control to the owning host and retains
-origin-qualified session IDs, receipts and drafts.
+The primary single-context connector currently launches a protected app-server
+for an admitted delivery and closes it after settlement, while preserving the
+agent's native thread. `capture_resident` belongs to the deferred purpose-context
+runtime; it does not prove that the primary path is already resident. Transport
+reads and discovery do not launch either process. Preserve the actual protected
+execution lifecycle for federation qualification; any move to resident primary
+processes needs its own implementation and proof. NextComp routes control to the
+owning host and retains origin-qualified session IDs, receipts and drafts.
 
 ## Origin-qualified room reads
 
@@ -151,3 +153,19 @@ An existing agent's home authority remains its execution/receipt owner. Native
 agents from independent authorities joining each other's rooms require explicit
 federated membership/provenance integration; that separate path is not yet
 qualified by the current transport tests.
+
+## Host-owned identity candidate
+
+Node-addressed subjects are `hollywood.v2.<authority>.node.<node>.service.<sourceHost>.<operation>`. Discovery retains `(authority,node)` rather than collapsing all nodes of an organization. Only one explicitly retained compatibility service may answer an old authority-only subject. Missing owners never fall through to another database.
+
+`federation_identity` installs explicit room/agent references with no local bearer login or copied history. Current home revision, credential digest, source-host placement and receiving-room grants are rechecked in the canonical domain transaction. A role revision or revoked grant invalidates old admission.
+
+`federation_home` is an operator-only drained enrollment primitive, not automatic agent migration. Persist one immutable plan, fence its original home, independently read back that exact fence, then accept it at the destination. A failure between steps leaves the login unavailable rather than active at two homes. Destination hosts and role references must already be explicitly enrolled. Retry returns the original receipt and does not undo a later revocation. Operators must reconcile current source state before accepting; an old saved receipt alone is not current authorization. Native contexts, account files, execution registrations, model processes and unfinished work are not copied or started.
+
+Real PostgreSQL/NATS/HTTP qualification covers independent credentials, combined authorized rooms, private audience, source impersonation denial, stale-role rejection, fence-before-accept and retained foreign room references. This does not qualify the pending physical two-host native ownership journey.
+
+Host controllers retain their existing HTTP capacity/executor routes. For a foreign controller on the local machine only, `federation_host` discovers the unique existing controller/host-policy binding and uses node-addressed NATS RPC. It exports only policy reads, capacity samples, executor lists and executor observations; each call rechecks active service credentials and the authenticated source host. It cannot post messages, act as an agent, start execution or observe another host. Ambiguous bindings fail closed. No new HTTP endpoint or SDK URL shim is introduced. Controller transport configuration must be explicitly moved to the local API; retired central routes are not revived.
+
+Broker deployment must add v2 publish rules bound to each client's authenticated source UUID and v2 subscriptions bound to that client's own node UUID and explicitly served organizations. Validate and reload normal NATS configuration, then reconnect the owned API consumers; allowing a subject does not resurrect a previously rejected subscription. Never broaden source UUIDs to a wildcard.
+
+Native preparation recovery distinguishes a claimed request with no executor/admission from an uncertain native launch. The existing recover-before-native API accepts an explicit administrator no-dispatch reconciliation digest for a stopped, unreserved preparation, with original revision/generation CAS and all canonical native/effect tables empty. This retains the failed preparation snapshot, re-admits the same request and exposes its old-claim lineage; it emits no false task result or parent model continuation. Unknown actual launches and cancellations retain their existing stricter checks. Transport routing uses the HTTP router's captured room/delivery/executor identity, including connector-prefixed context, briefing and admission routes.

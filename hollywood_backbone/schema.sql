@@ -995,3 +995,44 @@ INSERT INTO hb_schema VALUES (38) ON CONFLICT DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS hb_peer_completion_recipient_seq ON hb_event(authority,recipient,seq) WHERE data->>'type'='peerCompletion';
 CREATE INDEX IF NOT EXISTS hb_delivery_result_event ON hb_delivery(result_event) WHERE result_event IS NOT NULL;
+
+-- An organization can span independent nodes. References are not local logins.
+ALTER TABLE hb_principal ADD COLUMN IF NOT EXISTS home_node uuid;
+ALTER TABLE hb_principal ADD COLUMN IF NOT EXISTS home_revision bigint NOT NULL DEFAULT 1 CHECK(home_revision>0);
+ALTER TABLE hb_principal ADD COLUMN IF NOT EXISTS identity_reference boolean NOT NULL DEFAULT false;
+CREATE TABLE IF NOT EXISTS hb_federated_agent_grant (
+ authority uuid NOT NULL, principal uuid PRIMARY KEY, home_node uuid NOT NULL,
+ source_host uuid NOT NULL, credential_digest text NOT NULL CHECK(credential_digest ~ '^[a-f0-9]{64}$'),
+ home_revision bigint NOT NULL CHECK(home_revision>0),
+ placement_generation bigint NOT NULL CHECK(placement_generation>0),
+ role_revision bigint NOT NULL CHECK(role_revision>0),
+ revision bigint NOT NULL DEFAULT 1 CHECK(revision>0), enabled boolean NOT NULL DEFAULT true,
+ created_by uuid NOT NULL, updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,created_by) REFERENCES hb_principal(authority,id)
+);
+INSERT INTO hb_schema VALUES (39) ON CONFLICT DO NOTHING;
+ALTER TABLE hb_room ADD COLUMN IF NOT EXISTS home_node uuid;
+ALTER TABLE hb_room ADD COLUMN IF NOT EXISTS room_reference boolean NOT NULL DEFAULT false;
+-- Display names are local to an owning node; cross-node references keep names
+-- without becoming additional owners or forcing artificial name prefixes.
+ALTER TABLE hb_principal DROP CONSTRAINT IF EXISTS hb_principal_authority_name_key;
+CREATE UNIQUE INDEX IF NOT EXISTS hb_local_principal_name
+ ON hb_principal(authority,home_node,name) NULLS NOT DISTINCT WHERE NOT identity_reference;
+ALTER TABLE hb_room DROP CONSTRAINT IF EXISTS hb_room_authority_name_key;
+CREATE UNIQUE INDEX IF NOT EXISTS hb_local_room_name
+ ON hb_room(authority,home_node,name) NULLS NOT DISTINCT WHERE NOT room_reference;
+CREATE TABLE IF NOT EXISTS hb_federation_resource_route (
+ authority uuid NOT NULL, kind text NOT NULL, resource uuid NOT NULL, owner_node uuid NOT NULL,
+ confirmed_at timestamptz NOT NULL DEFAULT clock_timestamp(), PRIMARY KEY(authority,kind,resource)
+);
+CREATE TABLE IF NOT EXISTS hb_federation_claim_route (
+ authority uuid NOT NULL, principal uuid NOT NULL, operation text NOT NULL,
+ owner_node uuid NOT NULL, fingerprint text NOT NULL, state text NOT NULL CHECK(state IN ('dispatching','answered')),
+ response jsonb, PRIMARY KEY(authority,principal,operation)
+);
+CREATE TABLE IF NOT EXISTS hb_federation_home_receipt (
+ principal uuid PRIMARY KEY REFERENCES hb_principal(id),
+ plan_digest text NOT NULL, receipt jsonb NOT NULL,
+ accepted_at timestamptz NOT NULL DEFAULT clock_timestamp()
+);

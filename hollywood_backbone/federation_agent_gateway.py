@@ -15,8 +15,9 @@ AGENT_HEADER = 'X-Hollywood-Agent'
 
 
 class LocalAgentGateway:
-    def __init__(self, connection, *, authority_id, host_id):
+    def __init__(self, connection, *, authority_id, host_id, node_id=None):
         self.connection, self.authority_id, self.host_id = connection, authority_id, host_id
+        self.node_id = identity(node_id) if node_id is not None else identity(host_id)
 
     async def authenticate(self, request, authority):
         actor=identity(request.headers.get(AGENT_HEADER,''))

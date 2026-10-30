@@ -47,11 +47,21 @@ def change(store, c, actor, identity, payload):
     ):
         raise Conflict("Original failure revision changed")
     reconciled = payload.get("executorId") is not None
+    preparation = payload.get("outcome") == "native_preparation_not_dispatched"
+    checksum=payload.get("reconciliationSha256")
+    if preparation and (reconciled or not isinstance(checksum,str) or len(checksum)!=64
+                        or any(ch not in "0123456789abcdef" for ch in checksum)):
+        raise ValueError("Original unreserved preparation proof required")
     if (d["cancellation_requested"] or d["native_thread"] is not None or d["native_turn"] is not None
-            or (not reconciled and (d["state"] != "failed" or d["result_event"] is None))
-            or (reconciled and (d["state"] != "unknown" or d["result_event"] is not None))):
+            or (not reconciled and not preparation and (d["state"] != "failed" or d["result_event"] is None))
+            or (reconciled and (d["state"] != "unknown" or d["result_event"] is not None))
+            or (preparation and (d["state"] != "claimed" or d["result_event"] is not None))):
         raise Conflict("Only original pre-native failure or explicitly reconciled reserved launch may recover")
     proof = reserved_launch(c, actor, d, payload) if reconciled else None
+    if preparation:
+        proof={"outcome":"native_launch_not_dispatched","executor":{"id":None},
+               "reconciliationSha256":payload["reconciliationSha256"],
+               "semantics":"Authenticated administrator attests stopped original preparation and durable local no-launch evidence; canonical executor/native/effect/workflow tables must all be empty."}
     tables = ("hb_agent_execution", "hb_native_goal_binding", "hb_native_effect",
               "hb_activity", "hb_attention", "hb_work_attempt", "hb_native_control")
     if not reconciled:
@@ -59,7 +69,7 @@ def change(store, c, actor, identity, payload):
     for table in tables:
         if c.execute("SELECT 1 FROM " + table + " WHERE delivery=%s LIMIT 1", (identity,)).fetchone():
             raise Conflict("Original native admission or workflow evidence requires separate reconciliation")
-    if not reconciled:
+    if not reconciled and not preparation:
         result = c.execute("SELECT * FROM hb_event WHERE id=%s AND authority=%s",
                            (d["result_event"], actor["authority"])).fetchone()
         if not result or any((result["kind"] != "result", result["source"] != d["event"],
@@ -86,6 +96,7 @@ def change(store, c, actor, identity, payload):
         "originalAttemptPreserved": True, "nativeExecutionStarted": False,
         "effectReplayAdmitted": False,
         "explicitReservedLaunchReconciliation": reconciled,
+        "explicitPreparationReconciliation": preparation,
         "meaning": "Explicit re-admission requested; normal current host, role, context and cancellation checks still apply",
     }
 
@@ -98,7 +109,14 @@ def projection(c, delivery):
                   (delivery['id'],delivery['generation'])).fetchone()
     if not row:return None
     before=row['before_snapshot'];proof=before.get('preNativeReconciliation')
-    if not proof:return None
+    if proof is None:
+        # change() accepted this original failed result only after rejecting
+        # every executor, binding, effect, workflow and native pointer. Expose
+        # that same accepted lineage so the guarded worker can retire its old
+        # resident claim without a hand-edited local journal.
+        from .store import digest
+        proof={'executor':{'id':None},'outcome':'native_launch_not_dispatched',
+               'reconciliationSha256':digest(before)}
     return json_value({'schema':'hollywood-accepted-pre-native-recovery/v1',
         'authorityId':delivery['authority'],'deliveryId':delivery['id'],
         'agentId':delivery['agent'],'hostId':before['host'],

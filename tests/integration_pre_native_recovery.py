@@ -37,6 +37,11 @@ async def main():
         accepted = await f.api("owner", "POST", route, body)
         assert accepted["schema"] == body["schema"] and accepted["state"] == "pending"
         assert accepted["originalAttemptPreserved"] and not accepted["nativeExecutionStarted"]
+        lineage=(await f.api("owner","GET","deliveries/"+identity))["preNativeRecovery"]
+        assert lineage["schema"]=="hollywood-accepted-pre-native-recovery/v1"
+        assert lineage["deliveryId"]==identity and lineage["previousClaimId"]=="SYNTHETIC-no-executor"
+        assert lineage["executorId"] is None and lineage["outcome"]=="native_launch_not_dispatched"
+        assert lineage["originalAttemptPreserved"] and not lineage["nativeReplayAdmitted"]
         assert await f.api("owner", "POST", route, body) == accepted
         assert f.sql("SELECT count(*) AS n FROM hb_delivery_recovery WHERE delivery=%s", (identity,))["n"] == 1
         assert f.sql("SELECT before_snapshot FROM hb_delivery_recovery WHERE delivery=%s", (identity,))["before_snapshot"] == __import__("hollywood_backbone.store",fromlist=["json_value"]).json_value(before)
@@ -65,6 +70,27 @@ async def main():
         await f.api("owner", "POST", "deliveries/"+a["prior"]+"/recover-before-native",
             {**body,"operationId":uid(),"revision":old["revision"],"resultEventId":str(old["result_event"])}, status=409)
         checks.append("Stopped prior execution metadata still prohibits replay, even if mutable native pointers are empty")
+        pending=f.store.post(f.owner,f.ids["A"],uid(),{
+            "kind":"request","audience":"room","recipientId":a["id"],
+            "body":"SYNTHETIC captured preparation; no native launch"})
+        unreserved=pending["deliveries"][0]["id"]
+        f.sql("UPDATE hb_delivery SET state='claimed',generation=1,claim_id='SYNTHETIC-preparation',host=%s WHERE id=%s",
+              (f.ids["host"],unreserved))
+        before=f.sql("SELECT * FROM hb_delivery WHERE id=%s",(unreserved,))
+        preparation={"schema":"hollywood-pre-native-recovery/v1","operationId":uid(),
+            "revision":before["revision"],"generation":1,"resultEventId":None,
+            "outcome":"native_preparation_not_dispatched","reconciliationSha256":"a"*64,
+            "note":"SYNTHETIC explicit owner no-dispatch reconciliation"}
+        await f.api("owner","POST","deliveries/"+unreserved+"/recover-before-native",
+                    {**preparation,"outcome":"native_launch_not_dispatched"},status=400)
+        await f.api(a,"POST","deliveries/"+unreserved+"/recover-before-native",preparation,status=403)
+        repaired=await f.api("owner","POST","deliveries/"+unreserved+"/recover-before-native",preparation)
+        assert repaired["explicitPreparationReconciliation"] and not repaired["explicitReservedLaunchReconciliation"]
+        assert await f.api("owner","POST","deliveries/"+unreserved+"/recover-before-native",preparation)==repaired
+        assert f.sql("SELECT result_event FROM hb_delivery WHERE id=%s",(unreserved,))["result_event"] is None
+        projected=(await f.api("owner","GET","deliveries/"+unreserved))["preNativeRecovery"]
+        assert projected["previousClaimId"]=="SYNTHETIC-preparation" and projected["executorId"] is None
+        checks.append("Explicit stopped unreserved preparation recovers same request without a false failed result or parent continuation; original claim lineage retained")
         result = {"state":"passed","checks":checks,"httpCalls":len(f.trace),
                   "actualPostgreSQL":True,"actualAuthenticatedHTTP":True,
                   "nativeLifecycle":"synthetic","modelsStarted":0,"productionChanged":False}

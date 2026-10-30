@@ -34,9 +34,20 @@ async def main(binary):
                 client=Client(a.connection,authority_id=a.authority_id,host_id=a.host_id)
                 result=await client.request('read',{},request_id=str(uuid4()))
                 assert result['sourceHostId']==a.host_id and result['servedByHostId'] in {a.host_id,b.host_id}
+                # One organization may span independent stores. A node-owned
+                # resource must never load-balance into another node's store.
+                node_a=Client(a.connection,authority_id=a.authority_id,host_id=a.host_id,target_node_id=a.host_id)
+                node_b=Client(a.connection,authority_id=a.authority_id,host_id=a.host_id,target_node_id=b.host_id)
+                assert (await node_a.request('read',{},request_id=str(uuid4())))['servedByHostId']==a.host_id
+                assert (await node_b.request('read',{},request_id=str(uuid4())))['servedByHostId']==b.host_id
                 await services[0].stop()
                 result=await client.request('read',{},request_id=str(uuid4()))
                 assert result['servedByHostId']==b.host_id
+                try:
+                    await node_a.request('read',{},request_id=str(uuid4()))
+                    raise AssertionError('Unavailable resource owner silently replaced by another store')
+                except BackplaneError as error:assert error.code=='AUTHORITY_UNAVAILABLE'
+                assert (await node_b.request('read',{},request_id=str(uuid4())))['servedByHostId']==b.host_id
                 original=str(uuid4());before=len(seen)
                 try:
                     await client.request('write',{'operationId':original},request_id=original,timeout=.05)
@@ -53,6 +64,8 @@ async def main(binary):
                     'serviceInstances':2,'malformedAnnouncementDoesNotHideHealthyNodes':True,'survivingInstanceServesAfterOtherStops':True,
                     'originalSourceHostPreserved':True,'uncertainMutationAttempts':1,
                     'modelsStarted':0,'databaseReplicationRequired':False,
+                    'explicitNodeDestinationPreservedWithinOneOrganization':True,
+                    'offlineOwnerNeverFallsThroughToAnotherStore':True,
                     'adapterQualificationOnlyNotPhysicalHostOrNativeExecutionProof':True}
             finally:
                 for s in services:await s.stop()

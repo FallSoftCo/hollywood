@@ -141,10 +141,14 @@ class DeliveryRecovery(Input):
     note: str = Field(min_length=1, max_length=1000)
     executorId: UUID | None = None
     reconciliationSha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
-    outcome: Literal["native_launch_not_dispatched"] | None = None
+    outcome: Literal["native_launch_not_dispatched", "native_preparation_not_dispatched"] | None = None
 
     @model_validator(mode="after")
     def complete_launch_reconciliation(self):
+        if self.outcome == "native_preparation_not_dispatched":
+            if self.executorId is not None or self.reconciliationSha256 is None or self.resultEventId is not None:
+                raise ValueError("Unreserved preparation requires its exact proof digest and no executor/result")
+            return self
         supplied = [self.executorId is not None, self.reconciliationSha256 is not None, self.outcome is not None]
         if any(supplied) and not all(supplied):
             raise ValueError("Complete explicit prelaunch reconciliation required")
@@ -532,6 +536,7 @@ STORE = web.AppKey("store", Store)
 FEDERATED_MESSAGES = web.AppKey("federated_messages", object)
 FEDERATED_CATALOG = web.AppKey("federated_catalog", object)
 FEDERATED_AGENT_GATEWAY = web.AppKey("federated_agent_gateway", object)
+NODE_ROUTER = web.AppKey("node_router", object)
 
 
 async def public_response(action):
@@ -586,11 +591,48 @@ async def authenticated_dispatch(request, handler):
         from .federation_agent_gateway import AUTHORITY_HEADER
         authority = str(UUID(request.headers[AUTHORITY_HEADER])) if AUTHORITY_HEADER in request.headers else None
         remote = gateway is not None and authority is not None and authority != gateway.authority_id
-        if remote:
-            actor = await gateway.authenticate(request, authority)
-            request['federatedAuthority'] = authority
-        else:
-            actor = await asyncio.to_thread(request.app[STORE].authenticate, authorization[7:])
+        local_identity = True
+        try:
+            actor = await asyncio.to_thread(request.app[STORE].authenticate,authorization[7:])
+        except Denied:
+            # A revoked or referenced identity already known here must never
+            # silently fall back to another node's cached credential.
+            def known_credential():
+                with request.app[STORE].pool.connection() as c:
+                    return c.execute('SELECT 1 FROM hb_token WHERE digest=%s',
+                        (digest(authorization[7:]),)).fetchone() is not None
+            if await asyncio.to_thread(known_credential):
+                raise
+            if gateway is not None and request.path.startswith('/hollywood/v3/hosts/'+gateway.host_id+'/'):
+                from .federation_host import authenticate as authenticate_host
+                actor,node = await authenticate_host(gateway,request)
+                authority=actor['authorityId']
+                request['federatedHostAuthority']=authority
+                request['federatedHostNode']=node
+                remote=True
+            else:
+                if not remote:raise
+                actor = await gateway.authenticate(request,authority)
+                request['federatedAuthority'] = authority
+            local_identity = False
+        if local_identity:
+            if authority is not None and authority != actor['authority']:
+                raise Denied('Authenticated organization differs from requested organization')
+            remote = False
+            if gateway is not None and actor['kind']=='agent':
+                home = actor.get('home_node') or gateway.node_id
+                if home != gateway.node_id:
+                    raise Denied('Agent is not owned by this node')
+                def role_revision():
+                    with request.app[STORE].pool.connection() as c:
+                        row=c.execute('SELECT revision FROM hb_agent_role WHERE principal=%s',
+                            (actor['id'],)).fetchone()
+                        if not row:raise Denied('Agent role unavailable')
+                        return row['revision']
+                request['actorHomeNodeId']=home
+                request['actorHomeRevision']=actor.get('home_revision',1)
+                request['actorHomeRoleRevision']=await asyncio.to_thread(role_revision)
+        request['actorAuthorityId']=actor.get('authority',authority)
         request["actor"] = actor["id"]
         request["actorKind"] = actor["kind"]
         request["tokenDigest"] = digest(authorization[7:])
@@ -622,6 +664,33 @@ async def invoke(request, method, *args):
     payload = json.loads(raw_body) if raw_body else None
     provenance = native_effects.source(request.headers.get(native_effects.HEADER))
     from .federation_domain import kwargs_for, remote_call
+    if 'federatedHostAuthority' in request:
+        from .federation_host import remote_call as host_call
+        from .backplane import BackplaneError
+        try:
+            reply=await host_call(request.app[FEDERATED_AGENT_GATEWAY],request,method,args)
+            return web.json_response(reply['body'],status=reply['status'])
+        except BackplaneError as error:
+            return web.json_response({'error':error.code,'mayApply':request.method!='GET' and
+                error.code in {'REPLY_UNKNOWN','HANDLER_FAILED'}},status=503)
+    router=request.app.get(NODE_ROUTER)
+    if router is not None and request['actorKind']=='agent' and 'federatedAuthority' not in request:
+        from .backplane import BackplaneError
+        try:
+            if method=='connector_observe':
+                return web.json_response(await router.observations(request,args,payload))
+            if method=='claim':
+                reply=await router.claim(request,args,payload)
+                return web.json_response(reply['body'],status=reply['status'])
+            target=await router.destination(request,method,args,payload,provenance)
+            if target!=router.node_id:
+                reply=await router.call(request,target,method,args,payload,provenance)
+                return web.json_response(reply['body'],status=reply['status'])
+        except BackplaneError as error:
+            return web.json_response({'error':error.code,'mayApply':request.method!='GET' and
+                error.code in {'REPLY_UNKNOWN','HANDLER_FAILED','ORIGINAL_CLAIM_REPLY_UNKNOWN'},
+                **({'operationId':payload['operationId'],'next':'read-original-operation'}
+                if isinstance(payload,dict) and 'operationId' in payload else {})},status=503)
     if 'federatedAuthority' in request:
         from .backplane import BackplaneError
         try:
@@ -924,6 +993,9 @@ async def health(request):
 
 
 async def rooms(request):
+    router=request.app.get(NODE_ROUTER)
+    if router is not None and request['actorKind']=='agent' and 'federatedAuthority' not in request:
+        return web.json_response(await router.catalog(request))
     catalog = request.app.get(FEDERATED_CATALOG)
     if catalog is not None and 'federatedAuthority' not in request:
         return web.json_response(await catalog.combined(request["actor"], request["actorKind"]))
@@ -1011,7 +1083,7 @@ async def post(request):
     if not p.body.strip() or len(p.body.encode()) > 6000:
         raise ValueError("Invalid message body")
     federation = request.app.get(FEDERATED_MESSAGES)
-    if federation is not None and request["actorKind"] == "agent" and "federatedAuthority" not in request:
+    if federation is not None and NODE_ROUTER not in request.app and request["actorKind"] == "agent" and "federatedAuthority" not in request:
         from .backplane import BackplaneError
         try:
             value = await federation.send(actor_id=request["actor"],
@@ -1063,6 +1135,16 @@ async def stream(request):
     class SourceUnavailable(Exception):
         def __init__(self, status, body):self.status,self.body=status,body
     async def read_page():
+        router=request.app.get(NODE_ROUTER)
+        if router is not None and request['actorKind']=='agent' and 'federatedAuthority' not in request:
+            try:
+                owner=await router.owner(request,'room',room)
+                if owner!=router.node_id:
+                    reply=await router.call(request,owner,'history',(room,cursor,100,None,view),verb='GET')
+                    if reply['status']!=200:raise SourceUnavailable(reply['status'],reply['body'])
+                    return reply['body']
+            except BackplaneError as error:
+                raise SourceUnavailable(503,{'error':error.code,'mayApply':False}) from None
         if 'federatedAuthority' in request:
             from .federation_domain import remote_call
             try:
@@ -1725,9 +1807,11 @@ async def context_seed_control(request):
     return await invoke(request, name, *args)
 
 
-def application(store, *, federated_messages=None, federated_catalog=None, federated_agent_gateway=None):
+def application(store, *, federated_messages=None, federated_catalog=None, federated_agent_gateway=None, node_router=None):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
+    if node_router is not None:
+        app[NODE_ROUTER]=node_router
     if federated_agent_gateway is not None:
         app[FEDERATED_AGENT_GATEWAY] = federated_agent_gateway
     if federated_catalog is not None:

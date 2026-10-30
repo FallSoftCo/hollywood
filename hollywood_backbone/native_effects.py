@@ -136,6 +136,10 @@ def enter(c, identity):
     ).fetchone()
     if not principal:
         raise Denied("Principal inactive")
+    if principal.get('identity_reference'):
+        from .federation_identity import ReferencedAgent
+        if request is None or not isinstance(request.get('admission'),ReferencedAgent):
+            raise Denied('A reference requires authenticated home-node admission')
     write = request is None or request["method"] != "GET"
     if write or request and request["action"] in FENCED_READS:
         if write and request and request["action"] not in BUSINESS | METADATA:
@@ -147,16 +151,27 @@ def enter(c, identity):
     if request:
         # Authentication may have waited behind a revocation. Recheck after the
         # fence, in this transaction, rather than relying on the HTTP preflight.
-        principal = c.execute(
-            """SELECT p.* FROM hb_principal p JOIN hb_token t ON t.principal=p.id
-               WHERE p.id=%s AND p.active AND t.digest=%s AND NOT t.revoked""",
-            (identity, request["tokenDigest"]),
-        ).fetchone()
-        if not principal:
-            raise Denied("Credential changed")
-        if request.get("admission") is not None:
-            from .backplane_auth import validate_admission
-            validate_admission(c, request["admission"], identity, request["tokenDigest"])
+        from .federation_identity import ReferencedAgent, validate_admission as validate_reference
+        if isinstance(request.get('admission'), ReferencedAgent):
+            validate_reference(c,request['admission'],identity,request['tokenDigest'])
+            principal=c.execute('SELECT * FROM hb_principal WHERE id=%s AND active AND identity_reference FOR SHARE',
+                (identity,)).fetchone()
+            if not principal:raise Denied('Original reference identity changed')
+            # Home-node authentication, not a local shadow token, supplies this
+            # identity. Room permissions and native scope are still checked below.
+        else:
+            principal = c.execute(
+                """SELECT p.* FROM hb_principal p JOIN hb_token t ON t.principal=p.id
+                   WHERE p.id=%s AND p.active AND t.digest=%s AND NOT t.revoked""",
+                (identity, request["tokenDigest"]),
+            ).fetchone()
+            if not principal:
+                raise Denied("Credential changed")
+            if request.get("admission") is not None:
+                from .backplane_auth import validate_admission
+                validate_admission(c, request["admission"], identity, request["tokenDigest"])
+            if principal.get('identity_reference'):
+                raise Denied('Reference is not a local authenticated identity')
         value = request["source"]
         if write and principal["kind"] == "agent" and request["action"] in BUSINESS:
             if value:
