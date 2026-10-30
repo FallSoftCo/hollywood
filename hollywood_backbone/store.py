@@ -572,6 +572,11 @@ class Store:
                     owner,
                 ),
             )
+            # Administration permits access; it does not imply participation in
+            # every room. Explicitly join the initial human and agent here.
+            for member in (owner, global_agent):
+                c.execute("INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
+                          (authority, room, member))
             return {"authorityId": authority, "globalRoomId": room, "created": True}
 
     def authenticate(self, token):
@@ -789,6 +794,9 @@ class Store:
             "INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
             (a["authority"], identity, owner),
         )
+        if str(a["id"]) != str(owner) and a["kind"] in ("human", "agent"):
+            c.execute("INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
+                      (a["authority"], identity, a["id"]))
         c.execute(
             "UPDATE hb_agent_role SET home_room=%s,revision=revision+1 WHERE principal=%s AND home_room IS NULL",
             (identity, owner),

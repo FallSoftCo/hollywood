@@ -18,6 +18,15 @@ async def main():
     store.bootstrap(authority,'SYNTHETIC conversational fanout',{'globalRoomId':room,'credentials':credentials})
     for name,a in actors.items():store.principal(owner,a['id'],name,'agent',a['token'])
     for name in ('A','B'):store.membership(owner,room,actors[name]['id'],{'can_read':True,'can_post':True,'can_request':True},0)
+    # New installations and human-created rooms are actual conversations,
+    # not merely administrator-readable rooms with no listening participants.
+    with store.pool.connection() as c:
+        members=c.execute('SELECT principal FROM hb_membership WHERE authority=%s AND room=%s AND can_read',(authority,room)).fetchall()
+        assert {owner,global_agent}.issubset({str(m['principal']) for m in members})
+    child=uid();store.create_room(owner,child,'Creator membership QA','Synthetic membership',actors['A']['id'])
+    with store.pool.connection() as c:
+        members=c.execute('SELECT principal FROM hb_membership WHERE authority=%s AND room=%s AND can_read',(authority,child)).fetchall()
+        assert {owner,actors['A']['id']}.issubset({str(m['principal']) for m in members})
     runner=web.AppRunner(application(store));await runner.setup();site=web.TCPSite(runner,'127.0.0.1',0);await site.start()
     base='http://127.0.0.1:'+str(site._server.sockets[0].getsockname()[1])+'/hollywood/v3/'
     trace=[]
@@ -30,6 +39,7 @@ async def main():
             start=await get('A');assert start['events']==[]
             public=store.post(owner,room,uid(),{'kind':'message','audience':'room','body':'Human room message for all members'})
             private=store.post(owner,room,uid(),{'kind':'message','audience':'direct','recipientId':actors['A']['id'],'body':'Private human input'})
+            assert [e['id'] for e in store.inbox(global_agent,0,100,False,'conversation')['events']]==[public['event']['id']]
             # Runtime absent at send time still gets its outstanding input on first read.
             assert [e['id'] for e in (await get('A'))['events']]==[public['event']['id'],private['event']['id']]
             # Joining after publication is context/history, not fresh instruction replay.
@@ -59,7 +69,7 @@ async def main():
             with store.pool.connection() as c:
                 counts={table:c.execute('SELECT count(*) AS n FROM '+table+' WHERE authority=%s',(authority,)).fetchone()['n'] for table in ('hb_delivery','hb_executor')}
             assert counts=={'hb_delivery':0,'hb_executor':0},counts
-            (root/'result.json').write_text(json.dumps({'passed':True,'sameCanonicalPublicMessageBothAgents':True,'privateIsolation':True,'membershipRevocation':True,'orderedPagingReconnect':True,'counts':counts,'modelCalls':0,'deployed':False},indent=2))
+            (root/'result.json').write_text(json.dumps({'passed':True,'bootstrapAndCreatorMembership':True,'sameCanonicalPublicMessageBothAgents':True,'privateIsolation':True,'membershipRevocation':True,'orderedPagingReconnect':True,'counts':counts,'modelCalls':0,'deployed':False},indent=2))
             print('PASS real PG/HTTP: same human event to two agents; private isolation; paging/reconnect; revocation; zero deliveries/executors/models')
     finally:
         (root/'trace.private.json').write_text(json.dumps(trace,indent=2));await runner.cleanup();store.close()
