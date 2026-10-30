@@ -42,14 +42,15 @@ def hint(store, c, actor, event):
                 (event["source"], event["author"], event["id"]),
             ).fetchone()
         )):
-            # A human's request has one terminal response. Delegated descendants
+            # A request attributable to this human has one terminal response. Delegated descendants
             # and intermediate contributions stay in rooms; ancestry is not an
             # instruction to interrupt the human for every agent's activity.
             source = c.execute(
-                "SELECT author,kind FROM hb_event WHERE id=%s AND authority=%s",
+                "SELECT author,kind,source,data FROM hb_event WHERE id=%s AND authority=%s",
                 (event["source"], event["authority"]),
             ).fetchone()
-            if source and source["author"] == actor["id"] and source["kind"] == "request":
+            from .attention import delegated_human
+            if source and source["kind"] == "request" and (source["author"] == actor["id"] or delegated_human(source) == str(actor["id"])):
                 notify, reason = True, "request_result"
             else:
                 reason = "agent_work_update"

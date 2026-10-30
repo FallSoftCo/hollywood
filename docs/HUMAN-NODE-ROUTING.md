@@ -71,3 +71,7 @@ sourcePrincipalId retains the receiving identity. Event authorship is unchanged.
 Node-addressed reads require human enrollment and an explicitly discovered node
 in the same organization. Agent and non-federated callers cannot silently fall
 back to a local feed. A denied organization is not a network outage.
+
+A terminal result of an explicitly attributed external handoff notifies its
+protected human beneficiary once. This does not follow every descendant or
+turn ordinary agent room chatter into user notifications.

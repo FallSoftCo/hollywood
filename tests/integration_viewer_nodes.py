@@ -175,7 +175,17 @@ async def main(database,binary,out):
       with stores[1].pool.connection() as c:
        original=c.execute('SELECT * FROM hb_event WHERE id=%s',(hv['event']['id'],)).fetchone()
        assert str(human_owner(c,original))==guests[1]['id']
-      stores[1].cancel(owner,hv['deliveries'][0]['id'])
+      # Synthetic completion metadata only: the terminal handoff result is useful
+      # to its protected human beneficiary, without notifying for peer chatter.
+      from hollywood_backbone.inbox import hint
+      with stores[1].pool.connection() as c:
+       author=stores[1].actor(c,agent)
+       result_id=stores[1].event(c,author,room,'result','SYNTHETIC handoff result',source=hv['event']['id'])
+       final=c.execute('SELECT * FROM hb_event WHERE id=%s',(result_id,)).fetchone()
+       notification=hint(stores[1],c,stores[1].actor(c,guests[1]['id']),final)
+       assert notification['notify'] and notification['reason']=='request_result'
+       c.execute("UPDATE hb_delivery SET state='completed',result_event=%s WHERE id=%s",(result_id,hv['deliveries'][0]['id']))
+
       # Reopened entry recovers owner/cursor from SQL without a fresh catalog.
       fresh=Catalog(stores[0],a.connection,authority_id=authority,host_id=a.host_id,node_id=a.host_id,node_routing=True,local_subjects={guests[0]['id']:subject},trusted_viewers={subject:guests[0]['id']})
       reopened=await fresh.room_read(guests[0]['id'],'human',authority,plans[1]['globalRoomId'],'history',{'view':'conversation','limit':1});assert len(reopened['events'])==1

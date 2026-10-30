@@ -25,6 +25,16 @@ def scope(row, delivery):
     )
 
 
+def delegated_human(event):
+    """Accepted server attribution; never a client-supplied message-body hint."""
+    data=event.get("data") or {};owner=data.get("delegatedDecisionOwner")
+    if (event.get("source") is None and event.get("kind")=="request" and data.get("authorKind")=="agent"
+            and isinstance(owner,dict) and type(owner.get("version")) is int and owner["version"]==1
+            and owner.get("basis")=="enrolled-external-agent" and owner.get("authorId")==str(event["author"])):
+        return owner.get("principalId")
+    return None
+
+
 def human_owner(c, event):
     """Resolve the attributable human through accepted delegation, never a caller hint."""
     visited = set()
@@ -41,9 +51,9 @@ def human_owner(c, event):
         ).fetchone()
         if actor and actor["kind"] == "human":
             return actor["id"]
-        delegated = event["data"].get("delegatedDecisionOwner")
-        if not event["source"] and event["kind"] == "request" and event["data"].get("authorKind") == "agent" and isinstance(delegated, dict) and delegated.get("version") == 1 and delegated.get("basis") == "enrolled-external-agent" and delegated.get("authorId") == str(event["author"]):
-            human = c.execute("SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='human' AND active", (delegated.get("principalId"), event["authority"])).fetchone()
+        delegated = delegated_human(event)
+        if delegated is not None:
+            human = c.execute("SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='human' AND active", (delegated, event["authority"])).fetchone()
             if not human:
                 raise Conflict("Delegated human decision owner unavailable")
             return human["id"]
