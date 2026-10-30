@@ -329,13 +329,13 @@ class Store:
         from .agent_context import bind
         return bind(self, actor_id, identity, payload)
 
-    def communication_set(self, actor_id, agent, credential_digest, allow_requests, *, command=None):
+    def communication_set(self, actor_id, agent, credential_digest, allow_requests, decision_owner=None, *, command=None):
         from .agent_context import grant
-        return grant(self, actor_id, agent, credential_digest, allow_requests, command=command)
+        return grant(self, actor_id, agent, credential_digest, allow_requests, decision_owner=decision_owner, command=command)
 
-    def _admin_communication(self, c, a, agent, credential_digest, allow_requests):
+    def _admin_communication(self, c, a, agent, credential_digest, allow_requests, decision_owner=None):
         from .agent_context import admin_grant
-        return admin_grant(self, c, a, agent, credential_digest, allow_requests)
+        return admin_grant(self, c, a, agent, credential_digest, allow_requests, decision_owner)
 
     def native_goal_binding(self, actor_id, identity, payload):
         from .work import native_binding
@@ -630,6 +630,9 @@ class Store:
     def event(
         c, actor, room, kind, body, *, recipient=None, audience="room", source=None, data=None
     ):
+        from .native_effects import human_origin
+        origin=human_origin(actor)
+        if origin is not None:data={**(data or {}),'humanOrigin':origin}
         # This row lock makes sequence order agree with commit order. BIGSERIAL alone
         # would let a reconnect cursor skip a transaction that commits out of order.
         seq = c.execute(
@@ -1028,6 +1031,13 @@ class Store:
             raise Conflict("Private message requires an explicit recipient")
         source = payload.get("sourceEventId")
         data = {"nativeContext": native_context} if native_context else {}
+        if kind == "request" and a["kind"] == "agent" and not source:
+            from .native_effects import external_decision_owner
+            owner = external_decision_owner(c, self, a, room_id)
+            if owner is not None:
+                data["delegatedDecisionOwner"] = {"version": 1, "principalId": str(owner),
+                    "authorId": str(a["id"]), "basis": "enrolled-external-agent"}
+
         if payload.get("expectsReply"):
             if kind != "request" or a["kind"] != "agent":
                 raise ValueError("Only an explicit agent request may establish a peer reply obligation")

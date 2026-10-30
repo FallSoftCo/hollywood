@@ -135,19 +135,19 @@ def bind(store, actor_id, delivery, payload):
         return json_value(execution(c, delivery, d["generation"]))
 
 
-def grant(store, actor_id, agent, credential_digest, allow_requests, *, command=None):
+def grant(store, actor_id, agent, credential_digest, allow_requests, *, decision_owner=None, command=None):
     from .administrative import mutate
 
     return mutate(
         store,
         actor_id,
         "communication",
-        [agent, credential_digest, allow_requests],
+        [agent, credential_digest, allow_requests, decision_owner],
         command,
     )
 
 
-def admin_grant(store, c, actor, agent, credential_digest, allow_requests):
+def admin_grant(store, c, actor, agent, credential_digest, allow_requests, decision_owner=None):
     target = c.execute(
         """SELECT p.id FROM hb_principal p JOIN hb_token t ON t.principal=p.id
            WHERE p.id=%s AND p.authority=%s AND p.kind='agent'
@@ -160,15 +160,20 @@ def admin_grant(store, c, actor, agent, credential_digest, allow_requests):
         raise Denied(
             "A placed native agent cannot enroll its execution credential as an external transport"
         )
+    if decision_owner is not None:
+        human = c.execute("SELECT 1 FROM hb_principal WHERE id=%s AND authority=%s AND kind='human' AND active", (decision_owner, actor["authority"])).fetchone()
+        if not human:
+            raise Denied("Active same-authority human decision owner required")
     c.execute(
-        """INSERT INTO hb_agent_communication VALUES(%s,%s,%s)
-           ON CONFLICT(token_digest) DO UPDATE SET allow_requests=EXCLUDED.allow_requests""",
-        (credential_digest, agent, allow_requests),
+        """INSERT INTO hb_agent_communication(token_digest,principal,allow_requests,decision_owner) VALUES(%s,%s,%s,%s)
+           ON CONFLICT(token_digest) DO UPDATE SET allow_requests=EXCLUDED.allow_requests, decision_owner=EXCLUDED.decision_owner""",
+        (credential_digest, agent, allow_requests, decision_owner),
     )
     return {
         "agentId": agent,
         "credentialDigest": credential_digest,
         "allowRequests": allow_requests,
+        **({"decisionOwner": str(decision_owner)} if decision_owner is not None else {}),
         "scope": "room membership still required; no execution or administrator authority granted",
     }
 

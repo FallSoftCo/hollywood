@@ -1036,3 +1036,38 @@ CREATE TABLE IF NOT EXISTS hb_federation_home_receipt (
  plan_digest text NOT NULL, receipt jsonb NOT NULL,
  accepted_at timestamptz NOT NULL DEFAULT clock_timestamp()
 );
+-- Human federation metadata is an ingress projection, never room history.
+INSERT INTO hb_schema VALUES (40) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS hb_federation_known_node (
+ viewer_authority uuid NOT NULL REFERENCES hb_authority(id),
+ authority uuid NOT NULL, node uuid NOT NULL,
+ observed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(viewer_authority,authority,node)
+);
+CREATE TABLE IF NOT EXISTS hb_federation_viewer_resource (
+ viewer_authority uuid NOT NULL, viewer uuid NOT NULL, kind text NOT NULL, resource uuid NOT NULL,
+ owner_authority uuid NOT NULL, owner_node uuid NOT NULL,
+ observed_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(viewer_authority,viewer,kind,resource),
+ FOREIGN KEY(viewer_authority,viewer) REFERENCES hb_principal(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_federation_viewer_command (
+ authority uuid NOT NULL, principal uuid NOT NULL, operation text NOT NULL,
+ owner_authority uuid NOT NULL, owner_node uuid NOT NULL,
+ action text NOT NULL, resource jsonb NOT NULL, fingerprint text NOT NULL,
+ state text NOT NULL CHECK(state IN ('dispatching','answered','not_admitted')), response jsonb,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(authority,principal,operation),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_federation_viewer_incoming (
+ authority uuid NOT NULL, principal uuid NOT NULL, operation text NOT NULL,
+ source_node uuid NOT NULL, source_principal uuid NOT NULL, source_subject text NOT NULL,
+ fingerprint text NOT NULL, rpc_request uuid NOT NULL,
+ state text NOT NULL CHECK(state IN ('admitted','answered')), response jsonb,
+ created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(authority,principal,operation),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id)
+);
+
+ALTER TABLE hb_agent_communication ADD COLUMN IF NOT EXISTS decision_owner uuid REFERENCES hb_principal(id);

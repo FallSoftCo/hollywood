@@ -17,14 +17,22 @@ from .store import Denied
 
 class Catalog:
     def __init__(self, store, connection, *, authority_id, host_id,
-                 local_subjects, trusted_viewers, known_authorities=()):
+                 local_subjects, trusted_viewers, known_authorities=(), node_id=None, node_routing=False, command_viewers=None):
         self.store, self.connection = store, connection
         self.authority_id, self.host_id = authority_id, host_id
         self.local_subjects, self.trusted_viewers = dict(local_subjects), dict(trusted_viewers)
         self.known_authorities = set(known_authorities)
+        self.command_viewers={s:dict(nodes) for s,nodes in (command_viewers or {}).items()}
+        from .federation_viewer_commands import ViewerCommands
+        self.commands=ViewerCommands(self)
+        from .federation_viewer_entry import ViewerEntry
+        self.entry=ViewerEntry(self)
+        from .federation_viewer_catalog import ViewerCatalog
+        self.node_catalog=ViewerCatalog(self,node_id or host_id) if node_routing else None
 
     def _mapped_read(self, subject, kind):
-        return self._local_read(self._viewer(subject, kind))
+        actor=self._viewer(subject,kind)
+        return self.node_catalog.canonical(actor) if self.node_catalog else self._local_read(actor)
 
     def _local_read(self, actor):
         rooms = self.store.catalog(actor)
@@ -89,7 +97,15 @@ class Catalog:
         except (ValueError, TypeError, KeyError):
             raise BackplaneError('INVALID_PARAMETERS') from None
 
+    async def room_location(self, actor_id, kind, room_id):
+        if self.node_catalog is None:return None
+        authority,node=await self.node_catalog.owner(actor_id,kind,room_id)
+        return {'authorityId':authority,'nodeId':node,
+                'local':authority==self.authority_id and node==self.node_catalog.node}
+
     async def room_read(self, actor_id, kind, authority_id, room_id, read, page):
+        if self.node_catalog is not None:
+            return await self.node_catalog.room_read(actor_id,kind,authority_id,room_id,read,page)
         from uuid import uuid4
         from .backplane import identity
         identity(authority_id); identity(room_id)
@@ -102,6 +118,7 @@ class Catalog:
             request_id=str(uuid4()), timeout=2)
 
     async def combined(self, actor_id, kind):
+        if self.node_catalog is not None:return await self.node_catalog.combined(actor_id,kind)
         local = await asyncio.to_thread(self._local_read, actor_id)
         subject = self.local_subjects.get(actor_id)
         if not subject:

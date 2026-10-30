@@ -17,7 +17,7 @@ from .federation_node_router import NodeRouter
 def load(path):
     d = json.loads(Path(path).read_text())
     required = {'authorityId','hostId','servers','passwordFile','caFile'}
-    optional = {'localSubjects','trustedViewers','knownAuthorities','nodeId','nodeRouting','authorities'}
+    optional = {'localSubjects','trustedViewers','knownAuthorities','nodeId','nodeRouting','authorities','viewerCommands'}
     if not required <= set(d) or set(d)-required-optional:
         raise ValueError('Invalid federation node configuration')
     identity(d['authorityId']);identity(d['hostId'])
@@ -29,7 +29,7 @@ def load(path):
         raise ValueError('Bounded served organizations required')
     seen=set()
     for definition in definitions:
-        if not isinstance(definition,dict) or set(definition)-{'authorityId','legacyService','localSubjects','trustedViewers','knownAuthorities'}:
+        if not isinstance(definition,dict) or set(definition)-{'authorityId','legacyService','localSubjects','trustedViewers','knownAuthorities','viewerCommands'}:
             raise ValueError('Invalid served organization')
         authority=identity(definition['authorityId'])
         if authority in seen:raise ValueError('Duplicate served organization')
@@ -45,6 +45,13 @@ def load(path):
             identity(principal)
             if not isinstance(subject,str) or not 1<=len(subject)<=200:
                 raise ValueError('Invalid global viewer subject')
+    for definition in [d,*definitions]:
+        grants=definition.get('viewerCommands',{})
+        if not isinstance(grants,dict):raise ValueError('Explicit viewer command grants required')
+        for subject,nodes in grants.items():
+            if not isinstance(subject,str) or not 1<=len(subject)<=200 or not isinstance(nodes,dict) or not 1<=len(nodes)<=32:
+                raise ValueError('Invalid viewer command grant')
+            for node,principal in nodes.items():identity(node);identity(principal)
     for authority in d.get('knownAuthorities',[]):identity(authority)
     password=Path(d['passwordFile'])
     if not password.is_absolute() or password.stat().st_mode & 0o077:
@@ -67,6 +74,8 @@ class Catalogs:
         return await (await self.source(actor)).combined(actor,kind)
     async def room_read(self,actor,kind,*args):
         return await (await self.source(actor)).room_read(actor,kind,*args)
+    async def room_location(self,actor,kind,room):
+        return await (await self.source(actor)).room_location(actor,kind,room)
 
 
 async def application(store, config_path):
@@ -92,7 +101,9 @@ async def application(store, config_path):
             catalog=Catalog(store,connection,authority_id=authority,host_id=config['hostId'],
                 local_subjects=definition.get('localSubjects',inherited.get('localSubjects',{})),
                 trusted_viewers=definition.get('trustedViewers',inherited.get('trustedViewers',{})),
-                known_authorities=definition.get('knownAuthorities',inherited.get('knownAuthorities',[])))
+                known_authorities=definition.get('knownAuthorities',inherited.get('knownAuthorities',[])),
+                node_id=config.get('nodeId',config['hostId']),node_routing=config.get('nodeRouting',False),
+                command_viewers=definition.get('viewerCommands',inherited.get('viewerCommands',{})))
             catalogs[authority]=catalog
             handlers=AgentRoomTransport(bindings).handlers()
             domain=AgentDomain(bindings)
@@ -104,6 +115,7 @@ async def application(store, config_path):
             handlers['hollywood.host.domain']=host_domain.invoke
             handlers['hollywood.catalog.read']=catalog.receive
             handlers['hollywood.viewer.room.read']=catalog.receive_room
+            handlers['hollywood.viewer.command']=catalog.commands.receive
             service=Service(connection,authority_id=authority,host_id=config['hostId'],handlers=handlers,
                 node_id=config.get('nodeId',config['hostId']),legacy=definition.get('legacyService',authority==config['authorityId']))
             await service.start();services.append(service)

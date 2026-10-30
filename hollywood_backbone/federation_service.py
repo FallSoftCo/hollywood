@@ -5,6 +5,8 @@ its own authorization, canonical receipts, room histories and native lifecycle.
 No scheduling, database replication or new execution ownership lives here.
 """
 from functools import partial
+import asyncio
+import logging
 
 from nats import micro
 from nats.errors import Error as NatsError, TimeoutError, NoRespondersError
@@ -13,13 +15,17 @@ from .backplane import HostRequest, BackplaneError, identity, encode, decode
 
 
 class Service:
-    def __init__(self, connection, *, authority_id, host_id, handlers, version='0.3.0', node_id=None, legacy=True):
+    def __init__(self, connection, *, authority_id, host_id, handlers, version='0.3.0', node_id=None, legacy=True, read_concurrency=16, write_concurrency=32):
         self.connection = connection
         self.authority_id, self.host_id = identity(authority_id), identity(host_id)
         self.node_id = identity(node_id) if node_id is not None else self.host_id
         self.legacy = legacy
         self.handlers, self.version = dict(handlers), version
         self.service = None
+        if any(type(v) is not int or not 1<=v<=256 for v in (read_concurrency,write_concurrency)):
+            raise ValueError('Bounded RPC concurrency required')
+        self._limits={'read':read_concurrency,'write':write_concurrency}
+        self._active={'read':0,'write':0};self._tasks=set();self._stopping=False
 
     @property
     def prefix(self):
@@ -32,6 +38,8 @@ class Service:
     async def start(self):
         if self.service is not None:
             return
+        if self._tasks:raise RuntimeError('Original RPC handlers have not drained')
+        self._stopping=False
         self.service = await micro.add_service(self.connection, name='hollywood', version=self.version,
             metadata={'authorityId': self.authority_id, 'hostId': self.host_id, 'nodeId': self.node_id,
                       'protocol': 'hollywood-nats/v1' if self.legacy else 'hollywood-nats/v2', 'nodeAddressing': '1'})
@@ -53,7 +61,36 @@ class Service:
             await self.stop()
             raise
 
-    async def _receive(self, operation, request):
+    async def _receive(self,operation,request):
+        # nats.py awaits each subscription callback serially. Keep that callback
+        # as admission only; independently executing domain I/O must not block
+        # receipt/control reads behind a slow command. These are RPC memory
+        # bounds, not model workers or native host-execution slots.
+        try:
+            raw=decode(request.data)
+            payload=raw.get('payload',{})
+            lane='read' if isinstance(payload,dict) and payload.get('verb')=='GET' or operation.endswith(('.read','.authenticate')) else 'write'
+            request_id=raw.get('requestId')
+        except BackplaneError:
+            return await self._execute(operation,request)
+        if self._stopping or self._active[lane]>=self._limits[lane]:
+            await request.respond(encode({'version':1,'ok':False,'requestId':request_id,
+                'error':'RPC_BUSY_NO_DISPATCH'}))
+            return
+        self._active[lane]+=1
+        async def dispatch():
+            try:await self._execute(operation,request)
+            finally:self._active[lane]-=1
+        task=asyncio.create_task(dispatch(),name='hollywood-rpc-'+operation)
+        self._tasks.add(task)
+        def finished(value):
+            self._tasks.discard(value)
+            if not value.cancelled():
+                error=value.exception()
+                if error is not None:logging.getLogger(__name__).error('RPC reply transport failed: %s',type(error).__name__)
+        task.add_done_callback(finished)
+
+    async def _execute(self, operation, request):
         request_id = None
         try:
             parts = request.subject.split('.')
@@ -89,9 +126,13 @@ class Service:
                                            'error': 'HANDLER_FAILED'}))
 
     async def stop(self):
+        self._stopping=True
         if self.service is not None:
             await self.service.stop()
             self.service = None
+        if self._tasks:
+            _,pending=await asyncio.wait(set(self._tasks),timeout=30)
+            if pending:raise RuntimeError('Unsettled RPC handlers retained; do not declare service drained')
         # The caller owns the shared connection and any native runtime.
 
 

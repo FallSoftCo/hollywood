@@ -41,6 +41,12 @@ def human_owner(c, event):
         ).fetchone()
         if actor and actor["kind"] == "human":
             return actor["id"]
+        delegated = event["data"].get("delegatedDecisionOwner")
+        if not event["source"] and event["kind"] == "request" and event["data"].get("authorKind") == "agent" and isinstance(delegated, dict) and delegated.get("version") == 1 and delegated.get("basis") == "enrolled-external-agent" and delegated.get("authorId") == str(event["author"]):
+            human = c.execute("SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='human' AND active", (delegated.get("principalId"), event["authority"])).fetchone()
+            if not human:
+                raise Conflict("Delegated human decision owner unavailable")
+            return human["id"]
         if not event["source"]:
             raise Conflict("Question/approval lacks an attributable human request")
         event = c.execute(

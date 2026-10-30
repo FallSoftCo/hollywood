@@ -411,6 +411,7 @@ class CommunicationGrant(Input):
     operationId: str = Field(min_length=1, max_length=128)
     credentialDigest: str = Field(pattern=r"^[0-9a-f]{64}$")
     allowRequests: bool = False
+    decisionOwner: UUID | None = None
 
 
 from .goal_contract_models import DefinitionWrite, DefinitionAdopt, DefinitionResolve, StrategyWrite
@@ -679,6 +680,19 @@ async def invoke(request, method, *args):
         except BackplaneError as error:
             return web.json_response({'error':error.code,'mayApply':request.method!='GET' and
                 error.code in {'REPLY_UNKNOWN','HANDLER_FAILED'}},status=503)
+    catalog=request.app.get(FEDERATED_CATALOG)
+    if catalog is not None and request['actorKind']=='human' and 'federatedAuthority' not in request:
+        selected=await catalog.source(request['actor']) if hasattr(catalog,'source') else catalog
+        if hasattr(selected,'entry'):
+            from .backplane import BackplaneError
+            try:
+                reply=await selected.entry.invoke(request,method,args,payload)
+                if reply is not None:return web.json_response(reply['body'],status=reply['status'])
+            except BackplaneError as error:
+                return web.json_response({'error':error.code,'mayApply':request.method!='GET' and
+                    error.code in {'REPLY_UNKNOWN','HANDLER_FAILED','ORIGINAL_VIEWER_REPLY_UNKNOWN'},
+                    **({'operationId':payload['operationId'],'next':'read-original-operation'}
+                    if isinstance(payload,dict) and 'operationId' in payload else {})},status=503)
     router=request.app.get(NODE_ROUTER)
     if router is not None and request['actorKind']=='agent' and 'federatedAuthority' not in request:
         from .backplane import BackplaneError
@@ -1011,13 +1025,19 @@ async def rooms(request):
 async def federated_room_read(request, read):
     catalog = request.app.get(FEDERATED_CATALOG)
     authority = request.query.get('authority')
-    if authority is None:
-        return None
-    authority = str(UUID(authority))
-    if catalog is None:
-        raise ValueError('Federation is not configured')
-    if authority == catalog.authority_id:
-        return None
+    if authority is not None:authority=str(UUID(authority))
+    location=None
+    if catalog is not None and hasattr(catalog,'room_location') and request['actorKind']=='human':
+        location=await catalog.room_location(request['actor'],request['actorKind'],
+            str(UUID(request.match_info['room'])))
+    if location is not None:
+        if authority is not None and authority!=location['authorityId']:
+            raise Denied('Room belongs to another organization')
+        if location['local']:return None
+        authority=location['authorityId']
+    elif authority is None:return None
+    elif catalog is None:raise ValueError('Federation is not configured')
+    elif authority == catalog.authority_id:return None
     allowed = {'authority'} | ({'after', 'before', 'limit', 'view'} if read == 'history' else set())
     if set(request.query) - allowed:
         raise ValueError('Unknown room parameters')
@@ -1391,7 +1411,7 @@ async def agent_execution_binding(request):
 async def communication_set(request):
     p = await body(request, CommunicationGrant)
     return await invoke(request, "communication_set", str(UUID(request.match_info["agent"])),
-                        p.credentialDigest, p.allowRequests)
+                        p.credentialDigest, p.allowRequests, str(p.decisionOwner) if p.decisionOwner else None)
 
 
 async def native_goal_binding(request):

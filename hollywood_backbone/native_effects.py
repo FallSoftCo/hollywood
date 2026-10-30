@@ -39,7 +39,7 @@ METADATA = {"runtime_observe", "context_call",
     "context_seed_create", "context_seed_mark",
     "context_seed_control",
 }
-EXCLUSIVE = {"external_response", "runtime_observe", "context_configure", "context_call",
+EXCLUSIVE = {"communication_set", "external_response", "runtime_observe", "context_configure", "context_call",
     "delivery_recover",
     "delivery_edit_reconcile", "mutation_reconcile",
     "report_scope_read",
@@ -152,7 +152,10 @@ def enter(c, identity):
         # Authentication may have waited behind a revocation. Recheck after the
         # fence, in this transaction, rather than relying on the HTTP preflight.
         from .federation_identity import ReferencedAgent, validate_admission as validate_reference
-        if isinstance(request.get('admission'), ReferencedAgent):
+        from .federation_viewer_commands import MappedViewer
+        if isinstance(request.get('admission'), MappedViewer):
+            principal=request['admission'].validate(c,identity,request['tokenDigest'])
+        elif isinstance(request.get('admission'), ReferencedAgent):
             validate_reference(c,request['admission'],identity,request['tokenDigest'])
             principal=c.execute('SELECT * FROM hb_principal WHERE id=%s AND active AND identity_reference FOR SHARE',
                 (identity,)).fetchone()
@@ -317,3 +320,27 @@ def listing(store, actor_id, delivery, after=0, limit=100):
             "nextCursor": rows[limit - 1]["sequence"] if len(rows) > limit else None,
             "meaning": "Accepted Hollywood transactions; not proof external effects stopped or were undone",
         })
+
+
+def human_origin(actor=None):
+    request=_request.get()
+    if request:
+        from .federation_viewer_commands import MappedViewer
+        bound=request.get('admission')
+        if isinstance(bound,MappedViewer) and (actor is None or str(actor['id'])==bound.principal and actor['kind']=='human'):return bound.origin()
+    return None
+
+
+def external_decision_owner(c, store, actor, room):
+    """Only current authenticated external enrollment supplies this attribution."""
+    request = _request.get()
+    if not request or request["actor"] != str(actor["id"]) or request["source"] is not None:
+        return None
+    row = c.execute("SELECT decision_owner FROM hb_agent_communication WHERE token_digest=%s AND principal=%s AND allow_requests", (request["tokenDigest"], actor["id"])).fetchone()
+    if not row or row["decision_owner"] is None:
+        return None
+    human = store.actor(c, row["decision_owner"])
+    if human["kind"] != "human" or human["authority"] != actor["authority"]:
+        raise Denied("Delegated human decision owner unavailable")
+    store.room(c, human, room, "can_read")
+    return human["id"]
