@@ -41,6 +41,16 @@ async def main(database,binary,out):
        v=await get(idx,'rooms');assert {r['id'] for r in v['rooms']}=={p['globalRoomId'] for p in plans};assert {s['nodeId'] for s in v['sources']}=={a.host_id,b.host_id};assert v['federationStatus']=='connected'
        foreign=plans[1-idx]['globalRoomId'];detail=await get(idx,'rooms/'+foreign);assert detail['room']['id']==foreign
        history=await get(idx,'rooms/'+foreign+'/history?view=conversation&limit=1');assert [e['body'] for e in history['events']]==['SYNTHETIC public node '+str(1-idx)]
+      # Independent canonical inbox counters remain tied to their physical owner.
+      for cat in catalogs:cat.command_viewers[subject]={a.host_id:guests[0]['id'],b.host_id:guests[1]['id']}
+      remote_inbox=await get(0,'inbox?nodeId='+b.host_id+'&after=0&limit=100')
+      assert remote_inbox['nodeId']==b.host_id and remote_inbox['principalId']==guests[0]['id']
+      assert remote_inbox['sourcePrincipalId']==guests[1]['id'] and len(remote_inbox['events'])==1
+      assert remote_inbox['events'][0]['roomId']==plans[1]['globalRoomId']
+      ih=await get(0,'inbox/events/'+remote_inbox['events'][0]['eventId'])
+      assert ih['event']['room']==plans[1]['globalRoomId'] and ih['hint']['principalId']==guests[0]['id']
+      assert ih['hint']['sourcePrincipalId']==guests[1]['id']
+      for cat in catalogs:cat.command_viewers.clear()
       # Authorization is not host availability; re-enrollment restores visible rooms.
       saved=catalogs[1].trusted_viewers.pop(subject)
       limited=await get(0,'rooms')

@@ -94,7 +94,33 @@ class ViewerEntry:
 
     async def invoke(self,request,action,args,body):
         cat=self.catalog
-        if request['actorKind']!='human' or cat.node_catalog is None or request['actor'] not in cat.local_subjects:return None
+        if request['actorKind']!='human' or cat.node_catalog is None or request['actor'] not in cat.local_subjects:
+            if action=='inbox' and request.query.get('nodeId'):raise Denied('Node-addressed human inbox enrollment required')
+            return None
+        if action=='inbox' and request.query.get('nodeId'):
+            node=str(UUID(request.query['nodeId']))
+            if node==cat.node_catalog.node:return None
+            if (cat.authority_id,node) not in await cat.node_catalog.nodes():
+                raise Denied('Inbox source node is not discovered in this organization')
+            response=await cat.commands.call(request,cat.authority_id,node,action,list(args),verb='GET',path=request.path)
+            value=response.get('body',{})
+            if response.get('status')==200:
+                # A recipient alias is presentation metadata, never event authorship.
+                original=value.get('principalId')
+                if value.get('authorityId')!=cat.authority_id or not isinstance(value.get('events'),list):
+                    raise BackplaneError('RESPONSE_IDENTITY_MISMATCH')
+                value={**value,'nodeId':node,'principalId':request['actor'],'sourcePrincipalId':original,
+                    'events':[{**h,'principalId':request['actor'],'sourcePrincipalId':original,'nodeId':node} for h in value['events']]}
+                response={**response,'body':value}
+                identities=[str(UUID(hint['eventId'])) for hint in value['events']]
+                if identities:
+                    def remember_events():
+                        with cat.store.pool.connection() as c:
+                            c.cursor().executemany('''INSERT INTO hb_federation_viewer_resource(viewer_authority,viewer,kind,resource,owner_authority,owner_node)
+                                VALUES(%s,%s,'event',%s,%s,%s) ON CONFLICT DO NOTHING''',
+                                [(cat.authority_id,request['actor'],identity,cat.authority_id,node) for identity in identities])
+                    await asyncio.to_thread(remember_events)
+            return response
         if action=='command':
             old=await self.previous(request,args[0])
             return await self.receipt(request,args[0],old) if old else None
@@ -147,6 +173,9 @@ class ViewerEntry:
                         (Jsonb(response),cat.authority_id,request['actor'],operation,fingerprint))
             await asyncio.to_thread(not_admitted)
             return response
+        if action=='inbox_event' and reply.get('status')==200:
+            value=reply['body'];hint=value['hint']
+            reply={**reply,'body':{**value,'hint':{**hint,'principalId':request['actor'],'sourcePrincipalId':hint['principalId'],'nodeId':node}}}
         # A refresh/cache failure after acceptance must never turn it into an
         # unconfirmed send. The receiver has its original durable receipt.
         try:

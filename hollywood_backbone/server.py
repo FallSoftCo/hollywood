@@ -1222,7 +1222,11 @@ async def stream(request):
 
 
 async def inbox(request):
-    if set(request.query) - {"after", "limit"}:
+    if "nodeId" in request.query:
+        str(UUID(request.query["nodeId"]))
+        if FEDERATED_CATALOG not in request.app or request["actorKind"] != "human":
+            raise Denied("Node-addressed human inbox is not enabled")
+    if set(request.query) - {"after", "limit", "nodeId"}:
         raise ValueError("Unknown inbox query")
     after = int(request.query["after"]) if "after" in request.query else None
     limit = int(request.query.get("limit", "100"))

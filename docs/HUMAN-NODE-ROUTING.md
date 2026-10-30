@@ -61,3 +61,13 @@ private; reply/steer/cancel/question stay bound to owner; temporary peer loss
 keeps local work accessible. Then move implementation ownership through an
 explicit written checkpoint, with no duplicate active developer or old request
 replay. Multi-node capacity admission is a separate remaining requirement.
+
+The existing inbox and inbox/pending HTTP reads accept an optional nodeId.
+Each response retains that node's original counter. Consumers persist a cursor
+per installation/viewer/organization/node; they never compare counters from two
+nodes. Remote event references are cached in one SQL batch for canonical read
+routing. The recipient alias may be mapped to the ingress human, while
+sourcePrincipalId retains the receiving identity. Event authorship is unchanged.
+Node-addressed reads require human enrollment and an explicitly discovered node
+in the same organization. Agent and non-federated callers cannot silently fall
+back to a local feed. A denied organization is not a network outage.
