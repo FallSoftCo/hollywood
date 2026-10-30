@@ -37,14 +37,15 @@ def load(path):
         if 'legacyService' in definition and type(definition['legacyService']) is not bool:
             raise ValueError('Legacy service must be explicit boolean')
     if d['authorityId'] not in seen:raise ValueError('Primary organization must remain served')
-    for key in ('localSubjects','trustedViewers'):
-        mapping=d.get(key,{})
-        if not isinstance(mapping,dict):raise ValueError('Invalid viewer enrollment')
-        for k,v in mapping.items():
-            principal,subject=(k,v) if key=='localSubjects' else (v,k)
-            identity(principal)
-            if not isinstance(subject,str) or not 1<=len(subject)<=200:
-                raise ValueError('Invalid global viewer subject')
+    for definition in [d,*definitions]:
+        for key in ('localSubjects','trustedViewers'):
+            mapping=definition.get(key,{})
+            if not isinstance(mapping,dict):raise ValueError('Invalid viewer enrollment')
+            for k,v in mapping.items():
+                principal,subject=(k,v) if key=='localSubjects' else (v,k)
+                identity(principal)
+                if not isinstance(subject,str) or not 1<=len(subject)<=200:
+                    raise ValueError('Invalid global viewer subject')
     for definition in [d,*definitions]:
         grants=definition.get('viewerCommands',{})
         if not isinstance(grants,dict):raise ValueError('Explicit viewer command grants required')

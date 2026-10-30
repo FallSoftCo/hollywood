@@ -66,7 +66,7 @@ class ViewerCatalog:
         results=await asyncio.gather(*(read(k) for k in await self.nodes()))
         rooms={};agents={};sources=[]
         for (authority,node),value,error in results:
-            sources.append({'authorityId':authority,'nodeId':node,'status':'connected' if value is not None else 'unavailable',
+            sources.append({'authorityId':authority,'nodeId':node,'status':'connected' if value is not None else ('not_authorized' if error=='VIEWER_ACCESS_DENIED' else 'unavailable'),
                 **({'reason':error} if error else {}),
                 **({'nextAgentAfter':value.get('nextAgentAfter')} if value is not None else {})})
             if value is None:continue
@@ -89,7 +89,7 @@ class ViewerCatalog:
                         observed_at=clock_timestamp()''',(cat.authority_id,actor,identity,authority,r['ownerNodeId']))
         await asyncio.to_thread(remember)
         return {**local,'rooms':list(rooms.values()),'agents':list(agents.values()),'sources':sources,
-            'federationStatus':'connected' if all(s['status']=='connected' for s in sources) else 'partial'}
+            'federationStatus':'connected' if all(s['status'] in {'connected','not_authorized'} for s in sources) else 'partial'}
 
     async def owner(self,actor,kind,room):
         room=str(UUID(room));cat=self.catalog

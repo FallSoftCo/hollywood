@@ -41,6 +41,12 @@ async def main(database,binary,out):
        v=await get(idx,'rooms');assert {r['id'] for r in v['rooms']}=={p['globalRoomId'] for p in plans};assert {s['nodeId'] for s in v['sources']}=={a.host_id,b.host_id};assert v['federationStatus']=='connected'
        foreign=plans[1-idx]['globalRoomId'];detail=await get(idx,'rooms/'+foreign);assert detail['room']['id']==foreign
        history=await get(idx,'rooms/'+foreign+'/history?view=conversation&limit=1');assert [e['body'] for e in history['events']]==['SYNTHETIC public node '+str(1-idx)]
+      # Authorization is not host availability; re-enrollment restores visible rooms.
+      saved=catalogs[1].trusted_viewers.pop(subject)
+      limited=await get(0,'rooms')
+      assert limited['federationStatus']=='connected' and len(limited['rooms'])==1
+      assert any(s['nodeId']==b.host_id and s['status']=='not_authorized' for s in limited['sources'])
+      catalogs[1].trusted_viewers[subject]=saved
       async def post(idx,path,body,status=200):
        async with client.post(urls[idx]+'/hollywood/v3/'+path,json=body,headers={'Authorization':'Bearer '+guests[idx]['token']}) as response:
         v=await response.json();assert response.status==status,(response.status,v);return v
