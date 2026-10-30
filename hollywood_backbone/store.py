@@ -382,7 +382,14 @@ class Store:
 
         return acknowledge(self, actor_id, seq, revision)
 
-    def inbox(self, actor_id, after, limit, pending=False):
+    def inbox(self, actor_id, after, limit, pending=False, view="notifications"):
+        if view == "conversation":
+            if pending:
+                raise ValueError("Pending attention and conversation are separate views")
+            from .conversation_inbox import feed as conversation_feed
+            return conversation_feed(self, actor_id, after, limit)
+        if view != "notifications":
+            raise ValueError("Invalid inbox view")
         from .inbox import feed
 
         return feed(self, actor_id, after, limit, pending)

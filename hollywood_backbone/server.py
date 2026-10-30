@@ -1226,7 +1226,7 @@ async def inbox(request):
         str(UUID(request.query["nodeId"]))
         if FEDERATED_CATALOG not in request.app or request["actorKind"] != "human":
             raise Denied("Node-addressed human inbox is not enabled")
-    if set(request.query) - {"after", "limit", "nodeId"}:
+    if set(request.query) - {"after", "limit", "nodeId", "view"}:
         raise ValueError("Unknown inbox query")
     after = int(request.query["after"]) if "after" in request.query else None
     limit = int(request.query.get("limit", "100"))
@@ -1235,7 +1235,10 @@ async def inbox(request):
     pending = request.path.endswith("/pending")
     if pending and after is None:
         after = 0
-    return await invoke(request, "inbox", after, limit, pending)
+    view = request.query.get("view", "notifications")
+    if view not in ("notifications", "conversation"):
+        raise ValueError("Invalid inbox view")
+    return await invoke(request, "inbox", after, limit, pending, view)
 
 
 async def inbox_event(request):
