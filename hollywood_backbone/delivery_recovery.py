@@ -24,9 +24,28 @@ def reserved_launch(c, actor, d, payload):
                         (d["host"], actor["authority"])).fetchone()
     if not policy or executor["controller"] != policy["controller"]:
         raise Conflict("Original executor observation is not from the current host controller")
-    if c.execute("SELECT 1 FROM hb_executor WHERE delivery=%s AND id<>%s LIMIT 1",
-                 (d["id"], executor["id"])).fetchone():
-        raise Conflict("Other launch generations require separate reconciliation")
+    # Retained earlier reservations are not new execution. Each must have its
+    # own accepted no-dispatch reconciliation; stopped status alone is never
+    # sufficient. Keep the original executor and immutable acceptance intact.
+    prior = c.execute("SELECT * FROM hb_executor WHERE delivery=%s AND id<>%s FOR SHARE",
+                      (d["id"], executor["id"])).fetchall()
+    for previous in prior:
+        receipt = c.execute(
+            "SELECT before_snapshot FROM hb_delivery_recovery WHERE authority=%s AND delivery=%s AND generation=%s FOR SHARE",
+            (actor["authority"], d["id"], previous["generation"]),
+        ).fetchone()
+        accepted = (receipt or {}).get("before_snapshot", {}).get("preNativeReconciliation", {})
+        original = accepted.get("executor", {})
+        if (previous["generation"] >= d["generation"]
+                or previous["agent"] != d["agent"] or previous["authority"] != actor["authority"]
+                or previous["state"] != "stopped" or previous["launch_phase"] != "reserved"
+                or previous["descriptor"].get("nativePid") is not None
+                or previous["descriptor"].get("nativeStart") is not None
+                or accepted.get("outcome") != "native_launch_not_dispatched"
+                or any(original.get(key) != json_value(previous.get(key)) for key in
+                       ("id", "authority", "delivery", "agent", "host", "generation", "claim_id",
+                        "state", "launch_phase", "controller", "descriptor"))):
+            raise Conflict("Other launch generations require separate reconciliation")
     return {"outcome":payload["outcome"],"reconciliationSha256":payload["reconciliationSha256"],
             "executor":json_value(executor),
             "semantics":"Authenticated administrator attests original durable launch journals show no native dispatch; stopped alone is not proof."}
