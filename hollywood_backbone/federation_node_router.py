@@ -172,6 +172,14 @@ class NodeRouter:
         for resource in ('delivery','executor','room'):
             if resource in request.match_info:
                 return await self.owner(request,resource,str(UUID(request.match_info[resource])))
+        # Native conversation callbacks follow their canonical room, not the
+        # native process's host and not a fabricated legacy delivery.
+        if action in ('attention_create','attention_response','attention_acknowledge') and isinstance(body,dict):
+            scope=body.get('scope',body)
+            if scope.get('conversationVersion')==1 and scope.get('roomId'):
+                return await self.owner(request,'room',str(UUID(scope['roomId'])))
+        if action=='attention_read' and request.query.get('roomId'):
+            return await self.owner(request,'room',str(UUID(request.query['roomId'])))
         if provenance and provenance.get('deliveryId'):return await self.owner(request,'delivery',provenance['deliveryId'])
         if isinstance(body,dict) and body.get('deliveryId'):return await self.owner(request,'delivery',body['deliveryId'])
         hinted=request.headers.get(WORK_NODE_HEADER)

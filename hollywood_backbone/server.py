@@ -345,6 +345,7 @@ class AttentionCreate(Input):
 
 
 class ConversationAttentionCreate(Input):
+    roomId: UUID | None = None
     id: UUID
     conversationVersion: int = Field(strict=True,ge=1,le=1)
     sourceEventId: UUID

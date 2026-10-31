@@ -211,13 +211,41 @@ async def main(database,binary,out,conversation_only=False):
                             async with session.get(urls[1]+'/hollywood/v3/rooms/'+remote_room+'/history?view=conversation',headers=headers) as response:
                                 chat=await response.json();assert response.status==200,chat
                                 assert [e['id'] for e in chat['events']]==[source_event]
+                            question_id=str(uuid4())
+                            question={'id':question_id,'conversationVersion':1,'roomId':remote_room,
+                                'sourceEventId':source_event,'nativeThread':'synthetic-original-native',
+                                'nativeTurn':'synthetic-native-turn','nativeSlot':'synthetic-question',
+                                'method':'item/tool/requestUserInput','summary':'Synthetic cross-node choice',
+                                'request':{'questions':[{'id':'choice','header':'Choice','question':'Continue the synthetic check?'}],'isBlocking':True}}
+                            async with session.post(urls[1]+'/hollywood/v3/attention',headers=headers,json=question) as response:
+                                created=await response.json();assert response.status==200,created
+                            read_url=urls[1]+'/hollywood/v3/attention/'+question_id+'?roomId='+remote_room
+                            async with session.get(read_url,headers=headers) as response:
+                                current=await response.json();assert response.status==200,current
+                                assert current['scope']==created['scope']
+                            owner_headers={'Authorization':'Bearer '+plans[0]['credentials']['Owner']['token']}
+                            async with session.get(urls[0]+'/hollywood/v3/inbox?after=0',headers=owner_headers) as response:
+                                notifications=await response.json();assert response.status==200,notifications
+                                hint=next(n for n in notifications['events'] if n.get('attentionId')==question_id)
+                                assert hint['notify'] and hint['reason']=='question'
+                            async with session.post(urls[0]+'/hollywood/v3/attention/'+question_id+'/response',headers=owner_headers,
+                                json={'operationId':'qa-original-human-choice','scope':created['scope'],'response':{'answers':{'choice':{'answers':['Synthetic answer']}}}}) as response:
+                                answered=await response.json();assert response.status==200,answered
+                            async with session.get(read_url,headers=headers) as response:
+                                ready=await response.json();assert response.status==200,ready
+                                assert ready['attention']['state']=='response_submitted'
+                            for phase in ('native_submitted','closed'):
+                                async with session.post(urls[1]+'/hollywood/v3/attention/'+question_id+'/acknowledge',headers=headers,
+                                    json={'operationId':'qa-native-'+phase,'scope':created['scope'],'state':phase}) as response:
+                                    ack=await response.json();assert response.status==200,ack
+                                    assert ack['attention']['state']==phase
                             for store in stores:
                                 with store.pool.connection() as c:
                                     assert c.execute('SELECT count(*) n FROM hb_delivery').fetchone()['n']==0
                                     assert c.execute('SELECT count(*) n FROM hb_executor').fetchone()['n']==0
                             result={'passed':True,'independentStores':2,'actualNats':True,
                                 'homeAuthenticatedAgentRemoteRoom':True,'remoteNativeActionOriginalReceipt':True,
-                                'remoteNativeStatusAndMembershipCatalog':True,'actionsNotConversation':True,
+                                'remoteNativeStatusAndMembershipCatalog':True,'remoteNativeQuestionResponseAndAcknowledgement':True,'nativeQuestionNotificationHint':True,'actionsNotConversation':True,
                                 'executors':0,'deliveries':0,'modelCalls':0,'productionChanged':False,
                                 'actualCrossHostNativeExecution':False}
                             (out/'qualification.json').write_text(json.dumps(result,indent=2)+'\n')

@@ -33,6 +33,7 @@ def create(store,actor_id,identity,payload):
         actor=store.actor(c,actor_id)
         if actor['kind']!='agent':raise Denied('Agent callback publisher required')
         source=store.readable_event(c,actor,payload['sourceEventId'])
+        if payload.get('roomId') is not None and str(source['room'])!=payload['roomId']:raise Denied('Callback room differs from original source')
         if str(actor['id']) not in source['data'].get('conversationRecipients',[]):
             raise Denied('Original message recipient required')
         store.room(c,actor,source['room'],'can_post')
