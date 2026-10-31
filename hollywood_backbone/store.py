@@ -938,11 +938,15 @@ class Store:
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}
 
     def room_actors(self, c, a, room, *, after=None, limit=None):
-        query = """SELECT p.id,p.name,p.kind,p.home_node,p.identity_reference,r.primary_role,r.home_room,r.purpose
+        query = """SELECT p.id,p.name,p.kind,p.home_node,p.identity_reference,r.primary_role,r.home_room,r.purpose,
+                      coalesce(m.can_read,false) AS can_read,
+                      coalesce(m.can_post,false) AS can_post,
+                      coalesce(m.can_request,false) AS can_request
                FROM hb_principal p LEFT JOIN hb_agent_role r ON r.principal=p.id
+               LEFT JOIN hb_membership m ON m.principal=p.id AND m.room=%s
                WHERE p.authority=%s AND p.active AND (p.id=%s OR EXISTS
                 (SELECT 1 FROM hb_membership m WHERE m.room=%s AND m.principal=p.id AND m.can_read))"""
-        args = [a["authority"],room["owner"],room["id"]]
+        args = [room["id"],a["authority"],room["owner"],room["id"]]
         if after is not None:
             query += " AND p.id>%s::uuid"
             args.append(after)
