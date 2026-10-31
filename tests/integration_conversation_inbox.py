@@ -71,6 +71,14 @@ async def main():
             human_request=store.post(owner,room,uid(),{'kind':'request','audience':'room','recipientId':actors['A']['id'],'body':'Human communication request'})
             assert human_request['deliveries']==[]
             assert human_request['event']['data']['humanInputEventId']==human_request['event']['id']
+            # Source correlation survives a peer hop and does not replace the
+            # original accepted human receipt with execution state.
+            progress=store.post(actors['A']['id'],room,uid(),{'kind':'message','audience':'room','recipientId':global_agent,'sourceEventId':human_request['event']['id'],'responsePhase':'update','body':'Peer progress'})
+            answer=store.post(global_agent,room,uid(),{'kind':'message','audience':'room','sourceEventId':progress['event']['id'],'responsePhase':'answer','body':'Deliberate answer'})
+            assert answer['event']['data']['humanInputEventId']==human_request['event']['id']
+            assert answer['event']['data']['responsePhase']=='answer'
+            original=store.post(owner,room,uid(),{'kind':'request','audience':'room','recipientId':actors['A']['id'],'body':'Another bounded input'})
+            assert original['deliveries']==[]
             with store.pool.connection() as c:
                 counts={table:c.execute('SELECT count(*) AS n FROM '+table+' WHERE authority=%s',(authority,)).fetchone()['n'] for table in ('hb_delivery','hb_executor')}
             assert counts=={'hb_delivery':0,'hb_executor':0},counts
