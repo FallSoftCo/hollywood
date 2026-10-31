@@ -404,6 +404,10 @@ class Store:
 
         return command(self, actor_id, identity, operation)
 
+    def conversation_state_observe(self,actor_id,room,payload):
+        from .conversation_state import observe
+        return observe(self,actor_id,room,payload)
+
     def conversation_activity(self, actor_id, room, operation, payload):
         from .conversation_activity import append
         return append(self, actor_id, room, operation, payload)
@@ -515,6 +519,8 @@ class Store:
             c.execute(resources.files("hollywood_backbone").joinpath("schema.sql").read_text(encoding="utf-8"))
             from .room_attention import SCHEMA as ROOM_ATTENTION_SCHEMA
             c.execute(ROOM_ATTENTION_SCHEMA)
+            from .conversation_state import SCHEMA as CONVERSATION_STATE_SCHEMA
+            c.execute(CONVERSATION_STATE_SCHEMA)
             from .context_system import SCHEMA
             c.execute(SCHEMA)
             from .work_resources import SCHEMA as WORK_RESOURCE_SCHEMA
@@ -884,6 +890,23 @@ class Store:
                        JOIN hb_principal p ON p.id=e.author AND p.authority=e.authority
                        WHERE e.authority=%s
                        AND (%s OR e.audience='room' OR e.author=%s OR e.recipient=%s)
+                   ), native_members AS (
+                       SELECT n.* FROM hb_conversation_state n JOIN readable_rooms r ON r.id=n.room
+                       JOIN hb_principal p ON p.id=n.agent AND p.active
+                       JOIN hb_membership m ON m.room=n.room AND m.principal=n.agent AND m.can_read
+                   ), native_counts AS (
+                       SELECT room,count(*) AS total FROM native_members GROUP BY room
+                   ), native_visible AS (
+                       SELECT n.room,jsonb_agg(jsonb_build_object(
+                         'agentId',n.agent,'nativeThread',n.native_thread,'revision',n.revision,
+                         'observedAt',floor(extract(epoch FROM n.observed_at)*1000)::bigint,
+                         'expiresAt',floor(extract(epoch FROM n.observed_at + interval '75 seconds')*1000)::bigint,
+                         'status',CASE WHEN n.observed_at > statement_timestamp()-interval '75 seconds'
+                           THEN n.state ELSE jsonb_build_object('type','unavailable','activeFlags','[]'::jsonb) END
+                       ) ORDER BY n.agent,n.native_thread) AS agents
+                       FROM native_members n LEFT JOIN hb_event e ON e.id=n.source
+                       WHERE n.source IS NULL OR %s OR e.audience='room' OR e.author=%s OR e.recipient=%s
+                       GROUP BY n.room
                    ), messages AS (
                        SELECT DISTINCT ON (room) room,seq,
                          jsonb_build_object(
@@ -927,16 +950,22 @@ class Store:
                      'version',1,'latestMessage',m.preview,'latestActivity',x.preview,
                      'recency',CASE WHEN x.seq IS NULL OR m.seq>x.seq
                        THEN m.recency ELSE x.recency END
-                   ) AS "feedSummary"
+                   ) AS "feedSummary",jsonb_build_object(
+                     'version',1,'observedAt',floor(extract(epoch FROM statement_timestamp())*1000)::bigint,
+                     'runtimeCount',coalesce(nc.total,0),'agents',coalesce(nv.agents,'[]'::jsonb)
+                   ) AS "nativeState"
                    FROM readable_rooms r LEFT JOIN counts c ON c.room=r.id
                    LEFT JOIN waiting w ON w.room=r.id
                    LEFT JOIN messages m ON m.room=r.id
-                   LEFT JOIN actions x ON x.room=r.id ORDER BY r.name""",
+                   LEFT JOIN actions x ON x.room=r.id
+                   LEFT JOIN native_counts nc ON nc.room=r.id
+                   LEFT JOIN native_visible nv ON nv.room=r.id ORDER BY r.name""",
                 (
                     a["authority"], a["administrator"], a["id"],
                     a["authority"], a["administrator"], a["id"], a["id"],
                     a["authority"], a["administrator"], a["id"],
                     a["authority"], a["administrator"], a["id"], a["id"],
+                    a["administrator"], a["id"], a["id"],
                 ),
             ).fetchall()
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}

@@ -11,6 +11,7 @@ async def main():
     os.umask(0o077)
     root=Path(os.environ['CONVERSATION_EVIDENCE']);root.mkdir(mode=0o700)
     store=Store(json.loads(Path(os.environ['CONVERSATION_DATABASE']).read_text()))
+    store.migrate()
     authority,room=uid(),uid();credentials={k:{'principalId':uid(),'token':secrets.token_urlsafe(40)} for k in ('Owner','Global')}
     actors={k:{'id':uid(),'token':secrets.token_urlsafe(40)} for k in ('A','B','Outsider')}
     (root/'intent.private.json').write_text(json.dumps({'authority':authority,'room':room,'credentials':credentials,'actors':actors}))
@@ -127,10 +128,27 @@ async def main():
             assert not action_ids.intersection(e['id'] for e in store.history(owner,room,0,100,None,'conversation')['events'])
             assert not action_ids.intersection(e['id'] for e in store.history(actors['Outsider']['id'],room,0,100,None,'activity')['events'])
             assert not action_ids.intersection(e['id'] for e in (await get('A'))['events'])
+            # Native liveness is an expiring observation, not delivery state
+            # and not another room event/model input.
+            state={'observationType':'nativeState','nativeThread':'synthetic-original-thread','revision':1,
+                'sourceEventId':private['event']['id'],'status':{'type':'active','activeFlags':['waitingOnUserInput']}}
+            state_receipt=await admin_call(actors['A']['token'],'POST',path,state)
+            assert state_receipt==await admin_call(actors['A']['token'],'POST',path,state)
+            native=next(r for r in store.catalog(owner)['rooms'] if r['id']==room)['nativeState']
+            assert native['runtimeCount']==1 and native['agents'][0]['status']==state['status']
+            hidden=next(r for r in store.catalog(actors['Outsider']['id'])['rooms'] if r['id']==room)['nativeState']
+            assert hidden['runtimeCount']==1 and hidden['agents']==[]
+            await admin_call(actors['A']['token'],'POST',path,{**state,'status':{'type':'idle'}},409)
+            await admin_call(actors['A']['token'],'POST',path,{**state,'revision':2,'sourceEventId':None,'status':{'type':'idle'}},200)
+            await admin_call(actors['A']['token'],'POST',path,state,409)
+            with store.pool.connection() as c:
+                c.execute("UPDATE hb_conversation_state SET observed_at=statement_timestamp()-interval '76 seconds' WHERE authority=%s",(authority,))
+            expired=next(r for r in store.catalog(owner)['rooms'] if r['id']==room)['nativeState']
+            assert expired['agents'][0]['status']['type']=='unavailable'
             with store.pool.connection() as c:
                 counts={table:c.execute('SELECT count(*) AS n FROM '+table+' WHERE authority=%s',(authority,)).fetchone()['n'] for table in ('hb_delivery','hb_executor')}
             assert counts=={'hb_delivery':0,'hb_executor':0},counts
-            (root/'result.json').write_text(json.dumps({'passed':True,'bootstrapAndCreatorMembership':True,'sameCanonicalPublicMessageBothAgents':True,'privateIsolation':True,'membershipRevocation':True,'orderedPagingReconnect':True,'claimlessNativeActivity':True,'privateActivityIsolation':True,'activityReceiptIdempotency':True,'counts':counts,'modelCalls':0,'deployed':False},indent=2))
+            (root/'result.json').write_text(json.dumps({'passed':True,'bootstrapAndCreatorMembership':True,'sameCanonicalPublicMessageBothAgents':True,'privateIsolation':True,'membershipRevocation':True,'orderedPagingReconnect':True,'claimlessNativeActivity':True,'nativeStateFreshnessPrivacyAndRevision':True,'privateActivityIsolation':True,'activityReceiptIdempotency':True,'counts':counts,'modelCalls':0,'deployed':False},indent=2))
             print('PASS real PG/HTTP: same human event to two agents; private isolation; paging/reconnect; revocation; zero deliveries/executors/models')
     finally:
         (root/'trace.private.json').write_text(json.dumps(trace,indent=2));await runner.cleanup();store.close()

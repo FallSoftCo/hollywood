@@ -1163,6 +1163,10 @@ async def post(request):
 
 
 async def conversation_activity(request):
+    if (await request.json()).get('observationType')=='nativeState':
+        from .conversation_state import Observation as StateObservation
+        p=await body(request,StateObservation)
+        return await invoke(request,'conversation_state_observe',str(UUID(request.match_info['room'])),p.model_dump(mode='json'))
     from .conversation_activity import Observation
     p = await body(request, Observation)
     value = p.model_dump(mode='json', exclude={'operationId'})

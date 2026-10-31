@@ -121,3 +121,22 @@ Native runtimes retain raw tool payloads privately and publish bounded structura
 labels, never arbitrary read-tool results or credentials. Observation retries
 cannot start native work. This contract does not yet supply native liveness or
 replace delivery-based room activity counts; clients must not infer idle from it.
+
+`POST rooms/{room}/activity` also accepts `observationType:nativeState`,
+`nativeThread`, monotonic persisted `revision`, optional original `sourceEventId`,
+and `status:{type,activeFlags}`. Types are native idle/active/systemError/notLoaded
+or unavailable when current room attribution is not established. Active requires
+its actual addressed input. This updates an expiring snapshot; it appends NO room
+event, creates NO delivery/executor and starts NO work. Equal revisions return
+the original observation time; stale/changed revisions conflict. A retry cannot
+extend liveness using an old acknowledgement.
+
+Catalog `nativeState` v1 includes server observedAt, runtimeCount and visible
+agents with nativeThread/revision/observedAt/expiresAt/status. The batched catalog
+applies original private-source audience before projecting status. Missing private
+observations must not be interpreted as idle. After75seconds without a fresh
+observation, status becomes unavailable. Room activity counts remain legacy data;
+clients with native observations use the native lane instead of treating absent
+delivery claims as idle. Native state is authenticated agent attestation, not
+independent proof of host processes or task completion. No scheduling, execution
+ownership, automatic continuation or recovery is performed by this snapshot table.
