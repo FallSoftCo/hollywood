@@ -48,3 +48,17 @@ def recipients(c, actor, room, kind, audience, recipient):
         AND (%s='room' OR p.id=%s) ORDER BY p.id""",
         (room,actor['authority'],actor['id'],audience,recipient)).fetchall()
     return [str(row['id']) for row in rows]
+
+
+def human_input_reference(c, event):
+    """A bounded canonical source walk, not a search through conversation text."""
+    rows=c.execute("""WITH RECURSIVE ancestry AS (
+        SELECT id,authority,source,data,ARRAY[id] AS visited,0 AS depth
+        FROM hb_event WHERE id=%s AND authority=%s
+        UNION ALL
+        SELECT e.id,e.authority,e.source,e.data,a.visited||e.id,a.depth+1
+        FROM hb_event e JOIN ancestry a ON e.id=a.source AND e.authority=a.authority
+        WHERE a.depth<63 AND NOT e.id=ANY(a.visited)
+    ) SELECT id FROM ancestry WHERE data->>'authorKind'='human' ORDER BY depth LIMIT 1""",
+        (event['id'],event['authority'])).fetchone()
+    return str(rows['id']) if rows else None

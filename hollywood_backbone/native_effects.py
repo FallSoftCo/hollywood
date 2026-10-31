@@ -185,11 +185,11 @@ def enter(c, identity):
                 # permissions and stable command receipts. Do not require a
                 # claimed task merely to speak. Supplied native provenance is
                 # still validated above; other business mutations remain gated.
-                plain_message = (request["action"] == "post"
+                communication = (request["action"] == "post"
                     and isinstance(request["body"], dict)
-                    and request["body"].get("kind") == "message")
+                    and request["body"].get("kind") in ("message", "request"))
                 from .agent_context import communication_allowed
-                if not plain_message and not communication_allowed(c, request, principal):
+                if not communication and not communication_allowed(c, request, principal):
                     raise Denied("Enrolled communication transport or native execution source required")
         elif write and value and principal["kind"] != "agent":
             raise Denied("Only an agent may assert native provenance")

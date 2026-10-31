@@ -121,6 +121,7 @@ class AgentRoomTransport(AgentRoomReads):
                 authenticated_host_id=request.source_host_id, principal_id=actor)
             path = f"rooms/{room}/messages"
             payload = message.model_dump(mode="json", exclude={"operationId"}
+                | ({"responsePhase"} if message.responsePhase is None else set())
                 | ({"expectsReply"} if not message.expectsReply else set())
                 | ({"evidenceReferences"} if message.evidenceReferences is None else set()))
             wire = {"method": "POST", "path": path, "body": raw}

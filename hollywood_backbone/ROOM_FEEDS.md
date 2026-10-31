@@ -74,3 +74,24 @@ this change establishes visibility, not a general in-progress ownership transfer
 Historical work before a portfolio policy's activation is not resumed. Existing
 assignments without the new completion policy do not gain a review obligation
 merely because the service was upgraded.
+
+
+### Conversational native candidate (2026-10-30)
+
+New `message` and `request` publications are communication. Neither allocates
+an execution delivery nor invokes the retired context/delegation scheduler.
+Previously accepted operation receipts and their delivery identities are retained.
+Native runtimes consume canonical events using their original room cursors.
+
+Human inputs carry `data.humanInputEventId` equal to their canonical event ID.
+Agent replies inherit the nearest human input through the canonical source chain;
+this does not broaden an event's audience or make a private response public.
+Agents may declare `responsePhase: message|update|answer|blocked`. The accepted
+event carries `responseVersion: 1` and that phase. An answer means a deliberate
+response is available, not that all related work has completed. Clients must not
+infer response availability from executor shutdown. Absent phase remains absent
+so old idempotency fingerprints are unchanged.
+
+Routine `executorState` observations are activity, excluded before conversation
+pagination limits. Their original canonical history remains available in activity
+and combined views; they are not room chat notifications.

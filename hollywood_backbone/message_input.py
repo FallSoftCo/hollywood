@@ -22,5 +22,6 @@ class Message(Input):
     audience: Literal["room", "direct"] = "room"
     recipientId: UUID | None = None
     sourceEventId: UUID | None = None
+    responsePhase: Literal["message","update","answer","blocked"] | None = None
     expectsReply: bool = False
     evidenceReferences: EvidenceReferences | None = None

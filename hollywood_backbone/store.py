@@ -659,6 +659,8 @@ class Store:
             data = {**(data or {}), "conversationVersion": 1,
                     "conversationRecipients": audience_members}
         identity = uid()
+        if actor['kind']=='human' and kind in ('message','request'):
+            data={**(data or {}),'humanInputEventId':identity}
         c.execute(
             "INSERT INTO hb_event(id,authority,seq,room,author,recipient,kind,audience,body,source,data) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             (
@@ -889,7 +891,7 @@ class Store:
                        FROM visible_feed
                        WHERE kind IN ('message','request') AND author_kind IN ('human','agent')
                        AND coalesce(data->>'type','') NOT IN
-                         ('executionActivity','peerCompletion','collaborationProtocol','reportScopeProtocol')
+                         ('executionActivity','peerCompletion','collaborationProtocol','reportScopeProtocol','executorState')
                        ORDER BY room,seq DESC
                    ), actions AS (
                        SELECT DISTINCT ON (room) room,seq,
@@ -1053,6 +1055,10 @@ class Store:
             raise Conflict("Private message requires an explicit recipient")
         source = payload.get("sourceEventId")
         data = {"nativeContext": native_context} if native_context else {}
+        if payload.get('responsePhase') is not None:
+            if a['kind']!='agent':raise Denied('Only agent communication carries a response phase')
+            if payload['responsePhase'] not in ('message','update','answer','blocked'):raise ValueError('Unknown response phase')
+            data.update(responseVersion=1,responsePhase=payload['responsePhase'])
         if kind == "request" and a["kind"] == "agent" and not source:
             from .native_effects import external_decision_owner
             owner = external_decision_owner(c, self, a, room_id)
@@ -1066,6 +1072,9 @@ class Store:
             data["expectsReply"] = True
         if source:
             parent = self.readable_event(c, a, source)
+            from .conversation_inbox import human_input_reference
+            root_input=human_input_reference(c,parent)
+            if root_input is not None:data['humanInputEventId']=root_input
             if parent["audience"] == "direct":
                 original = {str(parent["author"]), str(parent["recipient"])}
                 reply = {str(a["id"]), recipient}
@@ -1099,23 +1108,15 @@ class Store:
             source=source,
             data=data,
         )
-        if kind == "request":
-            c.execute(
-                "INSERT INTO hb_delivery(id,authority,event,agent) VALUES(%s,%s,%s,%s)",
-                (uid(), a["authority"], event, recipient),
-            )
-        if recipient and kind == "request":
-            from .context_system import ingest
-            ingest(c, recipient, event)
+        # A room request is communication. Native recipients consume their
+        # canonical feed; publication never creates an execution reservation.
+        # Previously accepted command/delivery receipts above remain unchanged.
         result = self.receipt(c, event)
         c.execute(
             """INSERT INTO hb_command(authority,principal,operation,digest,event,wire_request,accepted_result)
                VALUES(%s,%s,%s,%s,%s,%s,%s)""",
             (a["authority"], a["id"], operation, fingerprint, event, Jsonb(wire), Jsonb(result)),
         )
-        if kind == "request" and a["kind"] == "agent":
-            from .delegation import record
-            record(c, a, result["event"], result["deliveries"][0]["id"], operation, wire)
         return result
 
     @staticmethod
@@ -1162,11 +1163,12 @@ class Store:
         filters = {
             "all": "",
             "conversation": " AND data->>'type' IS DISTINCT FROM 'executionActivity'"
+                " AND data->>'type' IS DISTINCT FROM 'executorState'"
                 " AND data->>'type' IS DISTINCT FROM 'peerCompletion'"
                 " AND data->>'type' IS DISTINCT FROM 'collaborationProtocol'"
                 " AND data->>'type' IS DISTINCT FROM 'reportScopeProtocol'"
                 " AND NOT (kind='progress' AND (data ? 'collaborationReceipt' OR data ? 'editPlanReceipt'))",
-            "activity": " AND data->>'type' = 'executionActivity'",
+            "activity": " AND data->>'type' IN ('executionActivity','executorState')",
         }
         if view not in filters:
             raise ValueError("Choose all, conversation or activity")

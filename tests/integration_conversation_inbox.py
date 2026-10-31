@@ -57,15 +57,20 @@ async def main():
             store.membership(owner,room,actors['B']['id'],{'can_read':False,'can_post':False,'can_request':False},1)
             assert (await get('B',start['nextCursor']))['events']==[]
             # A valid member can speak without an execution claim, but ordinary
-            # communication permission does not admit old business requests.
+            # requests are communication too, without creating executor claims.
             async def agent_post(kind,expected):
-                payload={'operationId':'publication-'+kind,'kind':kind,'audience':'room','body':'Synthetic agent communication','recipientId':actors['B']['id'] if kind=='request' else None}
+                payload={'operationId':'publication-'+kind,'kind':kind,'audience':'room','body':'Synthetic agent communication','recipientId':global_agent if kind=='request' else None}
                 async with session.post(base+'rooms/'+room+'/messages',json=payload,headers={'Authorization':'Bearer '+actors['A']['token']}) as response:
                     value=await response.json();assert response.status==expected,(response.status,value)
                     return value
             spoken=await agent_post('message',200)
             assert spoken['event']['author']==actors['A']['id'] and spoken['event']['data']['authorKind']=='agent'
-            await agent_post('request',403)
+            requested=await agent_post('request',200)
+            assert requested['deliveries']==[]
+            assert requested['event']['data']['authorKind']=='agent'
+            human_request=store.post(owner,room,uid(),{'kind':'request','audience':'room','recipientId':actors['A']['id'],'body':'Human communication request'})
+            assert human_request['deliveries']==[]
+            assert human_request['event']['data']['humanInputEventId']==human_request['event']['id']
             with store.pool.connection() as c:
                 counts={table:c.execute('SELECT count(*) AS n FROM '+table+' WHERE authority=%s',(authority,)).fetchone()['n'] for table in ('hb_delivery','hb_executor')}
             assert counts=={'hb_delivery':0,'hb_executor':0},counts

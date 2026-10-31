@@ -346,7 +346,7 @@ class AttentionCreate(Input):
 
 class ConversationAttentionCreate(Input):
     id: UUID
-    conversationVersion: Literal[1]
+    conversationVersion: int = Field(strict=True,ge=1,le=1)
     sourceEventId: UUID
     nativeThread: str = Field(min_length=1,max_length=128)
     nativeTurn: str = Field(min_length=1,max_length=128)
@@ -357,7 +357,7 @@ class ConversationAttentionCreate(Input):
 
 
 class ConversationAttentionScope(Input):
-    conversationVersion: Literal[1]
+    conversationVersion: int = Field(strict=True,ge=1,le=1)
     authorityId: UUID
     attentionId: UUID
     agentId: UUID
@@ -1158,7 +1158,7 @@ async def post(request):
         "post",
         str(UUID(request.match_info["room"])),
         p.operationId,
-        p.model_dump(mode="json", exclude={"operationId"} | ({"expectsReply"} if not p.expectsReply else set()) | ({"evidenceReferences"} if p.evidenceReferences is None else set())),
+        p.model_dump(mode="json", exclude={"operationId"} | ({"responsePhase"} if p.responsePhase is None else set()) | ({"expectsReply"} if not p.expectsReply else set()) | ({"evidenceReferences"} if p.evidenceReferences is None else set())),
     )
 
 
