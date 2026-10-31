@@ -779,6 +779,18 @@ class Store:
                 raise Denied("Role unavailable")
             return json_value(row)
 
+    def room_default_read(self, actor_id):
+        from .room_defaults import read
+        return read(self, actor_id)
+
+    def room_default_set(self, actor_id, node, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'room_default_set', [node, payload], command)
+
+    def _admin_room_default_set(self, c, actor, node, payload):
+        from .room_defaults import change
+        return change(c, actor, node, payload)
+
     def create_room(self, actor_id, identity, name, purpose, owner, *, command=None):
         from .administrative import mutate
         return mutate(self, actor_id, 'create_room', [identity, name, purpose, owner], command)
@@ -815,6 +827,8 @@ class Store:
             "UPDATE hb_agent_role SET home_room=%s,revision=revision+1 WHERE principal=%s AND home_room IS NULL",
             (identity, owner),
         )
+        from .room_defaults import join
+        join(c, a["authority"], identity)
         return json_value(
             c.execute("SELECT * FROM hb_room WHERE id=%s", (identity,)).fetchone()
         )

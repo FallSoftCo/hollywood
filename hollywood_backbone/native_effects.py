@@ -17,7 +17,7 @@ from .store import Conflict, Denied, digest, json_value
 HEADER = "X-Hollywood-Native-Source"
 _request = contextvars.ContextVar("hollywood_native_request", default=None)
 
-BUSINESS = {"external_response", "context_configure",
+BUSINESS = {"room_default_set", "external_response", "context_configure",
     "delivery_recover",
     "delivery_edit_reconcile", "mutation_reconcile",
     "report_scope_read",
@@ -30,7 +30,7 @@ BUSINESS = {"external_response", "context_configure",
 # Domain administration remains authorized by Store/administrative.mutate in
 # this same transaction. Communication identities, rooms, roles and membership
 # do not require an execution delivery merely because their owner is an agent.
-COMMUNICATION_ADMINISTRATION = {"principal", "create_room", "membership", "role"}
+COMMUNICATION_ADMINISTRATION = {"room_default_set", "principal", "create_room", "membership", "role"}
 METADATA = {"runtime_observe", "context_call",
     "executor_begin", "executor_reserve", "executor_attach", "executor_observe",
     "host_sample", "connector_observe", "claim", "transition",
@@ -43,7 +43,7 @@ METADATA = {"runtime_observe", "context_call",
     "context_seed_create", "context_seed_mark",
     "context_seed_control",
 }
-EXCLUSIVE = {"communication_set", "external_response", "runtime_observe", "context_configure", "context_call",
+EXCLUSIVE = {"room_default_set", "communication_set", "external_response", "runtime_observe", "context_configure", "context_call",
     "delivery_recover",
     "delivery_edit_reconcile", "mutation_reconcile",
     "report_scope_read",

@@ -117,6 +117,8 @@ METHODS = frozenset(
      'role',
      'role_read',
      'room_detail',
+     'room_default_read',
+     'room_default_set',
      'runtime_observation_read',
      'runtime_observe',
      'supervision',
@@ -152,7 +154,7 @@ def kwargs_for(action, verb, path, body):
         kwargs['wire'] = wire
     if action in {'context_configure','delivery_recover','delivery_edit_reconcile',
             'mutation_reconcile','report_scope_read','principal','create_room',
-            'membership','placement','role','communication_set','collaboration_bridge',
+            'membership','room_default_set','placement','role','communication_set','collaboration_bridge',
             'physical_workspace','physical_grant','physical_agent_grant','resource_default',
             'work_resource','placement_state'} and isinstance(body,dict) and body.get('operationId'):
         from .store import digest

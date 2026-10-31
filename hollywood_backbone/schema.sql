@@ -1071,3 +1071,14 @@ CREATE TABLE IF NOT EXISTS hb_federation_viewer_incoming (
 );
 
 ALTER TABLE hb_agent_communication ADD COLUMN IF NOT EXISTS decision_owner uuid REFERENCES hb_principal(id);
+
+-- Explicit host-representative membership defaults; empty by default.
+CREATE TABLE IF NOT EXISTS hb_room_default_agent (
+ authority uuid NOT NULL REFERENCES hb_authority(id), node uuid NOT NULL,
+ principal uuid NOT NULL, enabled boolean NOT NULL, revision bigint NOT NULL DEFAULT 1,
+ created_by uuid NOT NULL, created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ updated_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+ PRIMARY KEY(authority,node), UNIQUE(authority,principal),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,created_by) REFERENCES hb_principal(authority,id)
+);

@@ -40,6 +40,13 @@ class Input(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class RoomDefaultAgent(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+    agentId: UUID
+    enabled: bool
+    revision: int = Field(ge=0)
+
+
 class ExternalResponse(Input):
     operationId: str = Field(min_length=1, max_length=128)
     responseEventId: UUID
@@ -1092,6 +1099,13 @@ async def room_detail(request):
     return await invoke(request, "room_detail", str(UUID(request.match_info["room"])))
 
 
+async def room_defaults(request):
+    if request.method == 'GET':
+        return await invoke(request, 'room_default_read')
+    payload = await body(request, RoomDefaultAgent)
+    return await invoke(request, 'room_default_set', str(UUID(request.match_info['node'])), payload.model_dump(mode='json'))
+
+
 async def room_create(request):
     p = await body(request, Room)
     return await invoke(request, "create_room", str(p.id), p.name, p.purpose, str(p.ownerId))
@@ -1976,6 +1990,8 @@ def application(store, *, federated_messages=None, federated_catalog=None, feder
             web.get("/hollywood/v3/rooms", rooms),
             web.get("/hollywood/v3/rooms/{room}", room_detail),
             web.post("/hollywood/v3/rooms", room_create),
+            web.get("/hollywood/v3/room-defaults", room_defaults),
+            web.put("/hollywood/v3/room-defaults/{node}", room_defaults),
             web.get("/hollywood/v3/agents", agent_directory),
             web.post("/hollywood/v3/principals", principal_create),
             web.get("/hollywood/v3/principals/{principal}", principal_read),
