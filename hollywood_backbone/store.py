@@ -509,6 +509,8 @@ class Store:
         with self.pool.connection() as c:
             c.execute("SELECT pg_advisory_xact_lock(1742014101)")
             c.execute(resources.files("hollywood_backbone").joinpath("schema.sql").read_text(encoding="utf-8"))
+            from .room_attention import SCHEMA as ROOM_ATTENTION_SCHEMA
+            c.execute(ROOM_ATTENTION_SCHEMA)
             from .context_system import SCHEMA
             c.execute(SCHEMA)
             from .work_resources import SCHEMA as WORK_RESOURCE_SCHEMA

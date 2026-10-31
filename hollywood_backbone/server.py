@@ -344,6 +344,30 @@ class AttentionCreate(Input):
     responsePublication: ResponsePublication | None = None
 
 
+class ConversationAttentionCreate(Input):
+    id: UUID
+    conversationVersion: Literal[1]
+    sourceEventId: UUID
+    nativeThread: str = Field(min_length=1,max_length=128)
+    nativeTurn: str = Field(min_length=1,max_length=128)
+    nativeSlot: str = Field(min_length=1,max_length=256)
+    method: Literal["hollywood/question","item/tool/requestUserInput","item/commandExecution/requestApproval","item/fileChange/requestApproval"]
+    summary: str = Field(min_length=1,max_length=6000)
+    request: dict
+
+
+class ConversationAttentionScope(Input):
+    conversationVersion: Literal[1]
+    authorityId: UUID
+    attentionId: UUID
+    agentId: UUID
+    roomId: UUID
+    sourceEventId: UUID
+    nativeThread: str = Field(min_length=1,max_length=128)
+    nativeTurn: str = Field(min_length=1,max_length=128)
+    requestDigest: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class AttentionScope(Input):
     authorityId: UUID
     attentionId: UUID
@@ -371,7 +395,7 @@ class ApprovalResponse(Input):
 
 class AttentionResponse(Input):
     operationId: str = Field(min_length=1, max_length=128)
-    scope: AttentionScope
+    scope: AttentionScope | ConversationAttentionScope
     response: QuestionResponse | ApprovalResponse
 
 
@@ -379,9 +403,15 @@ class AttentionAcknowledgement(Input):
     operationId: str = Field(min_length=1, max_length=128)
     claimId: str = Field(min_length=1, max_length=128)
     generation: int = Field(ge=1)
-    scope: AttentionScope
+    scope: AttentionScope | ConversationAttentionScope
     state: Literal["native_submitted", "closed", "expired", "unknown"]
     reason: str | None = Field(default=None,min_length=1,max_length=2000)
+
+
+class ConversationAttentionAcknowledgement(Input):
+    operationId: str = Field(min_length=1,max_length=128)
+    scope: ConversationAttentionScope
+    state: Literal["native_submitted","closed","expired","unknown"]
 
 
 class NativeGoalBinding(Input):
@@ -1455,7 +1485,8 @@ async def role(request):
 
 
 async def attention_create(request):
-    p = await body(request, AttentionCreate)
+    raw = await request.json()
+    p = await body(request, ConversationAttentionCreate if raw.get("conversationVersion")==1 else AttentionCreate)
     if p.method in ("hollywood/question", "item/tool/requestUserInput"):
         details = QuestionDetails.model_validate(p.request)
         if len({q.id for q in details.questions}) != len(details.questions):
@@ -1467,7 +1498,7 @@ async def attention_create(request):
         if p.method == "item/fileChange/requestApproval" and not details.changes:
             raise ValueError("Complete file changes required")
     payload = p.model_dump(mode="json", exclude={"id", "responsePublication"})
-    if p.responsePublication is not None:
+    if getattr(p,"responsePublication",None) is not None:
         payload["responsePublication"] = p.responsePublication.model_dump(mode="json")
     payload["request"] = details.model_dump(mode="json")
     if len(json.dumps(payload).encode()) > 14000:
@@ -1504,10 +1535,11 @@ async def attention_response(request):
 
 
 async def attention_acknowledge(request):
-    p = await body(request, AttentionAcknowledgement)
+    raw = await request.json()
+    p = await body(request, ConversationAttentionAcknowledgement if raw.get("scope",{}).get("conversationVersion")==1 else AttentionAcknowledgement)
     payload=p.model_dump(mode="json",exclude={"operationId"})
     if payload.get("reason") is None:
-        payload.pop("reason")
+        payload.pop("reason", None)
     return await invoke(
         request,
         "attention_acknowledge",

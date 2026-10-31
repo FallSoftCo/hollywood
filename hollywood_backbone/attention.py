@@ -81,6 +81,9 @@ def owned_delivery(store, c, actor, identity, claim, generation):
 
 
 def receipt(store, c, actor, row, delivery):
+    if row["delivery"] is None:
+        from .room_attention import receipt as conversation_receipt
+        return conversation_receipt(store,c,actor,row)
     store.readable_event(c, actor, row["event"])
     if not actor["administrator"] and actor["id"] not in (row["human"], row["agent"]):
         raise Denied("Attention participant required")
@@ -96,6 +99,9 @@ def receipt(store, c, actor, row, delivery):
 
 
 def create(store, actor_id, identity, payload):
+    if payload.get("conversationVersion") == 1:
+        from .room_attention import create as conversation_create
+        return conversation_create(store, actor_id, identity, payload)
     with store.pool.connection() as c:
         a = store.actor(c, actor_id)
         d = owned_delivery(
@@ -252,6 +258,9 @@ def respond(store, actor_id, identity, operation, payload):
         ).fetchone()
         if not ref:
             raise Denied("Attention unavailable")
+        if ref["delivery"] is None:
+            from .room_attention import mutate
+            return mutate(store,c,a,identity,operation,payload)
         d = c.execute(
             "SELECT * FROM hb_delivery WHERE id=%s FOR UPDATE", (ref["delivery"],)
         ).fetchone()
@@ -319,6 +328,9 @@ def acknowledge(store, actor_id, identity, operation, payload):
         ).fetchone()
         if not ref:
             raise Denied("Attention unavailable")
+        if ref["delivery"] is None:
+            from .room_attention import mutate
+            return mutate(store,c,a,identity,operation,payload,acknowledge=True)
         d = owned_delivery(
             store, c, a, str(ref["delivery"]), payload["claimId"], payload["generation"]
         )
