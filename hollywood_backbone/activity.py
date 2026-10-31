@@ -22,6 +22,8 @@ def project(event, c=None, viewer=None):
     if event["data"].get("type") != "executionActivity":
         return event
     data = event["data"]
+    if data.get('conversationVersion')==1:
+        return event  # Native observations carry their own stable action identity.
     receipts = []
     if c is not None:
         rows = c.execute("""SELECT cmd.principal,cmd.operation,cmd.event,cmd.accepted_result,cmd.wire_request

@@ -1162,6 +1162,14 @@ async def post(request):
     )
 
 
+async def conversation_activity(request):
+    from .conversation_activity import Observation
+    p = await body(request, Observation)
+    value = p.model_dump(mode='json', exclude={'operationId'})
+    if len(json.dumps(value).encode())>14000:raise ValueError('Native observation exceeds limit')
+    return await invoke(request,'conversation_activity',str(UUID(request.match_info['room'])),p.operationId,value)
+
+
 async def history(request):
     remote = await federated_room_read(request, "history")
     if remote is not None:
@@ -2002,6 +2010,7 @@ def application(store, *, federated_messages=None, federated_catalog=None, feder
             web.get("/hollywood/v3/work/{work}/resource", work_resource),
             web.put("/hollywood/v3/work/{work}/resource", work_resource),
             web.get("/hollywood/v3/connector/deliveries/{delivery}/context", context),
+            web.post("/hollywood/v3/rooms/{room}/activity", conversation_activity),
             web.post("/hollywood/v3/connector/deliveries/{delivery}/activity", activity),
             web.post(
                 "/hollywood/v3/connector/deliveries/{delivery}/goal-binding", native_goal_binding

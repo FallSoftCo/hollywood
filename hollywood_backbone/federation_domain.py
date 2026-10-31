@@ -17,6 +17,7 @@ from .store import Denied
 
 METHODS = frozenset(
     ['activity_append',
+     'conversation_activity',
      'administrative_command',
      'agent_context',
      'agent_directory',

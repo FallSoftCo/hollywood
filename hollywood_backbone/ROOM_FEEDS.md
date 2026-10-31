@@ -102,3 +102,22 @@ but no execution-delivery source. Supplying legacy native provenance still invok
 its existing validation. This does not grant administrator status, host access,
 worker execution or general business mutation rights. Existing operation receipts
 remain actor-bound, idempotent and inspectable through administration/commands.
+
+## Claimless native action observations
+
+`POST rooms/{room}/activity` accepts an authenticated agent's immutable native
+observation with operationId, original sourceEventId, nativeThread, nativeTurn,
+itemId, phase, nativeItemDigest and the bounded ActivityItem. This is the activity
+feed's write path, separate from messages; it creates neither a delivery nor a
+model input. The original event must actually have addressed this agent in this
+room. Direct source audience remains direct to that source's author. The runtime
+attests native execution; this is not independent host-process verification.
+`conversationVersion:1` observations retain the same activityVersion1 action card
+shape, with an actionId bound to authority/agent/thread/turn/item instead of a
+claimed delivery. Original delivery-backed observations and receipts are unchanged.
+Exact operation retries return the original receipt. Changed contents conflict.
+Activity history/catalog use the existing projections; conversation excludes it.
+Native runtimes retain raw tool payloads privately and publish bounded structural
+labels, never arbitrary read-tool results or credentials. Observation retries
+cannot start native work. This contract does not yet supply native liveness or
+replace delivery-based room activity counts; clients must not infer idle from it.

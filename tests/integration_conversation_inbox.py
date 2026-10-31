@@ -105,10 +105,32 @@ async def main():
             async with session.get(base+'administration/commands/native-admin-principal',headers={'Authorization':'Bearer '+credentials['Global']['token']}) as response:
                 original_receipt=await response.json();assert response.status==200
                 assert original_receipt['actorId']==global_agent and original_receipt['acceptedResult']==enrolled
+            # Claimless native action observations retain private source scope,
+            # idempotent command receipts and independent conversation paging.
+            activity={'operationId':'native-observation-start','sourceEventId':private['event']['id'],
+                'nativeThread':'synthetic-original-thread','nativeTurn':'synthetic-turn',
+                'itemId':'synthetic-command','phase':'started','nativeItemDigest':'a'*64,
+                'item':{'nativeType':'commandExecution','title':'Synthetic local check','status':'inProgress'}}
+            path='rooms/'+room+'/activity'
+            started=await admin_call(actors['A']['token'],'POST',path,activity)
+            assert started==await admin_call(actors['A']['token'],'POST',path,activity)
+            assert started['event']['audience']=='direct' and started['event']['recipient']==owner
+            done=await admin_call(actors['A']['token'],'POST',path,{**activity,
+                'operationId':'native-observation-done','phase':'completed','nativeItemDigest':'b'*64,
+                'item':{**activity['item'],'status':'completed'}})
+            assert started['event']['data']['actionId']==done['event']['data']['actionId']
+            await admin_call(actors['Outsider']['token'],'POST',path,{**activity,'operationId':'denied-private-source'},403)
+            await admin_call(credentials['Owner']['token'],'POST',path,{**activity,'operationId':'denied-human-observation'},403)
+            await admin_call(actors['A']['token'],'POST',path,{**activity,'itemId':'changed'},409)
+            action_ids={started['event']['id'],done['event']['id']}
+            assert action_ids.issubset({e['id'] for e in store.history(owner,room,0,100,None,'activity')['events']})
+            assert not action_ids.intersection(e['id'] for e in store.history(owner,room,0,100,None,'conversation')['events'])
+            assert not action_ids.intersection(e['id'] for e in store.history(actors['Outsider']['id'],room,0,100,None,'activity')['events'])
+            assert not action_ids.intersection(e['id'] for e in (await get('A'))['events'])
             with store.pool.connection() as c:
                 counts={table:c.execute('SELECT count(*) AS n FROM '+table+' WHERE authority=%s',(authority,)).fetchone()['n'] for table in ('hb_delivery','hb_executor')}
             assert counts=={'hb_delivery':0,'hb_executor':0},counts
-            (root/'result.json').write_text(json.dumps({'passed':True,'bootstrapAndCreatorMembership':True,'sameCanonicalPublicMessageBothAgents':True,'privateIsolation':True,'membershipRevocation':True,'orderedPagingReconnect':True,'counts':counts,'modelCalls':0,'deployed':False},indent=2))
+            (root/'result.json').write_text(json.dumps({'passed':True,'bootstrapAndCreatorMembership':True,'sameCanonicalPublicMessageBothAgents':True,'privateIsolation':True,'membershipRevocation':True,'orderedPagingReconnect':True,'claimlessNativeActivity':True,'privateActivityIsolation':True,'activityReceiptIdempotency':True,'counts':counts,'modelCalls':0,'deployed':False},indent=2))
             print('PASS real PG/HTTP: same human event to two agents; private isolation; paging/reconnect; revocation; zero deliveries/executors/models')
     finally:
         (root/'trace.private.json').write_text(json.dumps(trace,indent=2));await runner.cleanup();store.close()

@@ -404,6 +404,10 @@ class Store:
 
         return command(self, actor_id, identity, operation)
 
+    def conversation_activity(self, actor_id, room, operation, payload):
+        from .conversation_activity import append
+        return append(self, actor_id, room, operation, payload)
+
     def activity_append(self, actor_id, identity, payload):
         from .activity import append
 
