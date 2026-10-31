@@ -1,24 +1,39 @@
 """Principal-scoped communication hints. Reads never admit or wake execution."""
 
 from .store import Conflict, Denied, json_value
+from uuid import UUID
 from .human_continuations import can_respond, nonblocking
 
 
 KINDS = ("message", "result", "question", "approval")
-NOTIFICATION_POLICY_REVISION = 2
+NOTIFICATION_POLICY_REVISION = 3
+
+
+def identifier(value):
+    try:return UUID(value) if isinstance(value,str) else None
+    except ValueError:return None
 
 
 def hint(store, c, actor, event):
     room = store.room(c, actor, event["room"])
     attention = c.execute(
-        "SELECT q.*,d.state AS delivery_state,d.revision AS delivery_revision FROM hb_attention q JOIN hb_delivery d ON d.id=q.delivery WHERE q.event=%s",
-        (event["id"],),
+        """SELECT q.*,d.state AS delivery_state,d.revision AS delivery_revision
+        FROM hb_attention q LEFT JOIN hb_delivery d ON d.id=q.delivery
+        WHERE q.id=%s AND q.authority=%s AND q.room=%s
+          AND q.agent=%s AND q.event=%s""",
+        (identifier(event['data'].get('attentionId')),actor['authority'],event['room'],event['author'],event['source']),
     ).fetchone()
     notify = False
     reason = "room_update"
     revision = NOTIFICATION_POLICY_REVISION
     attention_id = None
-    if attention:
+    if attention and attention['delivery'] is None:
+        revision=attention['revision']+NOTIFICATION_POLICY_REVISION
+        attention_id=attention['id']
+        if actor['kind']=='human' and attention['human']==actor['id']:
+            notify=attention['state'] in ('pending','unknown')
+            reason=event['kind'] if attention['state']=='pending' else 'unknown_attention' if attention['state']=='unknown' else 'attention_resolved'
+    elif attention:
         # Ending an inference slice is not a new human question.
         revision = attention["revision"] + NOTIFICATION_POLICY_REVISION
         if not nonblocking(attention):
@@ -35,6 +50,15 @@ def hint(store, c, actor, event):
     elif event["author"] != actor["id"]:
         if event["audience"] == "direct" and event["recipient"] == actor["id"]:
             notify, reason = True, "direct_message" if event["kind"] == "message" else "work_result"
+        elif (event['kind']=='message' and event['data'].get('responseVersion')==1
+                and event['data'].get('responsePhase') in ('answer','blocked')):
+            original=c.execute('SELECT author,kind,data FROM hb_event WHERE id=%s AND authority=%s',
+                (identifier(event['data'].get('humanInputEventId')),event['authority'])).fetchone()
+            if (actor['kind']=='human' and original and original['author']==actor['id']
+                    and original['kind'] in ('message','request') and original['data'].get('authorKind')=='human'):
+                notify=True
+                reason='request_result' if event['data']['responsePhase']=='answer' else 'request_blocked'
+            else:reason='agent_work_update'
         elif event["source"] and (event["kind"] == "result" or (
             event["kind"] == "message" and c.execute(
                 """SELECT 1 FROM hb_delivery WHERE event=%s AND agent=%s
@@ -76,7 +100,7 @@ def feed(store, actor_id, after, limit, pending=False):
              AND e.kind=ANY(%s)
              AND (%s OR EXISTS(SELECT 1 FROM hb_membership m WHERE m.room=e.room AND m.principal=%s AND m.can_read))
              AND (%s OR e.audience='room' OR e.author=%s OR e.recipient=%s)
-             AND (NOT %s OR EXISTS(SELECT 1 FROM hb_attention q WHERE q.event=e.id AND q.human=%s AND q.state IN ('pending','unknown')))
+             AND (NOT %s OR EXISTS(SELECT 1 FROM hb_attention q WHERE q.id=CASE WHEN e.data->>'attentionId' ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN (e.data->>'attentionId')::uuid END AND q.authority=e.authority AND q.room=e.room AND q.agent=e.author AND q.event=e.source AND q.human=%s AND q.state IN ('pending','unknown')))
              ORDER BY e.seq LIMIT %s""",
             (actor["authority"], after, ceiling, list(KINDS), actor["administrator"], actor["id"],
              actor["administrator"], actor["id"], actor["id"], pending, actor["id"], limit),

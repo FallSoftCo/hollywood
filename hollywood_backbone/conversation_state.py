@@ -56,3 +56,40 @@ def observe(store,actor_id,room,payload):
         row=c.execute('SELECT revision,observed_at FROM hb_conversation_state WHERE room=%s AND agent=%s AND native_thread=%s',identity).fetchone()
         return json_value({'accepted':True,'observationType':'nativeState','authorityId':str(a['authority']),
             'roomId':room,'agentId':str(a['id']),'nativeThread':payload['nativeThread'],**row})
+
+
+CATALOG_CTES = """
+native_members AS (
+                       SELECT n.* FROM hb_conversation_state n JOIN readable_rooms r ON r.id=n.room
+                       JOIN hb_principal p ON p.id=n.agent AND p.active
+                       JOIN hb_membership m ON m.room=n.room AND m.principal=n.agent AND m.can_read
+                   ), native_counts AS (
+                       SELECT room,count(*) AS total FROM native_members GROUP BY room
+                   ), native_visible AS (
+                       SELECT n.room,jsonb_agg(jsonb_build_object(
+                         'agentId',n.agent,'nativeThread',n.native_thread,'revision',n.revision,
+                         'observedAt',floor(extract(epoch FROM n.observed_at)*1000)::bigint,
+                         'expiresAt',floor(extract(epoch FROM n.observed_at + interval '75 seconds')*1000)::bigint,
+                         'status',CASE WHEN n.observed_at > statement_timestamp()-interval '75 seconds'
+                           THEN n.state ELSE jsonb_build_object('type','unavailable','activeFlags','[]'::jsonb) END
+                       ) ORDER BY n.agent,n.native_thread) AS agents
+                       FROM native_members n LEFT JOIN hb_event e ON e.id=n.source
+                       WHERE n.source IS NULL OR %s OR e.audience='room' OR e.author=%s OR e.recipient=%s
+                       GROUP BY n.room
+                   )
+"""
+CATALOG_PROJECTION = """
+jsonb_build_object(
+                     'version',1,'observedAt',floor(extract(epoch FROM statement_timestamp())*1000)::bigint,
+                     'runtimeCount',coalesce(nc.total,0),'agents',coalesce(nv.agents,'[]'::jsonb)
+                   )
+"""
+
+
+def read_room(store,c,actor,room):
+    store.room(c,actor,room)
+    row=c.execute('WITH readable_rooms AS (SELECT id FROM hb_room WHERE id=%s AND authority=%s), '
+        +CATALOG_CTES+' SELECT '+CATALOG_PROJECTION+' AS value FROM readable_rooms r '
+        +'LEFT JOIN native_counts nc ON nc.room=r.id LEFT JOIN native_visible nv ON nv.room=r.id',
+        (room,actor['authority'],actor['administrator'],actor['id'],actor['id'])).fetchone()
+    return json_value(row['value'])

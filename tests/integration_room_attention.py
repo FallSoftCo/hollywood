@@ -26,6 +26,12 @@ async def main():
     await req('agent','POST','attention',{**payload,'conversationVersion':True},400)
     created=await req('agent','POST','attention',payload);assert created['attention']['delivery'] is None
     assert (await req('agent','POST','attention',payload))['scope']==created['scope']
+    notifications=await req('human','GET','inbox?after=0&limit=100')
+    hint=next(x for x in notifications['events'] if x.get('attentionId')==identity)
+    assert hint['notify'] is True and hint['reason']==kind
+    pending_notifications=await req('human','GET','inbox/pending?after=0&limit=100')
+    assert any(x.get('attentionId')==identity for x in pending_notifications['events'])
+
     scope=created['scope'];response={'answers':{'choice':{'answers':['Original answer']}}} if kind=='question' else {'decision':'decline'}
     answer={'operationId':'one-original-response','scope':scope,'response':response}
     await req('agent','POST',path+'/response',answer,403)
@@ -36,19 +42,28 @@ async def main():
     for state in ('native_submitted','closed'):
      closed=await req('agent','POST',path+'/acknowledge',{'operationId':'original-'+state,'scope':scope,'state':state});assert closed['attention']['state']==state
     await req('human','POST',path+'/response',{**answer,'operationId':'late-answer'},409)
-   meaningful=store.post(agent,room,'result-before-runtime-state',{'kind':'message','audience':'room','body':'Meaningful result before lifecycle state'})['event']
+    resolved=await req('human','GET','inbox/events/'+hint['eventId'])
+    assert resolved['hint']['notify'] is False and resolved['hint']['reason']=='attention_resolved'
+    assert resolved['hint']['revision']>hint['revision']
+
+   meaningful=store.post(agent,room,'result-before-runtime-state',{'kind':'message','audience':'room','body':'Meaningful result before lifecycle state','sourceEventId':source['id'],'responsePhase':'answer'})['event']
+   answer_hint=await req('human','GET','inbox/events/'+meaningful['id'])
+   assert answer_hint['hint']['notify'] is True and answer_hint['hint']['reason']=='request_result'
+   update=store.post(agent,room,'quiet-intermediate-update',{'kind':'message','audience':'room','body':'Routine intermediate update','sourceEventId':source['id'],'responsePhase':'update'})['event']
+   update_hint=await req('human','GET','inbox/events/'+update['id'])
+   assert update_hint['hint']['notify'] is False
    service=uid();store.principal(owner,service,'Synthetic runtime observer','service',secrets.token_urlsafe(40))
    with store.pool.connection() as c:
     observer=store.actor(c,service)
     lifecycle=store.event(c,observer,room,'progress','Original executor stopped; original evidence retained',data={'type':'executorState','deliveryState':'unknown','resourceState':'stopped','deliveryId':uid(),'executorId':uid(),'generation':1})
    history=await req('human','GET','rooms/'+room+'/history?view=conversation&before=9007199254740991&limit=1')
    actions=await req('human','GET','rooms/'+room+'/history?view=activity&before=9007199254740991&limit=1')
-   assert history['events'][0]['id']==meaningful['id']
+   assert history['events'][0]['id']==update['id']
    assert actions['events'][0]['id']==str(lifecycle) and actions['events'][0]['data']['deliveryState']=='unknown'
    inbox=await req('human','GET','rooms/'+room+'/attention?after=0&limit=100');assert len(inbox['attention'])==2
    with store.pool.connection() as c:claims=c.execute('SELECT count(*) AS n FROM hb_delivery WHERE authority=%s',(authority,)).fetchone()['n']
    assert claims==0
-   result={'passed':True,'questionAndApproval':True,'onlyOriginalHumanCanAnswer':True,'sameOperationResponseDeduplicated':True,'changedResponseRejected':True,'closedCallbackRejectsLateResponse':True,'existingAttentionInbox':True,'lifecycleSeparateBeforeLimit':True,'strictVersion':True,'executionDeliveries':claims,'modelCalls':0,'productionChanged':False};(root/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))
+   result={'passed':True,'questionAndApproval':True,'onlyOriginalHumanCanAnswer':True,'sameOperationResponseDeduplicated':True,'changedResponseRejected':True,'closedCallbackRejectsLateResponse':True,'existingAttentionInbox':True,'actionableNativeQuestionAndApprovalHints':True,'resolvedQuestionsDoNotRenotify':True,'deliberateAnswerNotifiesWithoutClaims':True,'routineUpdatesStayQuiet':True,'lifecycleSeparateBeforeLimit':True,'strictVersion':True,'executionDeliveries':claims,'modelCalls':0,'productionChanged':False};(root/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))
  finally:
   (root/'http.private.json').write_text(json.dumps(trace,indent=2));await runner.cleanup();store.close()
 asyncio.run(main())

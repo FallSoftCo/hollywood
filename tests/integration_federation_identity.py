@@ -32,7 +32,7 @@ def expect_denied(call):
     raise AssertionError('Expected identity/audience denial')
 
 
-async def main(database,binary,out):
+async def main(database,binary,out,conversation_only=False):
     out.mkdir(mode=0o700,parents=True,exist_ok=False)
     source=json.loads(Path(database).read_text());authority=str(uuid4())
     stores=[];schemas=[];plans=[]
@@ -184,6 +184,44 @@ async def main(database,binary,out):
                             (out/'catalog-readback.json').write_text(json.dumps(catalog,indent=2)+'\n')
                             assert {r['id'] for r in catalog['rooms']}=={p['globalRoomId'] for p in plans}
                             assert {r['ownerNodeId'] for r in catalog['rooms']}=={a.host_id,b.host_id}
+                        if conversation_only:
+                            remote_room=plans[0]['globalRoomId'];source_event=remote_history['events'][0]['id']
+                            path=urls[1]+'/hollywood/v3/rooms/'+remote_room+'/activity'
+                            payload={'operationId':'qa-conversational-native-action','sourceEventId':source_event,
+                                'nativeThread':'synthetic-original-native','nativeTurn':'synthetic-native-turn',
+                                'itemId':'synthetic-native-command','phase':'completed','nativeItemDigest':'a'*64,
+                                'item':{'nativeType':'commandExecution','title':'Synthetic NATS action transport','status':'completed'}}
+                            receipts=[]
+                            for _ in range(2):
+                                async with session.post(path,headers=headers,json=payload) as response:
+                                    value=await response.json();assert response.status==200,value;receipts.append(value)
+                            assert receipts[0]==receipts[1] and receipts[0]['deliveries']==[]
+                            state={'observationType':'nativeState','nativeThread':'synthetic-original-native','revision':1,
+                                'sourceEventId':source_event,'status':{'type':'active','activeFlags':['waitingOnUserInput']}}
+                            async with session.post(path,headers=headers,json=state) as response:
+                                assert response.status==200,await response.text()
+                            async with session.get(urls[1]+'/hollywood/v3/rooms',headers=headers) as response:
+                                updated=await response.json();assert response.status==200,updated
+                            room=next(r for r in updated['rooms'] if r['id']==remote_room)
+                            assert room['membershipVersion']==1 and room['memberCanRead'] is True
+                            assert room['nativeState']['agents'][0]['status']==state['status']
+                            async with session.get(urls[1]+'/hollywood/v3/rooms/'+remote_room+'/history?view=activity',headers=headers) as response:
+                                actions=await response.json();assert response.status==200,actions
+                                assert [e['id'] for e in actions['events']]==[receipts[0]['event']['id']]
+                            async with session.get(urls[1]+'/hollywood/v3/rooms/'+remote_room+'/history?view=conversation',headers=headers) as response:
+                                chat=await response.json();assert response.status==200,chat
+                                assert [e['id'] for e in chat['events']]==[source_event]
+                            for store in stores:
+                                with store.pool.connection() as c:
+                                    assert c.execute('SELECT count(*) n FROM hb_delivery').fetchone()['n']==0
+                                    assert c.execute('SELECT count(*) n FROM hb_executor').fetchone()['n']==0
+                            result={'passed':True,'independentStores':2,'actualNats':True,
+                                'homeAuthenticatedAgentRemoteRoom':True,'remoteNativeActionOriginalReceipt':True,
+                                'remoteNativeStatusAndMembershipCatalog':True,'actionsNotConversation':True,
+                                'executors':0,'deliveries':0,'modelCalls':0,'productionChanged':False,
+                                'actualCrossHostNativeExecution':False}
+                            (out/'qualification.json').write_text(json.dumps(result,indent=2)+'\n')
+                            return result
                         # Real connector-prefixed reads must route by their
                         # captured delivery resource, not by the first URL word.
                         request_row=stores[0].post(owner_a,plans[0]['globalRoomId'],str(uuid4()),
@@ -346,4 +384,4 @@ async def main(database,binary,out):
         with psycopg.connect(**source,autocommit=True) as c:
             for schema in schemas:c.execute(sql.SQL('DROP SCHEMA {} CASCADE').format(sql.Identifier(schema)))
 
-if __name__=='__main__':asyncio.run(main(sys.argv[1],sys.argv[2],Path(sys.argv[3])))
+if __name__=='__main__':asyncio.run(main(sys.argv[1],sys.argv[2],Path(sys.argv[3]),'--conversational' in sys.argv[4:]))

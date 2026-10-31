@@ -136,6 +136,8 @@ async def main():
             assert state_receipt==await admin_call(actors['A']['token'],'POST',path,state)
             native=next(r for r in store.catalog(owner)['rooms'] if r['id']==room)['nativeState']
             assert native['runtimeCount']==1 and native['agents'][0]['status']==state['status']
+            detail_native=store.room_detail(owner,room)['nativeState']
+            assert detail_native['agents']==native['agents'] and detail_native['runtimeCount']==native['runtimeCount']
             hidden=next(r for r in store.catalog(actors['Outsider']['id'])['rooms'] if r['id']==room)['nativeState']
             assert hidden['runtimeCount']==1 and hidden['agents']==[]
             await admin_call(actors['A']['token'],'POST',path,{**state,'status':{'type':'idle'}},409)

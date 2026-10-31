@@ -148,3 +148,16 @@ without being a participant or native input recipient. Federated catalog retains
 these per-room facts from the owning node. Discovered room membership does not
 itself start a model or replay conversation; send-time recipients and durable
 runtime cursors still control input.
+
+Native status has one SQL projection shared by catalog and room detail. The
+open-room footer and list must both prefer it over legacy delivery counts.
+WaitingOnUserInput/WaitingOnApproval are waiting states, not spinning-thinking
+states. Missing, stale, malformed or private/unseen native status is unavailable;
+it must not fall through to legacy Idle.
+
+Human notification hints resolve the actual attentionId on canonical question or
+approval events, retaining original callback ownership. Native callbacks do not
+need a delivery join. Resolved callbacks stop notifying. Deliberate answer/blocked
+publications can notify their canonical original human (message or request),
+without claiming work completion. Routine responsePhase update publications,
+action observations and native liveness snapshots do not request a push.

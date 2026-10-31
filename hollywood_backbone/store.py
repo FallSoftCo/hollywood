@@ -850,6 +850,7 @@ class Store:
         )
 
     def catalog(self, actor_id):
+        from .conversation_state import CATALOG_CTES,CATALOG_PROJECTION
         # One batch for the bounded room page, counts and previews. Visibility and
         # eligibility precede latest selection: private newer events cannot mask
         # older visible ones. Never use activity.project here (receipt queries and
@@ -893,24 +894,7 @@ class Store:
                        JOIN hb_principal p ON p.id=e.author AND p.authority=e.authority
                        WHERE e.authority=%s
                        AND (%s OR e.audience='room' OR e.author=%s OR e.recipient=%s)
-                   ), native_members AS (
-                       SELECT n.* FROM hb_conversation_state n JOIN readable_rooms r ON r.id=n.room
-                       JOIN hb_principal p ON p.id=n.agent AND p.active
-                       JOIN hb_membership m ON m.room=n.room AND m.principal=n.agent AND m.can_read
-                   ), native_counts AS (
-                       SELECT room,count(*) AS total FROM native_members GROUP BY room
-                   ), native_visible AS (
-                       SELECT n.room,jsonb_agg(jsonb_build_object(
-                         'agentId',n.agent,'nativeThread',n.native_thread,'revision',n.revision,
-                         'observedAt',floor(extract(epoch FROM n.observed_at)*1000)::bigint,
-                         'expiresAt',floor(extract(epoch FROM n.observed_at + interval '75 seconds')*1000)::bigint,
-                         'status',CASE WHEN n.observed_at > statement_timestamp()-interval '75 seconds'
-                           THEN n.state ELSE jsonb_build_object('type','unavailable','activeFlags','[]'::jsonb) END
-                       ) ORDER BY n.agent,n.native_thread) AS agents
-                       FROM native_members n LEFT JOIN hb_event e ON e.id=n.source
-                       WHERE n.source IS NULL OR %s OR e.audience='room' OR e.author=%s OR e.recipient=%s
-                       GROUP BY n.room
-                   ), messages AS (
+                   ), """ + CATALOG_CTES + """, messages AS (
                        SELECT DISTINCT ON (room) room,seq,
                          jsonb_build_object(
                            'eventId',id,'seq',seq,'occurredAt',occurred_at,
@@ -953,10 +937,7 @@ class Store:
                      'version',1,'latestMessage',m.preview,'latestActivity',x.preview,
                      'recency',CASE WHEN x.seq IS NULL OR m.seq>x.seq
                        THEN m.recency ELSE x.recency END
-                   ) AS "feedSummary",jsonb_build_object(
-                     'version',1,'observedAt',floor(extract(epoch FROM statement_timestamp())*1000)::bigint,
-                     'runtimeCount',coalesce(nc.total,0),'agents',coalesce(nv.agents,'[]'::jsonb)
-                   ) AS "nativeState"
+                   ) AS "feedSummary",""" + CATALOG_PROJECTION + """ AS "nativeState"
                    FROM readable_rooms r LEFT JOIN counts c ON c.room=r.id
                    LEFT JOIN waiting w ON w.room=r.id
                    LEFT JOIN messages m ON m.room=r.id
@@ -993,6 +974,7 @@ class Store:
         return c.execute(query,args).fetchall()
 
     def room_detail(self, actor_id, identity):
+        from .conversation_state import read_room as native_state_read
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             room = self.room(c, a, identity)
@@ -1036,6 +1018,7 @@ class Store:
             return {
                 "authorityId": str(a["authority"]),
                 "room": json_value(room),
+                "nativeState": native_state_read(self,c,a,identity),
                 "permissions": permissions,
                 "actors": json_value(actors),
                 "memberships": json_value(
