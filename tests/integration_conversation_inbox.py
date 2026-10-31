@@ -79,6 +79,24 @@ async def main():
             assert answer['event']['data']['responsePhase']=='answer'
             original=store.post(owner,room,uid(),{'kind':'request','audience':'room','recipientId':actors['A']['id'],'body':'Another bounded input'})
             assert original['deliveries']==[]
+            # An existing delegated administrator may manage communication
+            # identities/rooms without manufacturing an executor reservation.
+            child_agent,admin_room=uid(),uid()
+            async def admin_call(token,method,path,payload,expected=200):
+                async with session.request(method,base+path,json=payload,headers={'Authorization':'Bearer '+token}) as response:
+                    value=await response.json();assert response.status==expected,(response.status,value);return value
+            principal_body={'operationId':'native-admin-principal','id':child_agent,'name':'Scoped synthetic peer','kind':'agent','enrollmentCredential':secrets.token_urlsafe(40)}
+            enrolled=await admin_call(credentials['Global']['token'],'POST','principals',principal_body)
+            assert await admin_call(credentials['Global']['token'],'POST','principals',principal_body)==enrolled
+            await admin_call(actors['A']['token'],'POST','principals',{**principal_body,'operationId':'denied-non-admin','id':uid()},403)
+            await admin_call(credentials['Global']['token'],'POST','principals',{**principal_body,'operationId':'denied-authority-escalation','id':uid(),'administrator':True},403)
+            await admin_call(credentials['Global']['token'],'POST','rooms',{'operationId':'native-admin-room','id':admin_room,'name':'Synthetic native administrator room','purpose':'Communication only','ownerId':child_agent})
+            await admin_call(credentials['Global']['token'],'PUT','rooms/'+admin_room+'/membership',{'operationId':'native-admin-membership','principalId':actors['A']['id'],'can_read':True,'can_post':True,'can_request':True,'revision':0})
+            role=store.role_read(global_agent,child_agent)
+            await admin_call(credentials['Global']['token'],'PUT','agents/'+child_agent+'/role',{'operationId':'native-admin-role','primary':'developer','purpose':'Synthetic local implementation','homeRoomId':admin_room,'revision':role['revision']})
+            async with session.get(base+'administration/commands/native-admin-principal',headers={'Authorization':'Bearer '+credentials['Global']['token']}) as response:
+                original_receipt=await response.json();assert response.status==200
+                assert original_receipt['actorId']==global_agent and original_receipt['acceptedResult']==enrolled
             with store.pool.connection() as c:
                 counts={table:c.execute('SELECT count(*) AS n FROM '+table+' WHERE authority=%s',(authority,)).fetchone()['n'] for table in ('hb_delivery','hb_executor')}
             assert counts=={'hb_delivery':0,'hb_executor':0},counts

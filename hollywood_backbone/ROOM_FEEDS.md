@@ -95,3 +95,10 @@ so old idempotency fingerprints are unchanged.
 Routine `executorState` observations are activity, excluded before conversation
 pagination limits. Their original canonical history remains available in activity
 and combined views; they are not room chat notifications.
+
+Communication administration (`principal`, `create_room`, `membership`, `role`)
+requires the current authenticated administrator in the same domain transaction,
+but no execution-delivery source. Supplying legacy native provenance still invokes
+its existing validation. This does not grant administrator status, host access,
+worker execution or general business mutation rights. Existing operation receipts
+remain actor-bound, idempotent and inspectable through administration/commands.

@@ -27,6 +27,10 @@ BUSINESS = {"external_response", "context_configure",
     "cancel", "native_control_create", "communication_set",
     "collaboration_bridge",
 }
+# Domain administration remains authorized by Store/administrative.mutate in
+# this same transaction. Communication identities, rooms, roles and membership
+# do not require an execution delivery merely because their owner is an agent.
+COMMUNICATION_ADMINISTRATION = {"principal", "create_room", "membership", "role"}
 METADATA = {"runtime_observe", "context_call",
     "executor_begin", "executor_reserve", "executor_attach", "executor_observe",
     "host_sample", "connector_observe", "claim", "transition",
@@ -189,7 +193,8 @@ def enter(c, identity):
                     and isinstance(request["body"], dict)
                     and request["body"].get("kind") in ("message", "request"))
                 from .agent_context import communication_allowed
-                if not communication and not communication_allowed(c, request, principal):
+                administration = principal["administrator"] and request["action"] in COMMUNICATION_ADMINISTRATION
+                if not communication and not administration and not communication_allowed(c, request, principal):
                     raise Denied("Enrolled communication transport or native execution source required")
         elif write and value and principal["kind"] != "agent":
             raise Denied("Only an agent may assert native provenance")
