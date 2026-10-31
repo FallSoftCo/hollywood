@@ -858,7 +858,10 @@ class Store:
             a = self.actor(c, actor_id)
             rows = c.execute(
                 """WITH readable_rooms AS (
-                       SELECT r.* FROM hb_room r WHERE r.authority=%s AND NOT r.room_reference
+                       SELECT r.*,1 AS "membershipVersion",coalesce(own.can_read,false) AS "memberCanRead",
+                         coalesce(own.revision,0) AS "membershipRevision"
+                       FROM hb_room r LEFT JOIN hb_membership own ON own.room=r.id AND own.principal=%s
+                       WHERE r.authority=%s AND NOT r.room_reference
                        AND (%s OR EXISTS(SELECT 1 FROM hb_membership m
                          WHERE m.room=r.id AND m.principal=%s AND m.can_read))
                        ORDER BY r.name LIMIT 100
@@ -961,7 +964,7 @@ class Store:
                    LEFT JOIN native_counts nc ON nc.room=r.id
                    LEFT JOIN native_visible nv ON nv.room=r.id ORDER BY r.name""",
                 (
-                    a["authority"], a["administrator"], a["id"],
+                    a["id"], a["authority"], a["administrator"], a["id"],
                     a["authority"], a["administrator"], a["id"], a["id"],
                     a["authority"], a["administrator"], a["id"],
                     a["authority"], a["administrator"], a["id"], a["id"],

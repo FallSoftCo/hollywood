@@ -140,3 +140,11 @@ clients with native observations use the native lane instead of treating absent
 delivery claims as idle. Native state is authenticated agent attestation, not
 independent proof of host processes or task completion. No scheduling, execution
 ownership, automatic continuation or recovery is performed by this snapshot table.
+
+Room catalog entries additionally include membershipVersion1, memberCanRead and
+membershipRevision for the actual viewing principal. These are actual membership
+facts, not effective administrator permission. An administrator may read a room
+without being a participant or native input recipient. Federated catalog retains
+these per-room facts from the owning node. Discovered room membership does not
+itself start a model or replay conversation; send-time recipients and durable
+runtime cursors still control input.
