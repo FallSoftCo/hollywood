@@ -21,6 +21,11 @@ def main(file):
   try:store.bootstrap(authority,'Synthetic node bootstrap',{**plan,'nodeId':str(uuid4())})
   except Conflict:pass
   else:raise AssertionError('Existing home moved')
+  try:store.placement(plan['credentials']['Owner']['principalId'],node,'Synthetic host','synthetic-fingerprint',[],plan['credentials']['Global']['principalId'])
+  except ValueError:pass
+  else:raise AssertionError('Invalid capability shape accepted')
+  with store.pool.connection() as c:
+   assert c.execute('SELECT 1 FROM hb_host WHERE id=%s',(node,)).fetchone() is None
   legacy=str(uuid4());old={'globalRoomId':str(uuid4()),'credentials':{k:{'principalId':str(uuid4()),'token':secrets.token_urlsafe(40)} for k in ['Owner','Global']}}
   store.bootstrap(legacy,'Synthetic legacy',old)
   store.post(old['credentials']['Owner']['principalId'],old['globalRoomId'],'bootstrap-node-legacy-event',{'kind':'message','body':'Synthetic retained history','audience':'room'})

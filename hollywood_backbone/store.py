@@ -1254,6 +1254,8 @@ class Store:
         return mutate(self, actor_id, 'placement', [host, name, fingerprint, capabilities, agent], command)
 
     def _admin_placement(self, c, a, host, name, fingerprint, capabilities, agent):
+        if not isinstance(capabilities, dict):
+            raise ValueError("Host capabilities must be an object")
         if not c.execute(
             "SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
             (agent, a["authority"]),
