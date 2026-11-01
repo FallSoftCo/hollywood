@@ -550,6 +550,8 @@ class Store:
                 ).fetchone()
                 if not room:
                     raise Conflict("Bootstrap room differs from accepted installation")
+                from .bootstrap_home import bind
+                bind(c, authority, plan)
                 return {
                     "authorityId": authority,
                     "globalRoomId": plan["globalRoomId"],
@@ -589,6 +591,8 @@ class Store:
             for member in (owner, global_agent):
                 c.execute("INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
                           (authority, room, member))
+            from .bootstrap_home import bind
+            bind(c, authority, plan)
             return {"authorityId": authority, "globalRoomId": room, "created": True}
 
     def authenticate(self, token):

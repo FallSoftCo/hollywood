@@ -184,3 +184,7 @@ SDK206 uses separate durable journals and independent bounded I/O lanes per
 reviewed observation node. Physical QA now demonstrates local GPU native work
 with the CPU QA API and broker absent. This does not imply global atomic
 multi-node capacity reservation, storage failover, or a finished human client.
+
+## New-node bootstrap identity
+
+The private installation plan may declare `nodeId`. Bootstrap binds only its initial Owner, Global and room to that node in the same transaction. Repetition retains that home; a different home is rejected. An unbound legacy store that already has events requires explicit home migration. Plans without `nodeId` retain existing behavior. This does not enroll an executor or copy an account profile.
