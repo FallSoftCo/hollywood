@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hollywood-cli"
-version = "0.3.0.dev172"
+version = "0.3.0.dev173"
 description = "Durable human and agent room communication backbone"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -40,7 +40,7 @@ hollywood-import-v2 = "hollywood_backbone.import_v2:main"
 
 [project.optional-dependencies]
 backplane = ["nats-py>=2.12,<3"]
-enterprise = ["psycopg[binary,pool]>=3.3,<4", "aiohttp>=3.12,<4", "pydantic>=2.12,<3"]
+enterprise = ["psycopg[binary,pool]>=3.3,<4", "aiohttp>=3.12,<4", "pydantic>=2.12,<3", "pywin32>=311; sys_platform == 'win32'"]
 room = ["aiohttp>=3.12,<4", "pydantic>=2.12,<3", "filelock>=3.20,<4", "jsonschema>=4.26,<5"]
 push = ["firebase-admin>=7,<8"]
 

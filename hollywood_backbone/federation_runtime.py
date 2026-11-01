@@ -55,9 +55,17 @@ def load(path):
             for node,principal in nodes.items():identity(node);identity(principal)
     for authority in d.get('knownAuthorities',[]):identity(authority)
     password=Path(d['passwordFile'])
-    if not password.is_absolute() or password.stat().st_mode & 0o077:
+    if not password.is_absolute():
         raise ValueError('Private host password file must be owner-only')
-    return d,password.read_text().strip()
+    import os
+    if os.name == 'nt':
+        from .windows_credentials import read_private_text
+        value = read_private_text(password)
+    else:
+        if password.stat().st_mode & 0o077:
+            raise ValueError('Private host password file must be owner-only')
+        value = password.read_text().strip()
+    return d,value
 
 
 class Catalogs:
