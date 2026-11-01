@@ -39,7 +39,8 @@ class Catalog:
         try:
             agents = self.store.agent_directory(actor, None, 100)
         except Denied:
-            agents = {'agents': [], 'nextAfter': None, 'access': 'not_authorized'}
+            from .agent_directory import visible_room_agents
+            agents = visible_room_agents(self.store, actor, limit=100)
         return {**rooms, 'agents': agents['agents'], 'nextAgentAfter': agents['nextAfter']}
 
     async def receive(self, request):
