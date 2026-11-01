@@ -1,5 +1,5 @@
 """Real HTTP/PostgreSQL member catalog visibility, without model execution."""
-import asyncio,json,secrets,sys,os
+import asyncio,json,secrets,sys,os,time
 from pathlib import Path
 from uuid import uuid4
 import psycopg
@@ -56,7 +56,33 @@ async def main(database,evidence):
             async with session.get(url+'rooms') as r:
                 revoked=await r.json(); assert r.status==200
             assert revoked['agents']==[] and revoked['rooms']==[]
-        result={'passed':True,'actualHttpPostgres':True,'visibleAgents':2,'administratorInventoryStillDenied':True,'unroomedInactiveForeignAndReferenceExcluded':True,'peerAndViewerRevocationImmediate':True,'credentialsAbsent':True,'modelsStarted':0,'liveServicesChanged':False,'schemaDroppedInFinally':True}
+            # Restore only this synthetic member to qualify an open room stream
+            # across server shutdown/reopen, retaining the original cursor.
+            with store.pool.connection() as c:
+                c.execute('UPDATE hb_membership SET can_read=true,can_post=true WHERE room=%s AND principal=%s',(room,human))
+            async with session.post(url+'rooms/'+room+'/messages',json={
+                    'operationId':'stream-lifecycle-'+str(uuid4()),'kind':'message',
+                    'audience':'room','body':'Synthetic human lifecycle fixture'}) as r:
+                original_event=await r.json(); assert r.status==200,(r.status,original_event)
+            stream=await session.get(url+'rooms/'+room+'/events?after=0&batch=1&view=conversation')
+            assert stream.status==200
+            cursor=None; batch=None
+            for _ in range(20):
+                line=(await asyncio.wait_for(stream.content.readline(),3)).decode().strip()
+                if line.startswith('id: '):cursor=int(line[4:])
+                if line.startswith('data: '):batch=json.loads(line[6:])
+                if line==': heartbeat':break
+            assert cursor and batch and any(e['body']=='Synthetic human lifecycle fixture' for e in batch['events'])
+            started=time.monotonic(); await asyncio.wait_for(runner.cleanup(),5)
+            shutdown_ms=round((time.monotonic()-started)*1000); stream.close(); runner=None
+            runner=web.AppRunner(application(store,federated_catalog=catalog),access_log=None)
+            await runner.setup(); site=web.TCPSite(runner,'127.0.0.1',0); await site.start()
+            reopened='http://127.0.0.1:'+str(site._server.sockets[0].getsockname()[1])+'/hollywood/v3/'
+            resumed=await session.get(reopened+'rooms/'+room+'/events?batch=1&view=conversation',headers={'Last-Event-ID':str(cursor)})
+            first_line=(await asyncio.wait_for(resumed.content.readline(),3)).decode().strip()
+            assert first_line==': heartbeat',first_line
+            resumed.close()
+        result={'passed':True,'actualHttpPostgres':True,'visibleAgents':2,'administratorInventoryStillDenied':True,'unroomedInactiveForeignAndReferenceExcluded':True,'peerAndViewerRevocationImmediate':True,'credentialsAbsent':True,'modelsStarted':0,'liveServicesChanged':False,'schemaDroppedInFinally':True,'openStreamGracefulShutdownMs':shutdown_ms,'reopenedOriginalCursorNoReplay':True}
         (evidence/'result.json').write_text(json.dumps(result,indent=2)); print(json.dumps(result))
     finally:
         if runner:await runner.cleanup()

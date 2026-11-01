@@ -572,6 +572,7 @@ class SupervisionAck(Input):
 
 
 STORE = web.AppKey("store", Store)
+STREAM_CLOSING = web.AppKey("stream_closing", asyncio.Event)
 FEDERATED_MESSAGES = web.AppKey("federated_messages", object)
 FEDERATED_CATALOG = web.AppKey("federated_catalog", object)
 FEDERATED_AGENT_GATEWAY = web.AppKey("federated_agent_gateway", object)
@@ -1248,8 +1249,9 @@ async def stream(request):
         headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"}
     )
     await response.prepare(request)
+    closing = request.app[STREAM_CLOSING]
     try:
-        while True:
+        while not closing.is_set():
             if batch == "1":
                 if page["events"] or page["nextCursor"] != cursor:
                     await response.write(
@@ -1266,8 +1268,17 @@ async def stream(request):
             await response.write(b": heartbeat\n\n")
             # Drain a bounded backlog without an artificial one-second pause per
             # page. Every write/page yields; idle connections retain their cadence.
-            await asyncio.sleep(0 if len(page["events"]) == 100 else 1)
+            if len(page["events"]) == 100:
+                await asyncio.sleep(0)
+            else:
+                try:
+                    await asyncio.wait_for(closing.wait(), timeout=1)
+                except asyncio.TimeoutError:
+                    pass
+            if closing.is_set():
+                break
             page = await read_page()
+        return response
     except SourceUnavailable as error:
         try:
             await response.write(('event: sourceUnavailable\ndata: '+json.dumps(error.body)+'\n\n').encode())
@@ -1902,6 +1913,12 @@ async def context_seed_control(request):
 def application(store, *, federated_messages=None, federated_catalog=None, federated_agent_gateway=None, node_router=None):
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
+    app[STREAM_CLOSING] = asyncio.Event()
+    async def close_streams(application):
+        # End read streams before aiohttp waits for active HTTP requests. Their
+        # canonical cursor stays at the client; no command is cancelled/replayed.
+        application[STREAM_CLOSING].set()
+    app.on_shutdown.append(close_streams)
     if node_router is not None:
         app[NODE_ROUTER]=node_router
     if federated_agent_gateway is not None:
