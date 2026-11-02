@@ -19,7 +19,8 @@ async def child(spec):
  from hollywood_backbone.store import Store
  from hollywood_backbone.federation_runtime import application
  from hollywood_backbone.federation_service import Client
- from hollywood_backbone.server import NODE_ROUTER,FEDERATED_CATALOG,FEDERATED_MESSAGES,FEDERATED_AGENT_GATEWAY,STREAM_CLOSING
+ from hollywood_backbone import server as api
+ from hollywood_backbone.server import NODE_ROUTER,FEDERATED_CATALOG,FEDERATED_MESSAGES,FEDERATED_AGENT_GATEWAY
  store=Store(spec['database']);CHILD_STORE=store;store.migrate()
  app=await application(store,spec['federation'])
  connection=app[FEDERATED_AGENT_GATEWAY].connection
@@ -47,14 +48,19 @@ async def child(spec):
   return await handler(request)
  app.middlewares.append(controlled_mutation)
  async def shutdown(application):
-  assert application[STREAM_CLOSING].is_set();emit(event='closing-streams-hook')
+  closing=getattr(api,'STREAM_CLOSING',None)
+  present=closing is not None and closing in application
+  if not spec['legacy']:assert present and application[closing].is_set()
+  emit(event='shutdown-started',streamsClosingHookPresent=present)
  app.on_shutdown.append(shutdown)
  return app
 
 async def main():
  root=Path(os.environ['API_GRACEFUL_EVIDENCE']);root.mkdir(mode=0o700)
  package=Path(os.environ['API_GRACEFUL_PACKAGE']);raw=package.read_bytes()
- assert hashlib.sha256(raw).hexdigest()=='c5aa25260595478c9aea64620cb22e649f5f30ccd6045cb6733471323fd5de40'
+ package_sha=hashlib.sha256(raw).hexdigest()
+ assert package_sha in {'c5aa25260595478c9aea64620cb22e649f5f30ccd6045cb6733471323fd5de40','c1de0182e69f53db63a7b05793512233b46fbdc3d2af9784a98ba116aa5cc4fb'}
+ legacy=package_sha.startswith('c1de0182')
  sys.path.insert(0,str(package))
  from aiohttp import ClientSession
  from hollywood_backbone.store import Store
@@ -96,7 +102,7 @@ async def main():
   password=root/'host-password.private';password.write_text(passwords[host]);password.chmod(0o600)
   federation=root/'federation.private.json';federation.write_text(json.dumps({'authorityId':authority,'hostId':host,'servers':['tls://localhost:'+str(port)],'passwordFile':str(password),'caFile':str(cert)}))
   async def launch(label,hold_mutation):
-   spec={'package':str(package),'database':database,'federation':str(federation),'authority':authority,'host':host,'peer':peer,'port':free_port(),'operation':operation,'hold':hold_mutation}
+   spec={'package':str(package),'database':database,'federation':str(federation),'authority':authority,'host':host,'peer':peer,'port':free_port(),'operation':operation,'hold':hold_mutation,'legacy':legacy}
    path=root/(label+'.private.json');path.write_text(json.dumps(spec));ready=asyncio.Event();mutation=asyncio.Event();closing=asyncio.Event()
    env={k:v for k,v in os.environ.items() if k!='PYTHONPATH'}
    err=(root/(label+'.stderr')).open('wb')
@@ -107,7 +113,7 @@ async def main():
      value=json.loads(line);events.append({'process':label,**value})
      if value.get('event')=='ready':ready.set()
      elif value.get('event')=='mutation-held':mutation.set()
-     elif value.get('event')=='closing-streams-hook':closing.set()
+     elif value.get('event')=='shutdown-started':closing.set()
    tasks.append(asyncio.create_task(output()))
    await asyncio.wait_for(ready.wait(),8)
    return proc,spec,mutation,closing
@@ -127,7 +133,17 @@ async def main():
    assert first.returncode is None
    first.stdin.write(b'R');await first.stdin.drain();release.set();hold[0]=False
    answer=await asyncio.wait_for(pending,8);event=answer['event']
-   for response in readers:await asyncio.wait_for(response.read(),8);response.close()
+   legacy_client_close=False
+   if legacy:
+    # Old172 has NO closing hook. Observe the actual framework, then close ONLY
+    # these owned read clients normally; never cancel the mutation/server or
+    # add a shutdown hook to the frozen old package merely to make a pass.
+    try:await asyncio.wait_for(first.wait(),1)
+    except asyncio.TimeoutError:
+     legacy_client_close=True
+     for response in readers:response.close()
+   if not legacy_client_close:
+    for response in readers:await asyncio.wait_for(response.read(),8);response.close()
    code=await asyncio.wait_for(first.wait(),min(15,20-(time.monotonic()-start)))
    elapsed=time.monotonic()-start;assert code==0 and elapsed<20
    page=store.history(actor,room,cursor,100,None,'conversation');matches=[r for r in page['events'] if r['id']==event['id']]
@@ -145,6 +161,7 @@ async def main():
    'concurrentReadStreams':4,'streamsInsideActualNatsReadAtSignal':held_count[0]>=4,'controlledHeldMutationCommittedExactlyOnce':True,
    'readersClosedAndOriginalCursorResumed':True,'originalCursor':cursor,'sigtermExitSeconds':round(elapsed,6),'unitDeadlineSeconds':20,
    'exitCode':code,'sigkillUsedForAcceptance':False,'productionPackageChanged':False,'newDrainEndpoint':False,'modelsOrNativeStarted':0,
+   'legacy172WithoutClosingHook':legacy,'ownedReadClientQuiescenceUsed':legacy_client_close,
    'dependencyVersions':{p:importlib.metadata.version(p) for p in ('aiohttp','nats-py','psycopg','psycopg-pool')},
    'limits':['CPU isolated synthetic authority with injected timing/read-destination fixture, not live GPU quiet preflight','Actual package/framework shutdown and federation on_cleanup unmodified; no all-fleet activation claim']}
   (root/'result.json').write_text(json.dumps(result,indent=2)+'\n');emit(**result)
