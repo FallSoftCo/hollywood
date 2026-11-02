@@ -1073,7 +1073,9 @@ class Store:
             self.readable_event(c, a, old["event"])
             return self.receipt(c, old["event"])
         recipient = payload.get("recipientId")
-        if kind == "request" and not recipient:
+        # A human speaks to the room. Legacy owner-directed requests are
+        # retained only for agent callers; explicit direct recipients remain exact.
+        if kind == "request" and not recipient and a["kind"] != "human":
             recipient = str(room["owner"])
         if kind == "request" and a["kind"] == "agent" and str(recipient) == str(a["id"]):
             raise Denied("Self execution requests require an explicit lifecycle policy")

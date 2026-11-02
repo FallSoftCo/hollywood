@@ -72,6 +72,21 @@ async def main():
             human_request=store.post(owner,room,uid(),{'kind':'request','audience':'room','recipientId':actors['A']['id'],'body':'Human communication request'})
             assert human_request['deliveries']==[]
             assert human_request['event']['data']['humanInputEventId']==human_request['event']['id']
+            # A human room request has no implicit execution owner. Retiring the
+            # original owner must not prevent publication or send-time fan-out.
+            broadcast_room=uid()
+            store.create_room(owner,broadcast_room,'Retired owner QA','Synthetic broadcast',actors['A']['id'])
+            store.membership(owner,broadcast_room,global_agent,{'can_read':True,'can_post':True,'can_request':True},0)
+            store.membership(owner,broadcast_room,actors['A']['id'],{'can_read':False,'can_post':False,'can_request':False},1)
+            broadcast_body={'operationId':'human-room-no-owner','kind':'request','audience':'room','body':'Synthetic room-wide request'}
+            async with session.post(base+'rooms/'+broadcast_room+'/messages',json=broadcast_body,headers={'Authorization':'Bearer '+credentials['Owner']['token']}) as response:
+                broadcast=await response.json();assert response.status==200,(response.status,broadcast)
+            assert broadcast['event']['recipient'] is None and broadcast['deliveries']==[]
+            assert broadcast['event']['data']['conversationRecipients']==[global_agent]
+            async with session.post(base+'rooms/'+broadcast_room+'/messages',json=broadcast_body,headers={'Authorization':'Bearer '+credentials['Owner']['token']}) as response:
+                assert response.status==200 and (await response.json())==broadcast
+            async with session.post(base+'rooms/'+broadcast_room+'/messages',json={**broadcast_body,'operationId':'human-private-retired','audience':'direct','recipientId':actors['A']['id']},headers={'Authorization':'Bearer '+credentials['Owner']['token']}) as response:
+                assert response.status==403
             # Source correlation survives a peer hop and does not replace the
             # original accepted human receipt with execution state.
             progress=store.post(actors['A']['id'],room,uid(),{'kind':'message','audience':'room','recipientId':global_agent,'sourceEventId':human_request['event']['id'],'responsePhase':'update','body':'Peer progress'})

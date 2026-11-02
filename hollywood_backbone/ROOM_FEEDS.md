@@ -161,3 +161,7 @@ need a delivery join. Resolved callbacks stop notifying. Deliberate answer/block
 publications can notify their canonical original human (message or request),
 without claiming work completion. Routine responsePhase update publications,
 action observations and native liveness snapshots do not request a push.
+
+## Human room publication
+
+A human request with room audience and no explicit recipient is published to the room without resolving its owner as an execution recipient. The immutable send-time conversation audience includes current authorized agents; publication creates no execution reservation. Explicit recipients, private-audience checks and prior accepted operation receipts retain their original semantics. Revoking an old room owner cannot prevent untargeted human room publication.
