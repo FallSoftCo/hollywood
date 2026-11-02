@@ -828,7 +828,9 @@ class Store:
             c.execute("INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
                       (a["authority"], identity, a["id"]))
         c.execute(
-            "UPDATE hb_agent_role SET home_room=%s,revision=revision+1 WHERE principal=%s AND home_room IS NULL",
+            """UPDATE hb_agent_role SET home_room=%s,revision=revision+1
+               WHERE principal=%s AND home_room IS NULL AND EXISTS
+                 (SELECT 1 FROM hb_principal p WHERE p.id=hb_agent_role.principal AND NOT p.identity_reference)""",
             (identity, owner),
         )
         from .room_defaults import join

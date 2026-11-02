@@ -78,6 +78,17 @@ async def main(database,binary,out,conversation_only=False):
                     assert reference==repeated and reference['grantRevision']==1
                     stores[0].membership(owner_a,plans[0]['globalRoomId'],agent,
                         {'can_read':True,'can_post':True,'can_request':True},0)
+                    # Creating a room with a remote owner must never mutate
+                    # its home-owned role or invalidate the receiving grant.
+                    # This reproduces actual new-room access loss (role 1 -> 2).
+                    foreign_room=str(uuid4())
+                    stores[0].create_room(owner_a,foreign_room,'Remote owner project','SYNTHETIC new project',agent)
+                    with stores[0].pool.connection() as c:
+                        role_after=c.execute('SELECT revision,home_room FROM hb_agent_role WHERE principal=%s',(agent,)).fetchone()
+                        assert role_after['revision']==descriptor['role']['revision']
+                        assert role_after['home_room'] is None
+                        resolve_in_transaction(c,authority_id=authority,source_host=b.host_id,
+                            principal_id=agent,home_node=b.host_id,credential_digest=digest(token))
                     # References keep real display names without becoming another
                     # local owner or requiring artificial name/actor aliases.
                     assert stores[1].authenticate(token)['id']==agent
@@ -182,7 +193,7 @@ async def main(database,binary,out,conversation_only=False):
                             assert response.status==200,await response.text()
                             catalog=await response.json()
                             (out/'catalog-readback.json').write_text(json.dumps(catalog,indent=2)+'\n')
-                            assert {r['id'] for r in catalog['rooms']}=={p['globalRoomId'] for p in plans}
+                            assert {r['id'] for r in catalog['rooms']}=={p['globalRoomId'] for p in plans}|{foreign_room}
                             assert {r['ownerNodeId'] for r in catalog['rooms']}=={a.host_id,b.host_id}
                         if conversation_only:
                             remote_room=plans[0]['globalRoomId'];source_event=remote_history['events'][0]['id']
@@ -243,7 +254,7 @@ async def main(database,binary,out,conversation_only=False):
                                 with store.pool.connection() as c:
                                     assert c.execute('SELECT count(*) n FROM hb_delivery').fetchone()['n']==0
                                     assert c.execute('SELECT count(*) n FROM hb_executor').fetchone()['n']==0
-                            result={'passed':True,'independentStores':2,'actualNats':True,
+                            result={'passed':True,'foreignRoomOwnerRoleAndGrantPreserved':True,'independentStores':2,'actualNats':True,
                                 'homeAuthenticatedAgentRemoteRoom':True,'remoteNativeActionOriginalReceipt':True,
                                 'remoteNativeStatusAndMembershipCatalog':True,'remoteNativeQuestionResponseAndAcknowledgement':True,'nativeQuestionNotificationHint':True,'actionsNotConversation':True,
                                 'executors':0,'deliveries':0,'modelCalls':0,'productionChanged':False,
@@ -386,7 +397,7 @@ async def main(database,binary,out,conversation_only=False):
                         c.execute('UPDATE hb_token SET revoked=true WHERE principal=%s',(moved,))
                     assert federation_home.accept(stores[1],owner_b,transfer,fenced,local_node=b.host_id)==received
                     expect_denied(lambda:stores[1].authenticate(moved_token))
-                    result={'passed':True,'independentStores':2,'organizationAuthorityShared':True,
+                    result={'passed':True,'foreignRoomOwnerRoleAndGrantPreserved':True,'independentStores':2,'organizationAuthorityShared':True,
                         'drainedHomeTransferKeepsIdentityAndCredential':True,
                         'noDualActiveLoginDuringHomeTransfer':True,
                         'existingControllerHttpOverHostLocalNats':True,
