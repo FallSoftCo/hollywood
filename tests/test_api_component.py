@@ -1,5 +1,5 @@
 """Actual definition/pin filesystem boundary, never a production service test."""
-import copy,hashlib,json,os,plistlib,subprocess,sys,tempfile,unittest,zipfile
+import copy,hashlib,json,os,plistlib,subprocess,sys,tempfile,unittest,zipfile,select
 from pathlib import Path
 from xml.etree import ElementTree as ET
 from hollywood_backbone.api_component import prepare,commit,inspect,definition
@@ -64,6 +64,43 @@ class ComponentPin(unittest.TestCase):
         changed=ET.fromstring(definition('windows-task',xml,old,new))
         original=ET.fromstring(xml);original.find('./Actions/Exec/Arguments').text='-I '+new+' --role hollywood'
         self.assertEqual(ET.tostring(changed),ET.tostring(original))
+
+    def test_two_real_operations_cannot_overwrite_at_replace_boundary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);old=root/'original.pyz';a=root/'a.pyz';b=root/'b.pyz';unit=root/'hollywood-fixture.service'
+            for file in (old,a,b):
+                with zipfile.ZipFile(file,'w') as z:z.writestr('__main__.py','print(1)')
+            unit.write_text('ExecStart=/python '+str(old)+'\n')
+            h=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+            def spec(new):
+                return {'schema':'hollywood-api-component/v1','component':unit.name,'kind':'systemd',
+                    'definitionFile':str(unit),'definitionSha256':h(unit),
+                    'from':{'launcher':str(old),'launcherSha256':h(old)},
+                    'to':{'launcher':str(new),'launcherSha256':h(new),'package':str(new),'packageSha256':h(new)}}
+            first,second=root/'operation-a',root/'operation-b';prepare(spec(a),first);prepare(spec(b),second)
+            code="""import sys
+from hollywood_backbone import api_component as api
+replace=api.os.replace
+def held(source,target):
+ print('REPLACE_READY',flush=True)
+ assert sys.stdin.buffer.read(1)==b'R'
+ return replace(source,target)
+api.os.replace=held
+api.commit(sys.argv[1])
+"""
+            child=subprocess.Popen([sys.executable,'-B','-c',code,str(first)],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            try:
+                self.assertTrue(select.select([child.stdout],[],[],5)[0]);self.assertEqual(child.stdout.readline(),b'REPLACE_READY\n')
+                other=subprocess.run([sys.executable,'-B','-m','hollywood_backbone.api_component','commit','--operation',str(second)],
+                    capture_output=True,text=True,timeout=5)
+                self.assertNotEqual(other.returncode,0);self.assertIn('BlockingIOError',other.stderr)
+                self.assertFalse((second/'definition-write-intent.json').exists())
+                child.stdin.write(b'R');child.stdin.flush();out,err=child.communicate(timeout=5)
+                self.assertEqual(child.returncode,0,err.decode());self.assertIn(str(a),unit.read_text())
+                with self.assertRaisesRegex(ValueError,'changed outside'):commit(second)
+                self.assertIn(str(a),unit.read_text())
+            finally:
+                if child.poll() is None:child.kill();child.communicate(timeout=5)
 
 
 if __name__=='__main__':

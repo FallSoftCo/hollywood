@@ -39,6 +39,13 @@ definition commit reconciles byte-identical current state without another write.
 An interrupted write whose current definition is back at the original stays
 held because it may have been deliberately rolled back.
 
+POSIX definition commits hold a standard nonblocking per-component kernel file
+lock across inspect, original intent, compare and replacement. A competing
+operation holds without creating another write intent. This fences cooperating
+maintenance callers; it is not a claim of protection against a hostile root.
+The focused real two-process barrier case pauses one commit at replacement and
+proves the second cannot enter, then rejects its stale definition after release.
+
 Windows task XML transformation is fixture-qualified ONLY. Live Windows
 prepare/commit is deliberately unavailable until the owning normalized task,
 successor specification and native ACL adapter are qualified. A changed capsule

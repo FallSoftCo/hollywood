@@ -117,6 +117,21 @@ def commit(operation):
     """Write the exact prepared definition only. NO reload/restart/install call."""
     if os.name=='nt':raise NotImplementedError('Windows live pin writes require the owning task/ACL adapter qualification')
     operation=Path(operation);plan=json.loads(read(operation/'plan.json'))
+    import fcntl
+    target=Path(plan['spec']['definitionFile'])
+    lock=target.with_name('.'+target.name+'.api-component.lock')
+    fd=os.open(lock,os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW,0o600)
+    try:
+        info=os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_uid not in (0,os.geteuid()) or info.st_mode&0o022:
+            raise PermissionError('API component lock has an untrusted owner/writer')
+        fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        return commit_locked(operation,plan)
+    finally:os.close(fd)
+
+
+def commit_locked(operation,plan):
+    """One component lock covers inspection, original intent and replacement."""
     observed=inspect(operation)
     if observed['state']=='successor-definition':return {**observed,'reconciled':True}
     if (operation/'definition-write-intent.json').exists():
