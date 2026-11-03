@@ -1,5 +1,16 @@
 # Windows API component successor operations
 
+Maintained integration r03: production adapter bytes remain EXACT BLD r02 SHA256
+`3ef593f4255abcff58536e11d3594fce83e11d4cd335dbb05b64441a1eb82565`.
+The driver now uses a fresh `qualification-r03`, pins the intervening r02
+assisted-cleanup result as well as r01 cleanup/current task absence, and checks
+that all five dated protected process identities are actually present. It does
+not refresh a stale `IRunningTask` after pinned child-handle exit0; it separately
+checks current task-instance absence. Non-Windows collection skips this explicit
+platform journey. These are driver/integration corrections, not another COM
+registration policy. A new actual frozen-byte Windows run is required before
+claiming r03 automation passes; the original r02 assisted limits remain intact.
+
 This additive owner-local adapter registers a separately pinned Hollywood API
 launcher in the **existing dedicated task**. It does not install/enroll a host,
 start/enable/stop a task, drain a server, alter a profile, or accept service

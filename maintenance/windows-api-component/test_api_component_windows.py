@@ -13,6 +13,9 @@ import sys
 import time
 import traceback
 import zipfile
+import unittest
+if sys.platform != 'win32':
+    raise unittest.SkipTest('Explicit Windows owner qualification, not a portable test import')
 import win32api
 import win32con
 import win32event
@@ -21,7 +24,7 @@ import win32com.client
 from lax_connector.windows_ipc import create_private_directory, private_path
 
 ROOT = Path(__file__).resolve().parent
-E = ROOT/'qualification-r02'
+E = ROOT/'qualification-r03'
 H = Path('D:/NextCompHost20261101r01')
 R = Path('D:/NextCompNative20261101r01')
 BOOT = R/'runtime-r02/boot.py'
@@ -58,6 +61,7 @@ def snapshot():
     ps = r"@(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -in @(43616,13108,31396,22044,19904) } | Select-Object ProcessId,Name,ExecutablePath,CreationDate,SessionId) | ConvertTo-Json -Compress"
     processes = json.loads(subprocess.run(['powershell.exe','-NoProfile','-NonInteractive','-Command',ps],
         capture_output=True, text=True, timeout=15, check=True).stdout)
+    assert {p['ProcessId'] for p in processes} == {43616,13108,31396,22044,19904}, 'Dated product process coverage changed; review before QA'
     files = {str(p): sha(p) for p in (H/'native-manifest.private.json', H/'global-config.private.json',
          R/'runtime-r02/hollywood.pyz', R/'runtime-r02/runtime-manifest.json')}
     return {'tasks': tasks, 'processes': processes, 'files': files}
@@ -113,11 +117,15 @@ def run():
     private_path(ROOT, directory=True)
     source_hashes = {n:sha(ROOT/n) for n in ('api_component_windows.py','test_api_component_windows.py','API_COMPONENTS_WINDOWS.md')}
     create_private_directory(E)
-    save(E/'frozen-source.json', {'sourceEvent':'ffb5ded6-1546-44b0-81cc-28967eb9e4fe',
+    save(E/'frozen-source.json', {'sourceEvent':'1ea80630-8610-4933-a92f-874daa36d224',
         'files':source_hashes,'at':time.time(),'budgetBytes':4*1024*1024})
     prior = H/'work/windows-api-component-39f94f8f-r01/qualification-r01/qa-cleanup-accepted.json'
     prior_cleanup = json.loads(prior.read_text())
     assert prior_cleanup['deleted'] is True and prior_cleanup['processTerminal'] is True
+    # The later r02 assisted cleanup is also an immutable reviewed prerequisite;
+    # original r01 acceptance alone cannot settle an intervening attempt.
+    latest = H/'work/windows-api-component-ffb5ded6-r02/qualification-r02/result.json'
+    assert sha(latest) == '7f992703d115db1a58d071beea64f501424e799e94b759d242f8214a6756ac20'
     folder = api.scheduler()
     try:
         folder.GetTask(api.QA_TASK)
@@ -126,7 +134,7 @@ def run():
     else:
         raise AssertionError('Prior exact QA task is still present; do not replace it')
     save(E/'prior-task-absent.json', {'taskName':api.QA_TASK,'priorCleanupReceiptSha256':sha(prior),
-        'exactComNotFound':True,'at':time.time()})
+        'latestAssistedCleanupResultSha256':sha(latest),'exactComNotFound':True,'at':time.time()})
     before = snapshot()
     save(E/'product-before.private.json', before)
     for name, marker in (('original','original-v1'),('successor','successor-v2'),('rollback','original-v1')):
@@ -137,7 +145,7 @@ def run():
         api.exclusive(root/'launcher.py', metadata_launcher(root/'fixture.pyz').encode())
     create_private_directory(E/'records')
     output = E/'metadata.json'
-    ready_name, release_name = 'Local\\LaxApiQA39R02Ready','Local\\LaxApiQA39R02Release'
+    ready_name, release_name = 'Local\\LaxApiQA39R03Ready','Local\\LaxApiQA39R03Release'
     original_command = [str(PYTHONW),'-I','-S','-B',str(E/'original/launcher.py'),str(output),ready_name,release_name]
     original = {'schema':'lax-windows-task/v1','role':'hollywood','taskName':api.QA_TASK,
         'command':original_command,'cwd':str(E),'recordDirectory':str(E/'records')}
@@ -259,7 +267,9 @@ def run():
     assert metadata['marker']=='original-v1' and Path(metadata['package'])==E/'rollback/fixture.pyz'
     assert Path(metadata['interpreter'])==PYTHONW
     held(lambda:api.inspect(second))  # Explicit QA enable drift is not silently adopted.
-    instance.Refresh()
+    # The pinned child handle above already proved terminal exit0. Refreshing
+    # its stale IRunningTask can return TASK_NOT_RUNNING by design. Query the
+    # actual current task instances instead; never repeat activation.
     task=folder.GetTask(api.QA_TASK)
     assert task.GetInstances(0).Count==0, 'Terminal instance not yet reconciled; retain original task, no start retry'
     save(E/'qa-cleanup-intent.json',{'taskName':api.QA_TASK,'processTerminal':True,'instances':0,'at':time.time()})
@@ -276,7 +286,7 @@ def run():
     assert source_hashes=={n:sha(ROOT/n) for n in source_hashes}
     size=sum(p.stat().st_size for p in ROOT.rglob('*') if p.is_file())
     assert size<4*1024*1024
-    result={'passed':True,'sourceEvent':'ffb5ded6-1546-44b0-81cc-28967eb9e4fe',
+    result={'passed':True,'sourceEvent':'1ea80630-8610-4933-a92f-874daa36d224',
         'finalBytesFrozenBeforeJourney':True,'sourceHashes':source_hashes,'qaTaskDeleted':True,
         'productIdentitiesUnchanged':before==after,'actualComUpdates':len(calls),'finiteRuns':1,
         'closureApparentBytes':size,'budgetBytes':4*1024*1024,'continuousPeakMeasured':False,
