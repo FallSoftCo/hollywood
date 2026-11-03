@@ -36,7 +36,7 @@ BUSINESS |= {'room_agents_initialize','room_agent_enroll','room_agent_report','r
 # Initializer/report authorize their own exact registered slot; these are
 # host-control metadata, not a native business delivery or admin promotion.
 BUSINESS -= {'room_agents_initialize','room_agent_report'}
-METADATA = {'room_agents_initialize','room_agent_report','room_agent_home_attach','room_agent_control_status',"runtime_observe", "context_call",
+METADATA = {'room_origin_adopt','global_origin_adopt','global_origin_attach','room_agents_initialize','room_agent_report','room_agent_home_attach','room_agent_control_status',"runtime_observe", "context_call",
     "executor_begin", "executor_reserve", "executor_attach", "executor_observe",
     "host_sample", "connector_observe", "claim", "transition",
     "native_control_pending", "native_control_update", "native_goal_binding",

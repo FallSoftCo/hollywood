@@ -1178,3 +1178,19 @@ CREATE TABLE IF NOT EXISTS hb_room_agent_control_command_route (
  owner_node uuid NOT NULL, method text NOT NULL, path text NOT NULL, wire_digest text NOT NULL,
  PRIMARY KEY(principal,operation)
 );
+
+CREATE TABLE IF NOT EXISTS hb_room_origin_adoption (
+ authority uuid NOT NULL, room uuid PRIMARY KEY REFERENCES hb_room(id), actor uuid NOT NULL,
+ manifest jsonb NOT NULL, accepted_result jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS hb_global_origin (
+ authority uuid NOT NULL, agent uuid PRIMARY KEY REFERENCES hb_principal(id),
+ room uuid NOT NULL REFERENCES hb_room(id), node uuid,
+ kind text NOT NULL CHECK(kind IN ('bootstrap','reviewed-adoption')),
+ manifest jsonb NOT NULL, prior_role jsonb NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS hb_global_origin_reference (
+ authority uuid NOT NULL, agent uuid NOT NULL, operation text NOT NULL,
+ fingerprint text NOT NULL, accepted_result jsonb NOT NULL, PRIMARY KEY(agent,operation)
+);

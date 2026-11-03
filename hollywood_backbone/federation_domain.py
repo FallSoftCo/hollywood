@@ -16,7 +16,7 @@ from .federation_service import Client
 from .store import Denied
 
 METHODS = frozenset(
-    ['room_agent_allocation_read','room_agent_home_attach','room_agent_home_attachment_read','room_agent_control_status','room_agents_read','room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate','activity_append',
+    ['room_origin_adopt','global_origin_adopt','global_origin_read','global_origin_attach','global_origin_reference_read','room_agent_allocation_read','room_agent_home_attach','room_agent_home_attachment_read','room_agent_control_status','room_agents_read','room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate','activity_append',
      'conversation_activity',
      'conversation_state_observe',
      'administrative_command',
@@ -152,7 +152,7 @@ def kwargs_for(action, verb, path, body):
     wire = {'method':verb, 'path':path, 'body':body}
     if action in {'post','workflow','decision_write','report_scope_read'}:
         kwargs['wire'] = wire
-    if action in {'room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate','context_configure','delivery_recover','delivery_edit_reconcile',
+    if action in {'room_origin_adopt','global_origin_adopt','room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate','context_configure','delivery_recover','delivery_edit_reconcile',
             'mutation_reconcile','report_scope_read','principal','create_room',
             'membership','room_default_set','placement','role','communication_set','collaboration_bridge',
             'physical_workspace','physical_grant','physical_agent_grant','resource_default',

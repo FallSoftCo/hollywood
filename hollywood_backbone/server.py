@@ -1175,6 +1175,23 @@ async def room_agent_enroll(request):
                         str(UUID(request.match_info['node'])), p.model_dump(mode='json'))
 
 
+class OriginAdoption(Input):
+    operationId: str = Field(min_length=1,max_length=128)
+    manifest: dict
+
+
+async def room_origin_adopt(request):
+    p=await body(request,OriginAdoption)
+    return await invoke(request,'room_origin_adopt',str(UUID(request.match_info['room'])),p.manifest)
+
+
+async def global_origin_adopt(request):
+    if request.method=='GET':
+        return await invoke(request,'global_origin_read',str(UUID(request.match_info['principal'])))
+    p=await body(request,OriginAdoption)
+    return await invoke(request,'global_origin_adopt',str(UUID(request.match_info['principal'])),p.manifest)
+
+
 async def room_agent_report(request):
     p = await body(request, RoomAgentReport)
     return await invoke(request, 'room_agent_report', str(UUID(request.match_info['room'])),
@@ -2092,6 +2109,9 @@ def application(store, *, federated_messages=None, federated_catalog=None, feder
             web.get("/hollywood/v3/inbox/events/{event}", inbox_event),
             web.get("/hollywood/v3/rooms", rooms),
             web.get("/hollywood/v3/rooms/{room}", room_detail),
+            web.post("/hollywood/v3/rooms/{room}/origin-adoption",room_origin_adopt),
+            web.get("/hollywood/v3/agents/{principal}/origin-adoption",global_origin_adopt),
+            web.post("/hollywood/v3/agents/{principal}/origin-adoption",global_origin_adopt),
             web.get("/hollywood/v3/rooms/{room}/environment-agents", room_agents),
             web.post("/hollywood/v3/rooms/{room}/environment-agents", room_agents),
             web.post("/hollywood/v3/rooms/{room}/environment-agents/activate", room_agents_activate),

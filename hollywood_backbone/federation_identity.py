@@ -148,6 +148,7 @@ def install_room_reference(store, administrator, room, *, owner_node):
     required={'id','authority','name','purpose','owner','revision'}
     if not isinstance(room,dict) or not required<=set(room):
         raise ValueError('Original room metadata required')
+    if room.get('room_kind','legacy') not in ('legacy','project','global'):raise ValueError('Original room kind invalid')
     with store.pool.connection() as c:
         actor=store.actor(c,administrator);store.admin(actor)
         if str(actor['authority'])!=str(room['authority']):
@@ -155,13 +156,14 @@ def install_room_reference(store, administrator, room, *, owner_node):
         existing=c.execute('SELECT * FROM hb_room WHERE id=%s FOR UPDATE',(room['id'],)).fetchone()
         if existing:
             if (not existing['room_reference'] or str(existing['home_node'])!=owner_node
-                    or any(json_value(existing[k])!=room[k] for k in required)):
+                    or any(json_value(existing[k])!=room[k] for k in required)
+                    or 'room_kind' in room and existing['room_kind']!=room['room_kind']):
                 raise Conflict('Original room reference changed')
             return {'roomId':str(existing['id']),'ownerNodeId':owner_node,'referenceOnly':True}
         if not c.execute('SELECT 1 FROM hb_principal WHERE id=%s AND authority=%s',
                          (room['owner'],room['authority'])).fetchone():
             raise Denied('Original room owner must already be explicitly referenced')
-        c.execute('''INSERT INTO hb_room(id,authority,name,purpose,owner,revision,home_node,room_reference)
-            VALUES(%s,%s,%s,%s,%s,%s,%s,true)''',
-            tuple(room[k] for k in ('id','authority','name','purpose','owner','revision'))+(owner_node,))
+        c.execute('''INSERT INTO hb_room(id,authority,name,purpose,owner,revision,home_node,room_reference,room_kind)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,true,%s)''',
+            tuple(room[k] for k in ('id','authority','name','purpose','owner','revision'))+(owner_node,room.get('room_kind','legacy')))
         return {'roomId':str(room['id']),'ownerNodeId':owner_node,'referenceOnly':True}

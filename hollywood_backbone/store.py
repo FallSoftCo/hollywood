@@ -593,6 +593,10 @@ class Store:
                           (authority, room, member))
             from .bootstrap_home import bind
             bind(c, authority, plan)
+            c.execute("""INSERT INTO hb_global_origin(authority,agent,room,node,kind,manifest,prior_role)
+                SELECT %s,%s,%s,p.home_node,'bootstrap',%s,to_jsonb(r)
+                FROM hb_principal p JOIN hb_agent_role r ON r.principal=p.id WHERE p.id=%s""",
+                (authority,global_agent,room,Jsonb({'authorityId':authority,'globalRoomId':room,'agentId':global_agent}),global_agent))
             return {"authorityId": authority, "globalRoomId": room, "created": True}
 
     def authenticate(self, token):
@@ -822,6 +826,34 @@ class Store:
     def _admin_room_agents_activate(self, c, actor, room, payload):
         from .room_agents import activate
         return activate(self, c, actor, room, payload)
+
+    def room_origin_adopt(self,actor_id,room,payload,*,command=None):
+        from .administrative import mutate
+        return mutate(self,actor_id,'room_origin_adopt',[room,payload],command)
+
+    def _admin_room_origin_adopt(self,c,actor,room,payload):
+        from .room_origin_adoption import room_adopt
+        return room_adopt(self,c,actor,room,payload)
+
+    def global_origin_adopt(self,actor_id,principal,payload,*,command=None):
+        from .administrative import mutate
+        return mutate(self,actor_id,'global_origin_adopt',[principal,payload],command)
+
+    def _admin_global_origin_adopt(self,c,actor,principal,payload):
+        from .room_origin_adoption import global_adopt
+        return global_adopt(self,c,actor,principal,payload)
+
+    def global_origin_read(self,actor_id,principal):
+        from .room_origin_adoption import global_read
+        return global_read(self,actor_id,principal)
+
+    def global_origin_attach(self,actor_id,operation,descriptor):
+        from .room_origin_adoption import global_attach
+        return global_attach(self,actor_id,operation,descriptor)
+
+    def global_origin_reference_read(self,actor_id,operation):
+        from .room_origin_adoption import global_reference_read
+        return global_reference_read(self,actor_id,operation)
 
     def room_agent_allocation_read(self, actor_id, room, node):
         from .room_agent_home import allocation_read
