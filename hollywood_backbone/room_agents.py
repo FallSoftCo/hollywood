@@ -65,9 +65,32 @@ def inventory(c, authority, room):
         'meaning': 'Initialization receipts are not native readiness or business completion. Staged legacy participants retain their work until reviewed handoff; no registered environments means not initialized.'})
 
 
+def controlled_slots(c, actor, room=None):
+    """Explicit registered home coordinator metadata, NOT room read/admin rights.
+
+    An authenticated foreign home reference correctly loses administrator=true.
+    Do not require restoring that broad bit to discover its own desired slots.
+    Existing transport admission still fences its exact home/credential grant.
+    """
+    if actor['kind']!='agent':return []
+    query="""SELECT i.* FROM hb_room_agent_initialization i
+        JOIN hb_room_default_agent d ON d.authority=i.authority AND d.node=i.node
+          AND d.principal=i.coordinator AND d.enabled
+        WHERE i.authority=%s AND i.coordinator=%s AND i.node=%s"""
+    args=[actor['authority'],actor['id'],actor['home_node']]
+    if room is not None:query+=' AND i.room=%s';args.append(room)
+    return c.execute(query+' ORDER BY i.room,i.node',args).fetchall()
+
+
 def read(store, actor_id, room):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
+        slots=controlled_slots(c,actor,room)
+        if slots:
+            result=inventory(c,actor['authority'],room)
+            result['agents']=[r for r in result['agents'] if r['coordinator']==str(actor['id'])]
+            result.update(controlOnly=True,complete=False,nativeReady=False)
+            return result
         store.room(c, actor, room)
         return inventory(c, actor['authority'], room)
 

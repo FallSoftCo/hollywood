@@ -1005,9 +1005,9 @@ class Store:
                 ),
             ).fetchall()
             from .project_rooms import controls
-            desired = []
-            if a['kind'] == 'agent' and a['administrator']:
-                desired = c.execute('SELECT room,node,agent,state,revision,receipt FROM hb_room_agent_initialization WHERE authority=%s AND coordinator=%s ORDER BY room,node', (a['authority'], a['id'])).fetchall()
+            from .room_agents import controlled_slots
+            desired = [{k:r[k] for k in ('room','node','agent','state','revision','receipt')}
+                       for r in controlled_slots(c,a)]
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows), "roomControl": controls(a, rows),
                     "roomAgentInitializations": json_value(desired)}
 
