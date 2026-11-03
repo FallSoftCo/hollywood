@@ -182,7 +182,20 @@ def refresh_global_reference(store,actor_id,producer,canonical,review_digest):
         old=c.execute('SELECT * FROM hb_room WHERE id=%s AND authority=%s FOR UPDATE',
                       (canonical['id'],actor['authority'])).fetchone()
         if not old:
-            raise Denied('Original explicitly installed room reference required; no implicit owner enrollment')
+            # Actual legacy HOME may have only an owner route/catalog entry.
+            # Only the verified canonical response plus an already installed
+            # owner reference admits FK metadata; never mint foreign identity.
+            owner=c.execute('SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND active FOR SHARE',
+                            (canonical['owner'],actor['authority'])).fetchone()
+            if not owner or not owner['identity_reference'] or str(owner['home_node'])!=producer:
+                raise Denied('Original canonical room owner must already be explicitly home-referenced')
+            c.execute("""INSERT INTO hb_room(id,authority,name,purpose,owner,revision,home_node,room_reference,room_kind)
+                VALUES(%s,%s,%s,%s,%s,%s,%s,true,'global')""",
+                (canonical['id'],actor['authority'],canonical['name'],canonical['purpose'],canonical['owner'],canonical['revision'],producer))
+            fp=digest({'room':canonical,'producer':producer,'reviewSha256':review_digest})
+            c.execute('INSERT INTO hb_global_room_reference_refresh(authority,room,fingerprint,prior_room,canonical_room) VALUES(%s,%s,%s,%s,%s)',
+                      (actor['authority'],canonical['id'],fp,Jsonb(None),Jsonb(canonical)))
+            return
         if not old['room_reference'] or str(old['home_node'])!=producer or str(old['owner'])!=canonical['owner'] or old['revision']>canonical['revision']:
             raise Conflict('Original room reference ownership/revision changed')
         if old['room_kind'] not in ('legacy','global'):raise Conflict('Project reference cannot become Global implicitly')
