@@ -100,3 +100,41 @@ freshness selection by observedAt within the original binding/source and places
 status on existing activity/footer UI, not an extra permanent status row.
 Retained-source-owner actors keep original historical author descriptors after
 handoff; private counterparts and accepted event bytes remain unchanged.
+
+## Authoritative home/reference protocol core
+
+room_agent_home.py implements the domain primitives, not a second identity
+system. allocation_read is limited to the original enabled home coordinator;
+AgentDomain authenticates the existing NATS host/source/credential/reference
+admission. A private Allocation wrapper comes from that node-verified response,
+not public caller JSON. home_birth requires the ACTUAL local home node and its
+current administrator, original canonical room metadata/reference, saved local
+credential, immutable origin and existing host. It places/enrolls the logical
+identity in the existing home transport; no process/profile/native is created.
+Only the credential DIGEST/public home descriptor crosses the canonical node.
+attach_home admits only that room's deterministic reserved identity and exact
+home/role/host/placement. The receiver has NO local token, only the existing
+federated reference grant and room membership. Current revocation is not repaired
+by a new attachment command. Stable accepted command receipts support lost-ACK
+read-only reconciliation; absence or inaccessible receipt is not replay authority.
+
+An actual two-node authenticated NATS + two real isolated PG database journey
+qualified these primitives, broker source-subject rejection, home-only token and
+transport auth, zero CPU child-token rows, child reference reads/bad-key denial,
+original changed-key conflict and post-commit lost ACK with ONE attach write.
+All native/model/business effects were zero. Both virtual nodes were on CPU with
+QA credentials and plaintext private loopback broker, not actual fleet keys/TLS
+or new Mac/Windows contexts. The AUTOMATIC LOCAL HTTP WORKFLOW BRIDGE remains to
+be wired; source primitives alone are not full cross-host provisioning readiness.
+
+## Migration inventory/adoption boundary
+
+All actual production projects require explicit reviewed adoption; legacy is not
+an indefinite exemption. Classification is by an explicit room-ID/revision/owner
+manifest tied to original accepted scope, NEVER a name pattern. Isolated QA and
+separate authority rooms stay excluded. Existing Globals' legacy home_room may be
+incidental receiving metadata, not their birthplace. Use a reviewed declared
+Global-control-room adoption record with preserved prior-role/home snapshots and
+authenticated per-home origin/reference evidence; do not rewrite native contexts,
+old messages, unknowns or claim that adoption is historical birth. The source
+migration/apply bridge is not yet implemented; no live room was classified here.

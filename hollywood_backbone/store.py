@@ -823,6 +823,18 @@ class Store:
         from .room_agents import activate
         return activate(self, c, actor, room, payload)
 
+    def room_agent_allocation_read(self, actor_id, room, node):
+        from .room_agent_home import allocation_read
+        return allocation_read(self,actor_id,room,node)
+
+    def room_agent_home_attach(self, actor_id, room, node, operation, descriptor):
+        from .room_agent_home import attach_home
+        return attach_home(self,actor_id,room,node,operation,descriptor)
+
+    def room_agent_home_attachment_read(self, actor_id, room, node, operation):
+        from .room_agent_home import attachment_read
+        return attachment_read(self,actor_id,room,node,operation)
+
     def room_agent_control_status(self, actor_id, room, node, payload):
         from .room_agents import control_status
         return control_status(self, actor_id, room, node, payload)

@@ -33,7 +33,7 @@ BUSINESS = {"room_default_set", "external_response", "context_configure",
 COMMUNICATION_ADMINISTRATION = {"room_default_set", "principal", "create_room", "membership", "role"}
 COMMUNICATION_ADMINISTRATION |= {'room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate'}
 BUSINESS |= {'room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate'}
-METADATA = {'room_agent_control_status',"runtime_observe", "context_call",
+METADATA = {'room_agent_home_attach','room_agent_control_status',"runtime_observe", "context_call",
     "executor_begin", "executor_reserve", "executor_attach", "executor_observe",
     "host_sample", "connector_observe", "claim", "transition",
     "native_control_pending", "native_control_update", "native_goal_binding",

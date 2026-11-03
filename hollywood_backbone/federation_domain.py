@@ -16,7 +16,7 @@ from .federation_service import Client
 from .store import Denied
 
 METHODS = frozenset(
-    ['room_agent_control_status','room_agents_read','room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate','activity_append',
+    ['room_agent_allocation_read','room_agent_home_attach','room_agent_home_attachment_read','room_agent_control_status','room_agents_read','room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate','activity_append',
      'conversation_activity',
      'conversation_state_observe',
      'administrative_command',

@@ -1140,3 +1140,22 @@ END $$;
 ALTER TABLE hb_room_agent_initialization ADD COLUMN IF NOT EXISTS control_status jsonb;
 ALTER TABLE hb_room_agent_initialization ADD COLUMN IF NOT EXISTS control_revision bigint NOT NULL DEFAULT 0;
 ALTER TABLE hb_room_agent_initialization ADD COLUMN IF NOT EXISTS control_observed_at timestamptz;
+
+-- Home-only identity birth and receiving-reference attachment receipts. These
+-- carry hashes/public descriptors, never a foreign raw enrollment credential.
+CREATE TABLE IF NOT EXISTS hb_room_agent_home_birth (
+ authority uuid NOT NULL, coordinator uuid NOT NULL, operation text NOT NULL,
+ room uuid NOT NULL, node uuid NOT NULL, agent uuid NOT NULL,
+ fingerprint text NOT NULL, descriptor jsonb NOT NULL,
+ PRIMARY KEY(coordinator,operation),
+ FOREIGN KEY(authority,coordinator) REFERENCES hb_principal(authority,id),
+ FOREIGN KEY(authority,agent) REFERENCES hb_principal(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_room_agent_home_attachment (
+ authority uuid NOT NULL, coordinator uuid NOT NULL, operation text NOT NULL,
+ room uuid NOT NULL, node uuid NOT NULL, agent uuid NOT NULL,
+ fingerprint text NOT NULL, accepted_result jsonb NOT NULL,
+ PRIMARY KEY(coordinator,operation),
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
+ FOREIGN KEY(authority,coordinator) REFERENCES hb_principal(authority,id)
+);
