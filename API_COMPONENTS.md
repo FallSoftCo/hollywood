@@ -46,9 +46,24 @@ maintenance callers; it is not a claim of protection against a hostile root.
 The focused real two-process barrier case pauses one commit at replacement and
 proves the second cannot enter, then rejects its stale definition after release.
 
-Windows task XML transformation is fixture-qualified ONLY. Live Windows
-prepare/commit is deliberately unavailable until the owning normalized task,
-successor specification and native ACL adapter are qualified. A changed capsule
-launcher needs a separately pinned API-only successor launcher; never overwrite
-a hardlinked capsule or modify the Global/native task. This is an explicit
-remaining platform boundary, not a claimed all-host deployment.
+Windows uses the separate owner-local
+`maintenance/windows-api-component/api_component_windows.py` entrypoint, with
+the exact original limited Session1 owner, accepted task/ACL/normalizer and LAX
+private-file primitives. See its adjacent `API_COMPONENTS_WINDOWS.md`; do not
+route Windows through the POSIX definition writer. Its locked append-only
+registration/predecessor chain supports separately pinned API-only successors
+and rollback, preserving the original installation forever. Neither prepare nor
+registration starts/enables/stops a task or claims API health.
+
+The exact BLD r02 adapter bytes were integrated from source ZIP SHA256
+`aadad924387f502f898789c0320e275d366f03bde007716ad4029d6994aa9e05`.
+Actual Windows functional registration/lost-ACK/rollback checks passed, but that
+frozen driver's terminal `IRunningTask.Refresh` returned an error after its
+finite child exited. A separate cleanup-only continuation verified terminal,
+zero instances and deletion without replay. This is assisted qualification,
+NOT an unqualified automated exit0 or live product activation. Retain the
+original `qualification-r02/result.json` SHA256
+`7f992703d115db1a58d071beea64f501424e799e94b759d242f8214a6756ac20`.
+Frozen-driver repair/native rerun and real API offline/drain/activation/read/
+rollback gates remain explicit. Never overwrite hardlinked capsule files or
+modify the Global/native task as an API update.
