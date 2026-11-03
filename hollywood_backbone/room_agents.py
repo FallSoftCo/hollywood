@@ -12,7 +12,7 @@ def identity(room, node):
     return str(uuid5(UUID(str(room)), 'room-agent:' + str(node)))
 
 
-def allocate(c, authority, room, *, new_project=False):
+def allocate(c, authority, room, *, new_project=False, counts=None):
     # Existing default registrations are the explicit enrolled environments,
     # not a machine-name heuristic or every remembered offline host in a cache.
     rows = c.execute("""SELECT d.node,d.principal FROM hb_room_default_agent d
@@ -24,7 +24,15 @@ def allocate(c, authority, room, *, new_project=False):
     if target['room_kind']=='global':raise Denied('Typed Global bootstrap is separate from project initialization')
     c.execute('INSERT INTO hb_room_agent_generation(authority,room,phase) VALUES(%s,%s,%s) ON CONFLICT(room) DO NOTHING',
               (authority, room, 'active' if new_project else 'staging'))
+    from .room_participation import snapshot
+    prior=snapshot(c,room)
+    c.execute('UPDATE hb_room_agent_generation SET prior_participants=%s WHERE room=%s AND prior_participants IS NULL',
+              (Jsonb(prior['participants']),room))
     for row in rows:
+        added=c.execute("""INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request)
+            VALUES(%s,%s,%s,true,true,true) ON CONFLICT(room,principal) DO NOTHING RETURNING principal""",
+            (authority,room,row['principal'])).fetchone()
+        if counts is not None and added:counts['observerMembershipsAdded']=counts.get('observerMembershipsAdded',0)+1
         c.execute("""INSERT INTO hb_room_agent_initialization(authority,room,node,agent,coordinator)
             VALUES(%s,%s,%s,%s,%s) ON CONFLICT(room,node) DO NOTHING""",
             (authority, room, row['node'], identity(room, row['node']), row['principal']))
@@ -70,7 +78,7 @@ def project(c, authority, rooms):
             'agents':[],'capabilities':{'controlStatus':1},
             'meaning':'Setup/native attachment only; business completion is never inferred. Historical sources and recipient snapshots are retained.'})
         if row['agent'] is None:continue
-        row['ready']=bool(row['identity_active'] and row['member'] and row['native_fresh']
+        row['ready']=bool(row['coordinator_enabled'] and row['current_coordinator']==row['coordinator'] and row['identity_active'] and row['member'] and row['native_fresh']
             and row['native_status']['type'] in ('idle','active','activeElsewhere')
             and row['receipt'] and row['receipt'].get('sharedAppServer') is True
             and str(row['origin_room'])==room and str(row['origin_node'])==str(row['node']))
@@ -125,13 +133,20 @@ def read(store, actor_id, room):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
         slots=controlled_slots(c,actor,room)
-        if slots:
+        if slots and not actor['administrator']:
             result=inventory(c,actor['authority'],room)
             result['agents']=[r for r in result['agents'] if r['coordinator']==str(actor['id'])]
             result.update(controlOnly=True,complete=False,nativeReady=False)
+            if actor['administrator']:
+                from .room_participation import snapshot
+                result['handoffCandidates']=snapshot(c,room)
             return result
         store.room(c, actor, room)
-        return inventory(c, actor['authority'], room)
+        result=inventory(c,actor['authority'],room)
+        if actor['administrator']:
+            from .room_participation import snapshot
+            result['handoffCandidates']=snapshot(c,room)
+        return result
 
 
 def initialize(store, c, actor, room):
@@ -250,12 +265,11 @@ def activate(store, c, actor, room, payload):
         raise Conflict('Original staged recipient generation changed')
     desired = inventory(c, actor['authority'], room)
     if not desired['nativeReady']:raise Conflict('Every desired environment requires fresh actual native readiness before handoff')
-    original = c.execute("""SELECT p.id FROM hb_membership m JOIN hb_principal p ON p.id=m.principal
-        WHERE m.room=%s AND m.can_read AND p.kind='agent'
-        AND NOT EXISTS(SELECT 1 FROM hb_room_agent_initialization i WHERE i.room=m.room AND i.agent=m.principal)
-        AND EXISTS(SELECT 1 FROM hb_room_agent_initialization i WHERE i.room=m.room AND i.coordinator=m.principal)
-        ORDER BY p.id FOR UPDATE OF m""", (room,)).fetchall()
-    retiring = sorted(str(r['id']) for r in original)
+    from .room_participation import snapshot
+    original=snapshot(c,room)
+    retiring=sorted(r['agentId'] for r in original['participants'])
+    if payload.get('participantSnapshotSha256')!=original['sha256']:
+        raise Conflict('All original participant membership revisions require current reviewed CAS')
     if retiring != sorted(set(payload['retiringAgentIds'])):
         raise Conflict('Original public participant set changed; re-review handoff')
     # Proof is an explicit trusted owner attestation, not an API inference that
@@ -266,12 +280,9 @@ def activate(store, c, actor, room, payload):
     cutoff=c.execute('SELECT next_seq FROM hb_authority WHERE id=%s',(actor['authority'],)).fetchone()['next_seq']
     c.execute("UPDATE hb_room_agent_generation SET phase='active',revision=revision+1,retired=%s::uuid[],handoff=%s,handoff_seq=%s WHERE room=%s",
               (retiring, Jsonb(proof), cutoff, room))
-    c.execute("""UPDATE hb_membership SET can_post=false,can_request=false,revision=revision+1
-        WHERE room=%s AND principal=ANY(%s::uuid[]) AND (can_post OR can_request)""", (room,retiring))
-    # Original principals remain addressable and can reconcile their old work.
-    # Retained read/source-owner access is not active project participation.
-    # Future unaddressed PUBLIC fanout changes. Their explicit private
-    # sources/queued outputs and historical send-time recipients are untouched.
+    # Current representation/default attention changes, not existing grants.
+    # An old source author or Global coordinator retains its actual write rights;
+    # explicit user revocations are never bypassed by an old-source exception.
     return inventory(c, actor['authority'], room)
 
 

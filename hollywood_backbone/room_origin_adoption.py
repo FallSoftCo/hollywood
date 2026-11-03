@@ -23,7 +23,7 @@ def review(payload,fields,optional=frozenset()):
 
 def room_adopt(store,c,actor,room,payload):
     store.admin(actor)
-    review(payload,{'kind','roomRevision','ownerId','priorKind','environments'},frozenset({'purpose','priorPurposeDigest'}))
+    review(payload,{'kind','roomRevision','ownerId','priorKind','environments','participantSnapshotSha256'},frozenset({'purpose','priorPurposeDigest'}))
     if payload['kind'] not in ('project','global'):raise ValueError('Explicit project/global kind required')
     target=c.execute('SELECT * FROM hb_room WHERE id=%s AND authority=%s AND NOT room_reference FOR UPDATE',
                       (room,actor['authority'])).fetchone()
@@ -39,16 +39,29 @@ def room_adopt(store,c,actor,room,payload):
     if not isinstance(payload['environments'],list):raise ValueError('Explicit environment list required')
     expected=[{'node':str(r['node']),'coordinator':str(r['principal'])} for r in c.execute(
         'SELECT node,principal FROM hb_room_default_agent WHERE authority=%s AND enabled ORDER BY node',(actor['authority'],)).fetchall()]
+    if sorted(payload['environments'],key=lambda r:r['node'])!=expected:
+        raise Conflict('Exact currently enabled environment inventory required, including offline homes')
+    if not expected:raise Denied('No enrolled environment inventory; do not adopt an empty fleet')
+    from .room_participation import snapshot
+    participants=snapshot(c,room)
+    if payload['participantSnapshotSha256']!=participants['sha256']:
+        raise Conflict('Every prior actor/membership revision requires a current reviewed snapshot')
     if payload['kind']=='project':
-        if sorted(payload['environments'],key=lambda r:r['node'])!=expected:
-            raise Conflict('Exact currently enabled environment inventory required, including offline homes')
-        if not expected:raise Denied('No enrolled environment inventory; do not adopt an empty fleet')
         from .room_agents import allocate
         allocate(c,actor['authority'],room) # STAGING, never changes current fan-out.
     else:
-        if payload['environments']!=[]:raise ValueError('Global room uses explicit original control actors, not project allocation')
         if c.execute('SELECT 1 FROM hb_room_agent_generation WHERE room=%s',(room,)).fetchone():
             raise Conflict('Existing project generation cannot become a Global room')
+    if payload['kind']=='global':
+        globals=sorted(r['coordinator'] for r in expected)
+        retired=sorted(r['agentId'] for r in participants['participants'] if r['agentId'] not in globals)
+        cutoff=c.execute('SELECT next_seq FROM hb_authority WHERE id=%s',(actor['authority'],)).fetchone()['next_seq']
+        c.execute('INSERT INTO hb_global_room_participation VALUES(%s,%s,%s::uuid[],%s::uuid[],%s,%s,%s)',
+                  (actor['authority'],room,globals,retired,cutoff,Jsonb(participants['participants']),payload['reviewSha256']))
+        for principal in globals:
+            c.execute('INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true) ON CONFLICT(room,principal) DO NOTHING',
+                      (actor['authority'],room,principal))
+        # Current/default recipients only; all existing grants/stops remain independent.
     purpose=target['purpose']
     if 'purpose' in payload:
         if not isinstance(payload['purpose'],str) or not 1<=len(payload['purpose'])<=4000 or payload['priorPurposeDigest']!=digest(target['purpose']):

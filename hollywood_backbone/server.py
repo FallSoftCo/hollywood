@@ -194,6 +194,7 @@ class RoomAgentHandoff(Input):
 
 
 class RoomAgentActivate(RoomAgentInitialize):
+    participantSnapshotSha256: str = Field(pattern=r'^[0-9a-f]{64}$')
     revision: int = Field(ge=1)
     retiringAgentIds: list[UUID] = Field(max_length=1000)
     handoff: RoomAgentHandoff

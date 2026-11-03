@@ -1203,3 +1203,39 @@ CREATE TABLE IF NOT EXISTS hb_global_room_reference_refresh (
  authority uuid NOT NULL, room uuid NOT NULL, fingerprint text NOT NULL,
  prior_room jsonb NOT NULL, canonical_room jsonb NOT NULL, PRIMARY KEY(room,fingerprint)
 );
+
+ALTER TABLE hb_room_agent_generation ADD COLUMN IF NOT EXISTS prior_participants jsonb;
+CREATE TABLE IF NOT EXISTS hb_global_room_participation (
+ authority uuid NOT NULL, room uuid PRIMARY KEY REFERENCES hb_room(id),
+ globals uuid[] NOT NULL, retired uuid[] NOT NULL, handoff_seq bigint NOT NULL,
+ prior_participants jsonb NOT NULL, review_sha256 text NOT NULL
+);
+-- Reused for all current actors, future fanout and native projections.
+CREATE OR REPLACE VIEW hb_room_current_participant AS
+WITH desired AS (
+ SELECT i.authority,i.room,i.agent AS principal FROM hb_room_agent_initialization i
+ JOIN hb_room_agent_generation g ON g.room=i.room AND g.phase='active'
+ JOIN hb_room_default_agent d ON d.authority=i.authority AND d.node=i.node AND d.principal=i.coordinator AND d.enabled
+ UNION
+ SELECT x.authority,x.room,unnest(x.globals) FROM hb_global_room_participation x
+ UNION
+ SELECT o.authority,o.room,o.agent FROM hb_global_origin o
+ JOIN hb_room r ON r.id=o.room AND r.room_kind='global'
+ WHERE NOT EXISTS(SELECT 1 FROM hb_global_room_participation x WHERE x.room=o.room)
+), current_desired AS (
+ SELECT d.* FROM desired d
+ LEFT JOIN hb_principal p ON p.id=d.principal
+ LEFT JOIN hb_membership m ON m.room=d.room AND m.principal=d.principal
+ WHERE (p.id IS NULL OR p.active) AND (m.principal IS NULL OR m.can_read)
+ AND (NOT EXISTS(SELECT 1 FROM hb_global_room_participation x WHERE x.room=d.room)
+   OR EXISTS(SELECT 1 FROM hb_room_default_agent a WHERE a.authority=d.authority AND a.principal=d.principal AND a.enabled))
+), retained_current AS (
+ SELECT m.authority,m.room,m.principal FROM hb_membership m
+ JOIN hb_principal p ON p.id=m.principal AND p.kind='agent' AND p.active
+ JOIN hb_room r ON r.id=m.room
+ LEFT JOIN hb_room_agent_generation g ON g.room=m.room
+ WHERE m.can_read AND r.room_kind<>'global' AND (g.phase IS NULL OR
+   g.phase='staging' AND g.prior_participants @> jsonb_build_array(jsonb_build_object('agentId',p.id::text)))
+ AND NOT EXISTS(SELECT 1 FROM hb_room_agent_initialization i WHERE i.room=m.room AND i.agent=p.id)
+)
+SELECT * FROM current_desired UNION SELECT * FROM retained_current;

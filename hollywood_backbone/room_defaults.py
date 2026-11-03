@@ -10,14 +10,15 @@ from .store import Conflict, Denied, json_value
 
 def join(c, authority, room=None, *, new_project=False):
     from .room_agents import allocate
+    counts={}
     if room is not None:
-        allocate(c, authority, room, new_project=new_project)
+        allocate(c, authority, room, new_project=new_project,counts=counts)
     else:
         # Registering an environment extends only initialized project rooms;
         # never auto-joins a Global or silently adopts unrelated legacy rooms.
         rooms = c.execute('SELECT room FROM hb_room_agent_generation WHERE authority=%s', (authority,)).fetchall()
-        for row in rooms:allocate(c, authority, row['room'])
-    return 0  # No shared Global memberships are created by initialization.
+        for row in rooms:allocate(c, authority, row['room'],counts=counts)
+    return counts.get('observerMembershipsAdded',0) # Communication only, never current representation.
 
 
 def read(store, actor_id):

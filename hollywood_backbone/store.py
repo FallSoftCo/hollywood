@@ -1080,10 +1080,10 @@ class Store:
             query += " LIMIT %s"
             args.append(limit)
         rows = c.execute(query,args).fetchall()
-        generation=c.execute('SELECT retired FROM hb_room_agent_generation WHERE room=%s',(room['id'],)).fetchone()
-        retired=set(generation['retired']) if generation else set()
+        from .room_participation import current
+        current_agents=current(c,room['id'])
         return [{**row, "identity": descriptor(c, row["id"]),
-                 "participation":'retained-source-owner' if row['id'] in retired else 'participant'} for row in rows]
+                 "participation":'retained-source-owner' if row['kind']=='agent' and str(row['id']) not in current_agents else 'participant'} for row in rows]
 
     def room_detail(self, actor_id, identity):
         from .conversation_state import read_room as native_state_read
@@ -1152,10 +1152,7 @@ class Store:
     def post_in_transaction(self, c, a, room_id, operation, payload, *, wire=None, native_context=None):
         """Accept communication in the caller's already-authorized transaction."""
         kind, audience = payload["kind"], payload["audience"]
-        room = self.room(c, a, room_id) # Read/source retention, not new-post permission.
-        # Serialize admission with activation BEFORE checking old/new rights.
-        # Otherwise a prechecked old grant could leak a new send past handoff.
-        c.execute('SELECT id FROM hb_room WHERE id=%s FOR SHARE',(room_id,))
+        room = self.room(c, a, room_id, "can_request" if kind == "request" else "can_post")
         fingerprint = digest({"roomId": room_id, **payload})
         # Serialize command identity before its first acceptance, including requests
         # to different rooms. Existing receipts retain their original resolution.
@@ -1171,11 +1168,6 @@ class Store:
                 raise Conflict("Operation ID reused with changed contents")
             self.readable_event(c, a, old["event"])
             return self.receipt(c, old["event"])
-        try:
-            self.room(c,a,room_id,"can_request" if kind=="request" else "can_post")
-        except Denied:
-            from .room_handoff import publication as original_disposition
-            if not original_disposition(self,c,a,room_id,payload):raise
         recipient = payload.get("recipientId")
         # A human speaks to the room. Legacy owner-directed requests are
         # retained only for agent callers; explicit direct recipients remain exact.

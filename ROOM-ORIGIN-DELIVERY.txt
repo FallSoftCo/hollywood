@@ -57,7 +57,11 @@ prohibition, deliberate stop and historical event. No room is automatically
 classified by this endpoint. Typed new project rooms already initialize normally.
 
 Global room kind adoption is explicit too; no project generation can become a
-Global room. For a legacy Global, POST agents/{id}/origin-adoption at its ACTUAL
+Global room. An existing database without room_kind becomes legacy after the
+additive migration: explicitly CAS-adopt Global786 BEFORE any HOME Global
+adoptions, using the full enabled environment list and ALL prior actor snapshot.
+Preserve old row/provenance. Candidate bootstrap typing NEW rooms does not prove
+that a pre-migration live Global room was already typed. For a legacy Global, POST agents/{id}/origin-adoption at its ACTUAL
 HOME with exact room/home/role revisions, priorHomeRoomId, owner and review SHA.
 This records kind=reviewed-adoption and the complete old role snapshot. It does
 NOT rewrite role.home_room, native context, home revision, credentials, original
@@ -75,27 +79,38 @@ public home_node/home_revision/identity_reference facts for self/admin, not keys
 A Global home-adoption HTTP receipt alone is NOT canonical receiving-reference
 proof; retain that separate original authenticated attach/read receipt per home.
 
-HANDOFF / RETAINED WORK
-Only owner-reviewed activation after ALL desired homes have actual fresh native
-acceptance changes future unaddressed public recipients. Original send-time
-recipient snapshots never change. An authority sequence recorded under the room
-handoff lock bounds original work. Old actors retain read and source ownership,
-not blanket new-post/request rights. A nonadmin retained original actor may send
-message phase update/answer/blocked ONLY against a pre-handoff source whose
-immutable recipients actually included it, in that room and original audience.
-Normal private counterpart checks remain. New requests, new-generation sources,
-unattributed posts and private expansion are rejected. Exact already accepted
-command repeat/read is reconciled before new-post authorization, without replay.
-This is receipt/source authorization, not semantic DLP or business completion.
+HANDOFF / COMMUNICATION RIGHTS
+The single hb_room_current_participant view drives actor classification, future
+unaddressed public input and native projection. Project staging retains its exact
+old participant snapshot; active generation selects desired environment IDs.
+Typed Global selects its exact registered/adopted Globals, not prior testers.
+Directed public input stays publicly readable but only its explicit target
+receives it as input. Source history and read audiences are not rewritten.
+Wire participation remains participant / retained-source-owner for frozen163.
 
-Current nativeState excludes staged children and retired idle/expired/shared-busy
-contexts. A fresh active old context may appear only for genuinely original
-addressed source work. Its known original native thread can settle terminally;
-it cannot register a new context or claim a new input through this exception.
-All old observation/history rows stay intact. The owner handoff SHA is a trusted
-local-owner attestation, not an independently signed proof that every business
-operation is completed. Actual aggregate parent quiet/output/unknown fences and
-service rollback belong to the owning release, not this communication projection.
+Current representation/default attention is INDEPENDENT of membership grants.
+Activation reviews ALL prior non-desired actors, not just default coordinators:
+GET environment-agents provides administrator handoffCandidates (IDs, membership
+revisions, SHA). Administrative activate supplies participantSnapshotSha256 plus
+exact retiringAgentIds and existing owner-work receipt/generation CAS. This
+changes current representation, NOT can_post/can_request or deliberate stops.
+Authorized old authors can answer historical public/private replies; authorized
+Global/Root coordinators can delegate new explicitly assigned work. NO special
+cutoff/source-lineage publication authorization exists. Normal Store post,
+source and private counterpart checks remain unchanged. A real write revocation
+still denies even an old-source message; source age cannot bypass permissions.
+
+New initialization adds explicitly registered Global coordination/observer
+memberships only where absent. ON CONFLICT preserves explicit revocations.
+These are NOT current project reps and receive NO automatic broadcast/context
+input merely because they can read/post/request. No identity, admin promotion,
+execution claim or stopped QA session is manufactured.
+
+Native projection includes current participants plus genuinely fresh ACTIVE
+addressed source work for noncurrent contexts in that room, including ordinary
+later explicit follow-up. It excludes noncurrent idle/expired/activeElsewhere,
+without deleting observations or adding a source-age permission cutoff. Actual
+aggregate parent/output/native quiet and rollback remain owning release gates.
 
 PRODUCTION BOUNDARY
 Integrator confirmed six exact production project IDs and six enabled original

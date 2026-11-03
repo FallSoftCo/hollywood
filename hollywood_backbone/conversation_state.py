@@ -34,12 +34,7 @@ def observe(store,actor_id,room,payload):
     with store.pool.connection() as c:
         a=store.actor(c,actor_id)
         if a['kind']!='agent':raise Denied('Native agent observation required')
-        store.room(c,a,room)
-        c.execute('SELECT id FROM hb_room WHERE id=%s FOR SHARE',(room,))
-        try:store.room(c,a,room,'can_post')
-        except Denied:
-            from .room_handoff import observation as original_observation
-            if not original_observation(store,c,a,room,payload):raise
+        store.room(c,a,room,'can_post')
         source=payload['sourceEventId']
         if source:
             event=store.readable_event(c,a,source)
@@ -70,15 +65,13 @@ native_members AS (
                        SELECT n.* FROM hb_conversation_state n JOIN readable_rooms r ON r.id=n.room
                        JOIN hb_principal p ON p.id=n.agent AND p.active
                        JOIN hb_membership m ON m.room=n.room AND m.principal=n.agent AND m.can_read
-                       LEFT JOIN hb_room_agent_generation g ON g.room=n.room
+                       LEFT JOIN hb_room_current_participant cp ON cp.room=n.room AND cp.principal=n.agent
                        LEFT JOIN hb_event original_source ON original_source.id=n.source
-                       WHERE (g.phase IS DISTINCT FROM 'staging' OR NOT EXISTS(
-                           SELECT 1 FROM hb_room_agent_initialization i WHERE i.room=n.room AND i.agent=n.agent))
-                       AND (g.phase IS DISTINCT FROM 'active' OR NOT(n.agent=ANY(g.retired)) OR (
+                       WHERE cp.principal IS NOT NULL OR (
                            n.state->>'type'='active'
                            AND n.observed_at > statement_timestamp()-interval '75 seconds'
-                           AND original_source.room=n.room AND original_source.seq<=g.handoff_seq
-                           AND original_source.data->'conversationRecipients' ? n.agent::text))
+                           AND original_source.room=n.room
+                           AND original_source.data->'conversationRecipients' ? n.agent::text)
                    ), native_counts AS (
                        SELECT room,count(*) AS total FROM native_members GROUP BY room
                    ), native_visible AS (
