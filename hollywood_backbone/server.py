@@ -774,6 +774,16 @@ async def invoke(request, method, *args):
                 from .room_agent_home_http import reconcile
                 linked=await reconcile(router,request,args[0])
                 if linked is not None:return web.json_response(linked['body'],status=linked['status'])
+            if method=='global_origin_adopt':
+                origin=args[1]
+                home=await router.owner(request,'room',str(UUID(origin['roomId'])))
+                if home!=router.node_id:
+                    descriptor=await router.call(request,home,'room_detail',[origin['roomId']],verb='GET')
+                    if descriptor['status']!=200:return web.json_response(descriptor['body'],status=descriptor['status'])
+                    from .room_origin_adoption import refresh_global_reference
+                    from .room_agent_home_http import local
+                    await asyncio.to_thread(local,request,router.store,lambda:refresh_global_reference(
+                        router.store,request['actor'],home,descriptor['body']['room'],origin['reviewSha256']))
             if method=='room_agent_enroll':
                 if args[1]!=router.node_id:
                     raise Denied('Enrollment bearer belongs only at its actual HOME HTTP node')

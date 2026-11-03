@@ -267,6 +267,9 @@ async def main():
    with cpu_store.pool.connection() as c:
     global_room=str(c.execute('SELECT home_room FROM hb_agent_role WHERE principal=%s',(parent,)).fetchone()['home_room'])
     c.execute("UPDATE hb_room SET room_kind='legacy' WHERE id=%s",(global_room,)) # isolated old server shape
+   with cpu_store.pool.connection() as c:
+    old_global_metadata=json.loads(json.dumps(c.execute('SELECT * FROM hb_room WHERE id=%s',(global_room,)).fetchone(),default=str))
+   install_room_reference(home_store,hp,old_global_metadata,owner_node=cpu)
    global_manifest={'kind':'global','roomRevision':1,'ownerId':parent,'priorKind':'legacy','environments':[],'reviewSha256':'c'*64}
    st,typed=await http(apis[0],'POST','rooms/'+global_room+'/origin-adoption',{'operationId':'typed-global-adopt','manifest':global_manifest},ct['Global'])
    assert st==200 and typed['roomKind']=='global'
@@ -275,7 +278,8 @@ async def main():
    # Original authenticated canonical response supplies room metadata, NOT a
    # CPU-minted home identity. Install only its foreign-key/typed route reference.
    canonical=global_detail['body']['room']
-   install_room_reference(home_store,hp,canonical,owner_node=cpu)
+   # Existing old reference is deliberately NOT refreshed by the fixture;
+   # production HTTP authenticates the actual canonical response before adoption.
    with home_store.pool.connection() as c:
     prior_role=json.loads(json.dumps(c.execute('SELECT * FROM hb_agent_role WHERE principal=%s',(hp,)).fetchone(),default=str))
    gm={'roomId':global_room,'roomRevision':typed['revision'],'ownerId':parent,'homeNodeId':mac,

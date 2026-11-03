@@ -767,7 +767,7 @@ class Store:
             if str(a["id"]) != identity:
                 self.admin(a)
             row = c.execute(
-                "SELECT id,authority,name,kind,administrator,active FROM hb_principal WHERE id=%s AND authority=%s",
+                "SELECT id,authority,name,kind,administrator,active,home_node,home_revision,identity_reference FROM hb_principal WHERE id=%s AND authority=%s",
                 (identity, a["authority"]),
             ).fetchone()
             if not row:

@@ -1198,3 +1198,8 @@ CREATE TABLE IF NOT EXISTS hb_global_origin_reference (
 ALTER TABLE hb_room_agent_generation ADD COLUMN IF NOT EXISTS handoff_seq bigint;
 
 ALTER TABLE hb_room_origin_adoption ADD COLUMN IF NOT EXISTS prior_room jsonb;
+
+CREATE TABLE IF NOT EXISTS hb_global_room_reference_refresh (
+ authority uuid NOT NULL, room uuid NOT NULL, fingerprint text NOT NULL,
+ prior_room jsonb NOT NULL, canonical_room jsonb NOT NULL, PRIMARY KEY(room,fingerprint)
+);

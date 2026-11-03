@@ -1,0 +1,108 @@
+ROOM-ORIGIN: RELEASE AND REVIEWED ADOPTION
+
+Owning release remains with the source coordinator. This is source and isolated
+qualification, not permission to restart a busy host parent or claim fleet ready.
+No new native app-server, OS service/account per room, model turn, business
+replay or original Global thread movement belongs in initialization.
+
+SOURCE PATH
+The SDK resident supervisor source is 07d1e3c7b421131e8f092c4cb65799af4fe2b0d0,
+including the exact separately owned Mac/Windows modules. The real CPU two-empty-
+thread proof remains c7f6e471; it was NOT repeated by transport/handoff QA.
+New origins use existing home identity/backplane primitives, ONE original host
+parent, ONE original native daemon, distinct logical contexts and journals.
+Windows/Mac actual new room-thread acceptance remains an owning OS release gate;
+platform positive source fixtures were synthetic, never counted as live ready.
+
+AUTOMATIC HOME INITIALIZATION
+Canonical create reserves stable(room,environment) desired recipients before any
+human input. Existing catalog refresh yields own roomAgentInitializations to the
+registered home coordinator, even when it is not a project member. Discovery
+pins the metadata owner without pretending it grants room/history access.
+Parent runtime then uses the unchanged, journaled SDK step sequence:
+  POST rooms/{room}/environment-agents original :allocate
+  GET own inventory
+  POST rooms/{room}/environment-agents/{home}/enroll original saved local key
+  GET actual home child role/principal
+  platform in-parent prepare/bootstrap/inspect
+  POST own report original revision/operation
+The first and last canonical calls admit ONLY the exact enabled original host
+coordinator scope, even when that receiving identity is properly nonadmin.
+The enroll bearer MUST be sent only to its actual HOME local HTTP node. No raw
+foreign key is forwarded to the canonical room node. The HOME obtains an
+allocation through the existing node-authenticated domain RPC, reuses an explicit
+room-owner reference and births the child/token locally. It sends only its
+verified descriptor/digest for canonical reference adoption. A foreign reference
+has no receiver-local token and gains no administrator flag.
+HOME linked outbound intent is durable/CAS-bound. Lost ACK or parent restart
+reads the SAME original attachment; it never sends a replacement operation/key.
+A saved dispatch intent with no acceptance read remains HELD, not evidence of
+nonadmission. Local SQL preparation is atomic/original-command idempotent.
+Canonical administrative receipts expose the exact original method/path/wire
+fingerprint so the existing SDK AdministrationSteps can reconcile normally.
+
+Readiness is a fresh matching native observation, not allocation/enrollment,
+service alive, metadata fixture or accepted message. Missing/offline homes remain
+pending/blocked. Native status/business completion/setup remain distinct.
+
+EXPLICIT EXISTING-ROOM MIGRATION
+Use the integrator's actual canonical inventory, not all remembered federated QA
+rooms or string matching of titles. Each candidate is exact authority/room ID,
+owner, revision, prior kind, FULL enabled environment+coordinator list and reviewed
+receipt SHA. POST rooms/{room}/origin-adoption with operationId + manifest.
+Project adoption stages the new fleet without changing original recipients.
+The optional purpose+priorPurposeDigest pair updates prospective responsibility
+text with CAS; the prior entire room row is retained. Preserve every business
+prohibition, deliberate stop and historical event. No room is automatically
+classified by this endpoint. Typed new project rooms already initialize normally.
+
+Global room kind adoption is explicit too; no project generation can become a
+Global room. For a legacy Global, POST agents/{id}/origin-adoption at its ACTUAL
+HOME with exact room/home/role revisions, priorHomeRoomId, owner and review SHA.
+This records kind=reviewed-adoption and the complete old role snapshot. It does
+NOT rewrite role.home_room, native context, home revision, credentials, original
+birthplace or source events. A newly created bootstrap records true bootstrap
+origin; an old bootstrap repeat does not silently manufacture one.
+For foreign Global-room metadata, local HTTP fetches the authenticated canonical
+room and explicitly refreshes only the existing same-owner room reference, with
+the old metadata retained. It does not invent a room-owner identity or grant.
+The existing home-authenticated AgentDomain global_origin_attach then records the
+same origin at its canonical room node. global_origin_reference_read inspects the
+ORIGINAL operation after lost reply. Direct receiver HTTP cannot authenticate a
+reference or borrow the Global's home authority. Do not substitute a CPU receiving
+role snapshot for an actual home descriptor. New principal_read includes existing
+public home_node/home_revision/identity_reference facts for self/admin, not keys.
+A Global home-adoption HTTP receipt alone is NOT canonical receiving-reference
+proof; retain that separate original authenticated attach/read receipt per home.
+
+HANDOFF / RETAINED WORK
+Only owner-reviewed activation after ALL desired homes have actual fresh native
+acceptance changes future unaddressed public recipients. Original send-time
+recipient snapshots never change. An authority sequence recorded under the room
+handoff lock bounds original work. Old actors retain read and source ownership,
+not blanket new-post/request rights. A nonadmin retained original actor may send
+message phase update/answer/blocked ONLY against a pre-handoff source whose
+immutable recipients actually included it, in that room and original audience.
+Normal private counterpart checks remain. New requests, new-generation sources,
+unattributed posts and private expansion are rejected. Exact already accepted
+command repeat/read is reconciled before new-post authorization, without replay.
+This is receipt/source authorization, not semantic DLP or business completion.
+
+Current nativeState excludes staged children and retired idle/expired/shared-busy
+contexts. A fresh active old context may appear only for genuinely original
+addressed source work. Its known original native thread can settle terminally;
+it cannot register a new context or claim a new input through this exception.
+All old observation/history rows stay intact. The owner handoff SHA is a trusted
+local-owner attestation, not an independently signed proof that every business
+operation is completed. Actual aggregate parent quiet/output/unknown fences and
+service rollback belong to the owning release, not this communication projection.
+
+PRODUCTION BOUNDARY
+Integrator confirmed six exact production project IDs and six enabled original
+host registrations; stopped QA943fbd6d is excluded by ORIGINAL purpose/source,
+not its title. Complete reviewed inventory/purpose proposals are retained in the
+CPU owner's private evidence directory, not automatically applied. All six homes
+must provide authenticated receiving references and real OS/resident readiness.
+The client163 source/native/sign/release belongs solely to the integrator.
+No independent API/SDK version bump, runtime installation, physical host wake,
+service change, Apple operation, phone action or original input replay is claimed.

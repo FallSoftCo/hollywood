@@ -151,3 +151,31 @@ def global_reference_read(store,actor_id,operation):
                        (actor['authority'],actor_id,operation)).fetchone()
         if not row:raise Denied('Original Global origin reference unavailable; no replay inferred')
         return row['accepted_result']
+
+
+def refresh_global_reference(store,actor_id,producer,canonical,review_digest):
+    """PRIVATE caller uses a verified NodeRouter response, never raw client JSON.
+
+    Legacy references predate room_kind. Refresh only explicit Global metadata
+    at its authenticated canonical owner, retaining the original row for audit.
+    No membership, role, credential, history or context is changed.
+    """
+    if canonical.get('room_kind')!='global' or canonical.get('room_reference'):
+        raise Denied('Authenticated canonical typed Global room required')
+    if not isinstance(review_digest,str) or not re.fullmatch('[0-9a-f]{64}',review_digest):raise ValueError('Reviewed original metadata refresh required')
+    if str(canonical.get('home_node') or producer)!=producer:raise Denied('Canonical producer differs')
+    with store.pool.connection() as c:
+        actor=store.actor(c,actor_id);store.admin(actor)
+        old=c.execute('SELECT * FROM hb_room WHERE id=%s AND authority=%s FOR UPDATE',
+                      (canonical['id'],actor['authority'])).fetchone()
+        if not old:
+            raise Denied('Original explicitly installed room reference required; no implicit owner enrollment')
+        if not old['room_reference'] or str(old['home_node'])!=producer or str(old['owner'])!=canonical['owner'] or old['revision']>canonical['revision']:
+            raise Conflict('Original room reference ownership/revision changed')
+        if old['room_kind'] not in ('legacy','global'):raise Conflict('Project reference cannot become Global implicitly')
+        if old['room_kind']=='global' and json_value(old)==canonical:return # canonical reference flag differs normally
+        fp=digest({'room':canonical,'producer':producer,'reviewSha256':review_digest})
+        c.execute('INSERT INTO hb_global_room_reference_refresh(authority,room,fingerprint,prior_room,canonical_room) VALUES(%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING',
+                  (actor['authority'],canonical['id'],fp,Jsonb(json_value(old)),Jsonb(canonical)))
+        c.execute("UPDATE hb_room SET room_kind='global',name=%s,purpose=%s,revision=%s WHERE id=%s",
+                  (canonical['name'],canonical['purpose'],canonical['revision'],canonical['id']))
