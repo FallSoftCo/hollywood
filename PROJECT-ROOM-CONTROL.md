@@ -35,3 +35,15 @@ an ordinary human (`administrator=false`), seven exact policy negatives, bounded
 head/preceding-page reads, private audience, and lost-ACK reopen without duplicate
 POST. Runtime/model processes are never started; synthetic principal rows are
 only fixture data. External source/version/attempt hashes are retained separately.
+
+Compatibility revision: both HTTP invocation and Store mutation retain the
+original four positional arguments when `sourceRoomId` is omitted/None. Only an
+actually supplied source adds the fifth argument. The retained179 administrative
+receipt compares method/path/wire digest, not Python arguments; do not claim an
+unobserved local receipt conflict. Preserving route arguments also avoids changing
+the omitted-field shape carried by the existing federated domain envelope.
+The focused upgrade fixture seeds an original four-argument acceptance through
+the exact retained179 mutation module, then verifies candidate Store and actual
+HTTP reads return it without a second domain mutation or changed original rows.
+Changed source payload under the same operation still conflicts. This fixture
+is local HTTP/PG, not a NATS transport or production replay qualification.

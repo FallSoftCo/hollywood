@@ -1110,7 +1110,10 @@ async def room_defaults(request):
 
 async def room_create(request):
     p = await body(request, Room)
-    return await invoke(request, "create_room", str(p.id), p.name, p.purpose, str(p.ownerId), str(p.sourceRoomId) if p.sourceRoomId else None)
+    arguments = [str(p.id), p.name, p.purpose, str(p.ownerId)]
+    if p.sourceRoomId is not None:
+        arguments.append(str(p.sourceRoomId))
+    return await invoke(request, "create_room", *arguments)
 
 
 async def agent_directory(request):

@@ -797,7 +797,10 @@ class Store:
 
     def create_room(self, actor_id, identity, name, purpose, owner, source_room=None, *, command=None):
         from .administrative import mutate
-        return mutate(self, actor_id, 'create_room', [identity, name, purpose, owner, source_room], command)
+        arguments = [identity, name, purpose, owner]
+        if source_room is not None:
+            arguments.append(source_room)
+        return mutate(self, actor_id, 'create_room', arguments, command)
 
     def _admin_create_room(self, c, a, identity, name, purpose, owner, source_room=None):
         if not a["administrator"]:
