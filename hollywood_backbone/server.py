@@ -170,6 +170,7 @@ class Room(Input):
     name: str = Field(min_length=1, max_length=200)
     purpose: str = Field(min_length=1, max_length=4000)
     ownerId: UUID
+    sourceRoomId: UUID | None = None
 
 
 class Membership(Input):
@@ -1109,7 +1110,7 @@ async def room_defaults(request):
 
 async def room_create(request):
     p = await body(request, Room)
-    return await invoke(request, "create_room", str(p.id), p.name, p.purpose, str(p.ownerId))
+    return await invoke(request, "create_room", str(p.id), p.name, p.purpose, str(p.ownerId), str(p.sourceRoomId) if p.sourceRoomId else None)
 
 
 async def agent_directory(request):

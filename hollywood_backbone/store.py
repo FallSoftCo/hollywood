@@ -795,11 +795,14 @@ class Store:
         from .room_defaults import change
         return change(c, actor, node, payload)
 
-    def create_room(self, actor_id, identity, name, purpose, owner, *, command=None):
+    def create_room(self, actor_id, identity, name, purpose, owner, source_room=None, *, command=None):
         from .administrative import mutate
-        return mutate(self, actor_id, 'create_room', [identity, name, purpose, owner], command)
+        return mutate(self, actor_id, 'create_room', [identity, name, purpose, owner, source_room], command)
 
-    def _admin_create_room(self, c, a, identity, name, purpose, owner):
+    def _admin_create_room(self, c, a, identity, name, purpose, owner, source_room=None):
+        if not a["administrator"]:
+            from .project_rooms import authorize
+            authorize(self, c, a, source_room, owner)
         target = c.execute(
             "SELECT id FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent' AND active",
             (owner, a["authority"]),
@@ -827,12 +830,13 @@ class Store:
         if str(a["id"]) != str(owner) and a["kind"] in ("human", "agent"):
             c.execute("INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
                       (a["authority"], identity, a["id"]))
-        c.execute(
-            """UPDATE hb_agent_role SET home_room=%s,revision=revision+1
-               WHERE principal=%s AND home_room IS NULL AND EXISTS
-                 (SELECT 1 FROM hb_principal p WHERE p.id=hb_agent_role.principal AND NOT p.identity_reference)""",
-            (identity, owner),
-        )
+        if a["administrator"]:
+            c.execute(
+                """UPDATE hb_agent_role SET home_room=%s,revision=revision+1
+                   WHERE principal=%s AND home_room IS NULL AND EXISTS
+                     (SELECT 1 FROM hb_principal p WHERE p.id=hb_agent_role.principal AND NOT p.identity_reference)""",
+                (identity, owner),
+            )
         from .room_defaults import join
         join(c, a["authority"], identity)
         return json_value(
@@ -880,7 +884,7 @@ class Store:
             rows = c.execute(
                 """WITH readable_rooms AS (
                        SELECT r.*,1 AS "membershipVersion",coalesce(own.can_read,false) AS "memberCanRead",
-                         coalesce(own.revision,0) AS "membershipRevision"
+                         coalesce(own.revision,0) AS "membershipRevision",coalesce(own.can_request,false) AS "memberCanRequest"
                        FROM hb_room r LEFT JOIN hb_membership own ON own.room=r.id AND own.principal=%s
                        WHERE r.authority=%s AND NOT r.room_reference
                        AND (%s OR EXISTS(SELECT 1 FROM hb_membership m
@@ -972,7 +976,8 @@ class Store:
                     a["administrator"], a["id"], a["id"],
                 ),
             ).fetchall()
-            return {"authorityId": str(a["authority"]), "rooms": json_value(rows)}
+            from .project_rooms import controls
+            return {"authorityId": str(a["authority"]), "rooms": json_value(rows), "roomControl": controls(a, rows)}
 
     def room_actors(self, c, a, room, *, after=None, limit=None):
         query = """SELECT p.id,p.name,p.kind,p.home_node,p.identity_reference,r.primary_role,r.home_room,r.purpose,

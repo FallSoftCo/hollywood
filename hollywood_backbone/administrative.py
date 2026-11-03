@@ -10,7 +10,8 @@ def mutate(store, actor_id, action, arguments, command=None):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
         delegated = not actor["administrator"]
-        if delegated and (actor["kind"] != "service" or action != "physical_grant" or not command):
+        human_room = actor["kind"] == "human" and action == "create_room" and command is not None
+        if delegated and not human_room and (actor["kind"] != "service" or action != "physical_grant" or not command):
             raise Denied("Administrative authority required")
         if command:
             # Serialize the same actor/operation before checking/inserting its receipt.
@@ -27,7 +28,7 @@ def mutate(store, actor_id, action, arguments, command=None):
                 ):
                     raise Conflict("Administrative operation contents changed")
                 return old["accepted_result"]
-        if delegated:
+        if delegated and not human_room:
             from .host_resource_grants import authorize
             authorize(c, actor, *arguments)
         result = json_value(getattr(store, "_admin_" + action)(c, actor, *arguments))
