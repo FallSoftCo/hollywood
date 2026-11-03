@@ -196,6 +196,38 @@ async def main(database,binary,out,conversation_only=False):
                             assert {r['id'] for r in catalog['rooms']}=={p['globalRoomId'] for p in plans}|{foreign_room}
                             assert {r['ownerNodeId'] for r in catalog['rooms']}=={a.host_id,b.host_id}
                         if conversation_only:
+                            # A send is accepted at its room owner. Simulate a
+                            # missed client ACK by reconciling only GET afterward.
+                            receipt_room=str(uuid4())
+                            stores[0].create_room(owner_a,receipt_room,'Command receipt QA','SYNTHETIC only',plans[0]['credentials']['Global']['principalId'])
+                            stores[0].membership(owner_a,receipt_room,agent,{'can_read':True,'can_post':True,'can_request':True},0)
+                            source=stores[0].post(owner_a,receipt_room,'qa-receipt-source',{'kind':'message','body':'SYNTHETIC original input','audience':'room'})
+                            operation='qa-remote-reply-original'
+                            message={'operationId':operation,'kind':'message','body':'SYNTHETIC accepted once','audience':'room','sourceEventId':source['event']['id'],'responsePhase':'answer'}
+                            async with session.post(urls[1]+'/hollywood/v3/rooms/'+receipt_room+'/messages',headers=headers,json=message) as response:
+                                assert response.status==200,await response.text()
+                                await response.read()  # No retry of this POST.
+                            receipts=[]
+                            for _ in range(2):
+                                async with session.get(urls[1]+'/hollywood/v3/commands/'+operation,headers=headers) as response:
+                                    value=await response.json()
+                                    assert response.status==200,('remote original receipt',response.status,value)
+                                    receipts.append(value)
+                            assert receipts[0]==receipts[1] and receipts[0]['accepted'] is True
+                            assert receipts[0]['event']['source']==source['event']['id']
+                            assert receipts[0]['event']['body']==message['body']
+                            assert receipts[0]['canonicalCommand']['actorId']==agent
+                            assert receipts[0]['canonicalCommand']['operationId']==operation
+                            with stores[0].pool.connection() as connection:
+                                assert connection.execute('SELECT count(*) n FROM hb_command WHERE principal=%s AND operation=%s',(agent,operation)).fetchone()['n']==1
+                            with stores[1].pool.connection() as connection:
+                                assert connection.execute('SELECT count(*) n FROM hb_command WHERE principal=%s AND operation=%s',(agent,operation)).fetchone()['n']==0
+                                assert connection.execute("SELECT count(*) n FROM hb_federation_resource_route WHERE kind='command'").fetchone()['n']==1
+                            stores[0].membership(owner_a,receipt_room,agent,{'can_read':False,'can_post':False,'can_request':False},1)
+                            async with session.get(urls[1]+'/hollywood/v3/commands/'+operation,headers=headers) as response:
+                                assert response.status==403,await response.text()
+                            (out/'original-command-qualification.json').write_text(json.dumps({'acceptedOnce':True,'readFromOriginalHome':True,'repeatedReadSameEvent':True,'canonicalWirePreserved':True,'noLocalCommandFabricated':True,'cachedRouteRechecksRevocation':True,'modelCalls':0},indent=2))
+                        if conversation_only:
                             remote_room=plans[0]['globalRoomId'];source_event=remote_history['events'][0]['id']
                             path=urls[1]+'/hollywood/v3/rooms/'+remote_room+'/activity'
                             payload={'operationId':'qa-conversational-native-action','sourceEventId':source_event,

@@ -6,7 +6,7 @@ retained before dispatch, and an uncertain response cannot choose another node.
 """
 import asyncio
 import time
-from uuid import UUID,uuid4
+from uuid import UUID,uuid4,uuid5
 from psycopg.types.json import Jsonb
 
 from .backplane import BackplaneError
@@ -41,11 +41,15 @@ class NodeRouter:
         context['federatedTargetNode']=node
         return await remote_call(self.gateway,context,action,args,body,provenance)
 
-    async def owner(self,request,kind,identity):
+    async def owner(self,request,kind,identity,*,operation=None):
         identity=str(UUID(identity));authority=request['actorAuthorityId']
         def local():
             with self.store.pool.connection() as c:
-                if kind=='room':
+                if kind=='command':
+                    row=c.execute('SELECT 1 FROM hb_command WHERE authority=%s AND principal=%s AND operation=%s',
+                        (authority,request['actor'],operation)).fetchone()
+                    if row:return self.node_id
+                elif kind=='room':
                     row=c.execute('SELECT home_node,room_reference FROM hb_room WHERE id=%s AND authority=%s',
                         (identity,authority)).fetchone()
                     if row:return str(row['home_node'] or self.node_id)
@@ -58,8 +62,8 @@ class NodeRouter:
                 return str(row['owner_node']) if row else None
         known=await asyncio.to_thread(local)
         if known:return known
-        action={'room':'room_detail','delivery':'delivery','executor':'executor_read'}[kind]
-        args=[identity,'status'] if kind=='executor' else [identity]
+        action={'room':'room_detail','delivery':'delivery','executor':'executor_read','command':'command'}[kind]
+        args=([operation] if kind=='command' else [identity,'status'] if kind=='executor' else [identity])
         async def lookup(node):
             try:
                 reply=await self.call(request,node,action,args,verb="GET")
@@ -166,6 +170,14 @@ class NodeRouter:
         return value
 
     async def destination(self,request,action,args,body,provenance):
+        if action=='command':
+            # Commands are stored at the original room/resource owner, which
+            # may differ from the authenticated agent's local HTTP node. The
+            # cache key is scoped to authority + actor + original operation.
+            operation=request.match_info['operation']
+            key=str(uuid5(UUID(request['actorAuthorityId']),
+                'command:'+request['actor']+':'+operation))
+            return await self.owner(request,'command',key,operation=operation)
         # Use the HTTP router's typed resource capture, not a URL-prefix
         # guess. Connector context/briefing/admission routes also own a
         # delivery even though their first path segment is 'connector'.

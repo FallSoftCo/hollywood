@@ -1,0 +1,19 @@
+Federated original-command receipt routing — dev179
+
+An authenticated agent posts to its local API. The room owner stores the
+canonical command, which can be another node. GET /commands/:operation must
+resolve that same owner; a local missing row is not evidence that the send
+failed. No new endpoint, executor, model wake or message submission is added.
+
+Use the existing NodeRouter resource-owner discovery and persistent route cache.
+Command routes use a deterministic cache UUID scoped by authority, actor and
+operation. The ID is a routing key, never a new principal or execution identity.
+Only existing authenticated read RPCs participate. The original actor and current
+event visibility are checked at the canonical store on every receipt read,
+including cached routes. An unavailable or conflicting owner remains unavailable;
+it does not authorize resubmission. No accepted record or original payload changes.
+
+Qualification extends the existing real PostgreSQL/NATS/HTTP identity journey:
+one remote-room message POST, only receipt GETs after the missed ACK, exact same
+canonical event/wire, no sender-local fabricated command, and revocation after
+cache installation. Synthetic authority only; no native process or model.
