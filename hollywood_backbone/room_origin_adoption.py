@@ -10,8 +10,8 @@ from psycopg.types.json import Jsonb
 from .store import Conflict,Denied,json_value,digest
 
 
-def review(payload,fields):
-    if not isinstance(payload,dict) or set(payload)!=fields|{'reviewSha256'} or not re.fullmatch('[0-9a-f]{64}',payload['reviewSha256']):
+def review(payload,fields,optional=frozenset()):
+    if not isinstance(payload,dict) or set(payload) not in (fields|{'reviewSha256'},fields|{'reviewSha256'}|optional) or not re.fullmatch('[0-9a-f]{64}',payload['reviewSha256']):
         raise ValueError('Exact reviewed ID/revision manifest required')
     for key in ('roomRevision','homeRevision','roleRevision'):
         if key in payload and (type(payload[key]) is not int or not 1<=payload[key]<=9007199254740991):
@@ -23,7 +23,7 @@ def review(payload,fields):
 
 def room_adopt(store,c,actor,room,payload):
     store.admin(actor)
-    review(payload,{'kind','roomRevision','ownerId','priorKind','environments'})
+    review(payload,{'kind','roomRevision','ownerId','priorKind','environments'},frozenset({'purpose','priorPurposeDigest'}))
     if payload['kind'] not in ('project','global'):raise ValueError('Explicit project/global kind required')
     target=c.execute('SELECT * FROM hb_room WHERE id=%s AND authority=%s AND NOT room_reference FOR UPDATE',
                       (room,actor['authority'])).fetchone()
@@ -49,12 +49,17 @@ def room_adopt(store,c,actor,room,payload):
         if payload['environments']!=[]:raise ValueError('Global room uses explicit original control actors, not project allocation')
         if c.execute('SELECT 1 FROM hb_room_agent_generation WHERE room=%s',(room,)).fetchone():
             raise Conflict('Existing project generation cannot become a Global room')
-    c.execute('UPDATE hb_room SET room_kind=%s,revision=revision+1 WHERE id=%s',(payload['kind'],room))
+    purpose=target['purpose']
+    if 'purpose' in payload:
+        if not isinstance(payload['purpose'],str) or not 1<=len(payload['purpose'])<=4000 or payload['priorPurposeDigest']!=digest(target['purpose']):
+            raise Conflict('Reviewed original purpose/prospective purpose changed')
+        purpose=payload['purpose']
+    c.execute('UPDATE hb_room SET room_kind=%s,purpose=%s,revision=revision+1 WHERE id=%s',(payload['kind'],purpose,room))
     result={'roomId':room,'roomKind':payload['kind'],'revision':target['revision']+1,
         'phase':'staging' if payload['kind']=='project' else 'global-control-plane',
         'originalRecipientsChanged':False,'nativeWorkReplayed':False}
-    c.execute('INSERT INTO hb_room_origin_adoption VALUES(%s,%s,%s,%s,%s)',
-              (actor['authority'],room,actor['id'],Jsonb(payload),Jsonb(result)))
+    c.execute('INSERT INTO hb_room_origin_adoption(authority,room,actor,manifest,accepted_result,prior_room) VALUES(%s,%s,%s,%s,%s,%s)',
+              (actor['authority'],room,actor['id'],Jsonb(payload),Jsonb(result),Jsonb(json_value(target))))
     return result
 
 

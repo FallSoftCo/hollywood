@@ -263,8 +263,9 @@ def activate(store, c, actor, room, payload):
     proof = payload['handoff']
     if proof.get('originalWorkDisposition') != 'retained-with-original-owners' or not proof.get('ownerReceiptSha256'):
         raise ValueError('Reviewed original work/source/private-output retention receipt required')
-    c.execute("UPDATE hb_room_agent_generation SET phase='active',revision=revision+1,retired=%s::uuid[],handoff=%s WHERE room=%s",
-              (retiring, Jsonb(proof), room))
+    cutoff=c.execute('SELECT next_seq FROM hb_authority WHERE id=%s',(actor['authority'],)).fetchone()['next_seq']
+    c.execute("UPDATE hb_room_agent_generation SET phase='active',revision=revision+1,retired=%s::uuid[],handoff=%s,handoff_seq=%s WHERE room=%s",
+              (retiring, Jsonb(proof), cutoff, room))
     c.execute("""UPDATE hb_membership SET can_post=false,can_request=false,revision=revision+1
         WHERE room=%s AND principal=ANY(%s::uuid[]) AND (can_post OR can_request)""", (room,retiring))
     # Original principals remain addressable and can reconcile their old work.
