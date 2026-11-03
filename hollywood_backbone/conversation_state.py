@@ -16,7 +16,7 @@ SCHEMA='''CREATE TABLE IF NOT EXISTS hb_conversation_state (
 );'''
 
 class NativeStatus(Input):
-    type: Literal['notLoaded','idle','systemError','active','unavailable']
+    type: Literal['notLoaded','idle','systemError','active','unavailable','activeElsewhere']
     activeFlags: list[Literal['waitingOnApproval','waitingOnUserInput']] = Field(default_factory=list,max_length=2)
 
 class Observation(Input):
@@ -41,6 +41,8 @@ def observe(store,actor_id,room,payload):
             if str(event['room'])!=room or str(a['id']) not in event['data'].get('conversationRecipients',[]):
                 raise Denied('Native status source does not belong to this room agent')
         elif status['type']=='active':raise ValueError('Active room work requires its original input')
+        if status['type']=='activeElsewhere' and source:
+            raise ValueError('Shared-context activity must not disclose another source or claim this room work')
         identity=[room,str(a['id']),payload['nativeThread']]
         c.execute('SELECT pg_advisory_xact_lock(hashtextextended(%s,0))',('native-status:'+digest(identity),))
         old=c.execute('SELECT * FROM hb_conversation_state WHERE room=%s AND agent=%s AND native_thread=%s',identity).fetchone()
@@ -80,7 +82,8 @@ native_members AS (
 """
 CATALOG_PROJECTION = """
 jsonb_build_object(
-                     'version',1,'observedAt',floor(extract(epoch FROM statement_timestamp())*1000)::bigint,
+                     'version',1,'capabilities',jsonb_build_object('sharedThreadStatus',1),
+                     'observedAt',floor(extract(epoch FROM statement_timestamp())*1000)::bigint,
                      'runtimeCount',coalesce(nc.total,0),'agents',coalesce(nv.agents,'[]'::jsonb)
                    )
 """
