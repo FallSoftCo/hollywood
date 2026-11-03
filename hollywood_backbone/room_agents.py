@@ -135,6 +135,12 @@ def read(store, actor_id, room):
 
 
 def initialize(store, c, actor, room):
+    if not actor['administrator']:
+        if not controlled_slots(c,actor,room):raise Denied('Original registered host slot required')
+        result=inventory(c,actor['authority'],room)
+        result['agents']=[r for r in result['agents'] if r['coordinator']==str(actor['id'])]
+        result.update(controlOnly=True,complete=False,nativeReady=False)
+        return result # Already allocated canonical intent; no fresh fleet allocation.
     store.room(c, actor, room)
     allocate(c, actor['authority'], room)
     return inventory(c, actor['authority'], room)
@@ -177,6 +183,24 @@ def enroll(store, c, actor, room, node, payload):
         c.execute("""UPDATE hb_agent_role SET home_room=%s,primary_role='room-agent',
             purpose=%s WHERE principal=%s""",
             (room, 'Own this room on the enrolled environment; preserve independent source/task scope', agent))
+    placement=c.execute('SELECT * FROM hb_placement WHERE agent=%s AND authority=%s AND enabled FOR SHARE',
+                        (actor['id'],actor['authority'])).fetchone()
+    if not placement or str(placement['host'])!=node:raise Denied('Original home host placement required')
+    c.execute('INSERT INTO hb_placement(authority,agent,host) VALUES(%s,%s,%s) ON CONFLICT(agent) DO NOTHING',
+              (actor['authority'],agent,node))
+    child=c.execute('SELECT * FROM hb_placement WHERE agent=%s',(agent,)).fetchone()
+    if not child['enabled'] or str(child['host'])!=node:raise Conflict('Original child placement changed')
+    if not c.execute("SELECT to_regclass('hb_backplane_agent_binding') AS name").fetchone()['name']:
+        raise Denied('Existing home transport enrollment schema must already be installed')
+    from .store import digest
+    c.execute("""INSERT INTO hb_backplane_agent_binding(authority,host,principal,token_digest,
+        placement_generation,created_by,updated_by) VALUES(%s,%s,%s,%s,%s,%s,%s)
+        ON CONFLICT(authority,host,principal) DO NOTHING""",
+        (actor['authority'],node,agent,digest(payload['enrollmentCredential']),child['generation'],actor['id'],actor['id']))
+    binding=c.execute('SELECT * FROM hb_backplane_agent_binding WHERE authority=%s AND host=%s AND principal=%s',
+                      (actor['authority'],node,agent)).fetchone()
+    if not binding['enabled'] or binding['token_digest']!=digest(payload['enrollmentCredential']) or binding['placement_generation']!=child['generation']:
+        raise Conflict('Original home transport binding changed/revoked; no repair')
     c.execute("""INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request)
         VALUES(%s,%s,%s,true,true,true) ON CONFLICT(room,principal) DO NOTHING""", (actor['authority'], room, agent))
     c.execute("""UPDATE hb_room_agent_initialization SET state='enrolled',revision=revision+1,
@@ -187,8 +211,8 @@ def enroll(store, c, actor, room, node, payload):
 
 def report(store, c, actor, room, node, payload):
     slot = c.execute('SELECT * FROM hb_room_agent_initialization WHERE room=%s AND node=%s FOR UPDATE', (room, node)).fetchone()
-    if not slot or str(slot['coordinator']) != str(actor['id']):
-        raise Denied('Original host-local initializer required')
+    if not slot or not any(str(r['node'])==node for r in controlled_slots(c,actor,room)):
+        raise Denied('Original enabled host-local initializer required')
     if payload['revision'] != slot['revision']:
         raise Conflict('Original initialization revision changed')
     if payload['state'] not in ('provisioning','blocked','unknown'):
@@ -210,7 +234,11 @@ def report(store, c, actor, room, node, payload):
         if duplicate:raise Conflict('Native thread already belongs to another agent; no context move allowed')
     c.execute('UPDATE hb_room_agent_initialization SET state=%s,note=%s,receipt=%s,revision=revision+1 WHERE room=%s AND node=%s',
               (payload['state'], payload['note'], Jsonb(payload.get('receipt')), room, node))
-    return inventory(c, actor['authority'], room)
+    result=inventory(c,actor['authority'],room)
+    if not actor['administrator']:
+        result['agents']=[r for r in result['agents'] if r['coordinator']==str(actor['id'])]
+        result.update(controlOnly=True,complete=False,nativeReady=False)
+    return result
 
 
 def activate(store, c, actor, room, payload):

@@ -39,6 +39,21 @@ class NodeRouter:
         context.path=request.path;context.method=verb or request.method
         context['federatedAuthority']=request['actorAuthorityId']
         context['federatedTargetNode']=node
+        if action in {'room_agents_initialize','room_agent_report'} and isinstance(body,dict) and body.get('operationId'):
+            def pin():
+                with self.store.pool.connection() as c:
+                    actor=self.store.actor(c,request['actor'])
+                    if str(actor['authority'])!=request['actorAuthorityId']:raise Conflict('Control route authority differs')
+                    fingerprint=digest({'method':context.method,'path':request.path.removeprefix('/hollywood/v3/'),'body':body})
+                    c.execute("""INSERT INTO hb_room_agent_control_command_route
+                        VALUES(%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                        (request['actorAuthorityId'],request['actor'],body['operationId'],node,
+                         context.method,request.path.removeprefix('/hollywood/v3/'),fingerprint))
+                    old=c.execute('SELECT * FROM hb_room_agent_control_command_route WHERE principal=%s AND operation=%s',
+                                   (request['actor'],body['operationId'])).fetchone()
+                    if (str(old['owner_node']),old['wire_digest'])!=(node,fingerprint):
+                        raise Conflict('Original host-control operation destination/wire changed')
+            await asyncio.to_thread(pin)
         return await remote_call(self.gateway,context,action,args,body,provenance)
 
     async def owner(self,request,kind,identity,*,operation=None):
@@ -105,7 +120,8 @@ class NodeRouter:
                     rooms[key]={**room,'ownerNodeId':node}
         def remember():
             with self.store.pool.connection() as c:
-                for room in rooms.values():
+                for room in list(rooms.values()) + [
+                        {'id':p['room'],'ownerNodeId':p['ownerNodeId']} for p in origin_plans.values()]:
                     c.execute('''INSERT INTO hb_federation_resource_route(authority,kind,resource,owner_node)
                         VALUES(%s,'room',%s,%s) ON CONFLICT(authority,kind,resource) DO UPDATE
                         SET owner_node=EXCLUDED.owner_node,confirmed_at=clock_timestamp()''',
@@ -176,6 +192,13 @@ class NodeRouter:
         return value
 
     async def destination(self,request,action,args,body,provenance):
+        if action=='administrative_command':
+            def original():
+                with self.store.pool.connection() as c:
+                    row=c.execute('SELECT owner_node FROM hb_room_agent_control_command_route WHERE authority=%s AND principal=%s AND operation=%s',
+                                  (request['actorAuthorityId'],request['actor'],args[0])).fetchone()
+                    return str(row['owner_node']) if row else self.node_id
+            return await asyncio.to_thread(original)
         if action=='command':
             # Commands are stored at the original room/resource owner, which
             # may differ from the authenticated agent's local HTTP node. The

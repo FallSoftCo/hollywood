@@ -12,7 +12,13 @@ def mutate(store, actor_id, action, arguments, command=None):
         actor = store.actor(c, actor_id)
         delegated = not actor["administrator"]
         human_room = actor["kind"] == "human" and action == "create_room" and bool(command)
-        if delegated and not human_room and (actor["kind"] != "service" or action != "physical_grant" or not command):
+        host_control = False
+        if action in {'room_agents_initialize','room_agent_report'} and command:
+            from .room_agents import controlled_slots
+            slots=controlled_slots(c,actor,arguments[0])
+            host_control=bool(slots) and (action=='room_agents_initialize' or
+                any(str(row['node'])==arguments[1] for row in slots))
+        if delegated and not human_room and not host_control and (actor["kind"] != "service" or action != "physical_grant" or not command):
             raise Denied("Administrative authority required")
         if command:
             # Serialize the same actor/operation before checking/inserting its receipt.
@@ -29,7 +35,7 @@ def mutate(store, actor_id, action, arguments, command=None):
                 ):
                     raise Conflict("Administrative operation contents changed")
                 return old["accepted_result"]
-        if delegated and not human_room:
+        if delegated and not human_room and not host_control:
             from .host_resource_grants import authorize
             authorize(c, actor, *arguments)
         result = json_value(getattr(store, "_admin_" + action)(c, actor, *arguments))
@@ -48,7 +54,7 @@ def read(store, actor_id, operation):
         actor = store.actor(c, actor_id)
         # A service can reconcile only its own accepted command, never another
         # actor's receipt or a new administrative effect.
-        if not actor["administrator"] and actor["kind"] != "service":
+        if not actor["administrator"] and actor["kind"] not in ("service","agent"):
             raise Denied("Administrative receipt unavailable")
         row = c.execute(
             "SELECT * FROM hb_administrative_command WHERE authority=%s AND principal=%s AND operation=%s",

@@ -770,6 +770,18 @@ async def invoke(request, method, *args):
     if router is not None and request['actorKind']=='agent' and 'federatedAuthority' not in request:
         from .backplane import BackplaneError
         try:
+            if method=='administrative_command':
+                from .room_agent_home_http import reconcile
+                linked=await reconcile(router,request,args[0])
+                if linked is not None:return web.json_response(linked['body'],status=linked['status'])
+            if method=='room_agent_enroll':
+                if args[1]!=router.node_id:
+                    raise Denied('Enrollment bearer belongs only at its actual HOME HTTP node')
+                target=await router.destination(request,method,args,payload,provenance)
+                if target!=router.node_id:
+                    from .room_agent_home_http import enroll
+                    linked=await enroll(router,request,args[0],args[1],args[2],target)
+                    return web.json_response(linked['body'],status=linked['status'])
             if method=='connector_observe':
                 return web.json_response(await router.observations(request,args,payload))
             if method=='claim':
@@ -781,7 +793,7 @@ async def invoke(request, method, *args):
                 return web.json_response(reply['body'],status=reply['status'])
         except BackplaneError as error:
             return web.json_response({'error':error.code,'mayApply':request.method!='GET' and
-                error.code in {'REPLY_UNKNOWN','HANDLER_FAILED','ORIGINAL_CLAIM_REPLY_UNKNOWN'},
+                error.code in {'REPLY_UNKNOWN','HANDLER_FAILED','ORIGINAL_CLAIM_REPLY_UNKNOWN','ORIGINAL_HOME_ATTACHMENT_REPLY_UNKNOWN'},
                 **({'operationId':payload['operationId'],'next':'read-original-operation'}
                 if isinstance(payload,dict) and 'operationId' in payload else {})},status=503)
     if 'federatedAuthority' in request:

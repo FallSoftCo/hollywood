@@ -1159,3 +1159,22 @@ CREATE TABLE IF NOT EXISTS hb_room_agent_home_attachment (
  FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
  FOREIGN KEY(authority,coordinator) REFERENCES hb_principal(authority,id)
 );
+
+-- Local HOME-only original HTTP enrollment/remote reference reconciliation.
+-- Contains descriptors and digests, NEVER the enrollment bearer.
+CREATE TABLE IF NOT EXISTS hb_room_agent_home_outbound (
+ authority uuid NOT NULL, coordinator uuid NOT NULL, operation text NOT NULL,
+ room uuid NOT NULL, node uuid NOT NULL, owner_node uuid NOT NULL,
+ method text NOT NULL, path text NOT NULL, wire_digest text NOT NULL,
+ allocation jsonb NOT NULL, descriptor jsonb,
+ phase text NOT NULL CHECK(phase IN ('preparing','prepared','dispatching','answered','rejected')),
+ response jsonb, created_at timestamptz NOT NULL DEFAULT now(),
+ PRIMARY KEY(coordinator,operation)
+);
+
+-- Exact source-bound destination for original host-control administrative steps.
+CREATE TABLE IF NOT EXISTS hb_room_agent_control_command_route (
+ authority uuid NOT NULL, principal uuid NOT NULL, operation text NOT NULL,
+ owner_node uuid NOT NULL, method text NOT NULL, path text NOT NULL, wire_digest text NOT NULL,
+ PRIMARY KEY(principal,operation)
+);
