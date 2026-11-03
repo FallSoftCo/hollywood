@@ -112,7 +112,7 @@ async def main():
    assert set(after_join['data']['conversationRecipients'])=={candidate,new_id}
    # A remote home reference is non-administrator at the receiving node.
    # First exercise that exact permission shape without pretending NATS ran.
-   outsider=uid();store.principal(owner,outsider,'Nonadmin registered home control','agent',secrets.token_urlsafe(40))
+   outsider=uid();outsider_token=secrets.token_urlsafe(40);store.principal(owner,outsider,'Nonadmin registered home control','agent',outsider_token)
    extra_node=uid()
    with store.pool.connection() as c:c.execute('UPDATE hb_principal SET home_node=%s WHERE id=%s',(extra_node,outsider))
    store.placement(owner,extra_node,'Third actual registered QA environment','third-fixed',{},outsider)
@@ -126,12 +126,25 @@ async def main():
    try:store.room_detail(outsider,newroom)
    except Exception as error:assert type(error).__name__=='Denied'
    else:raise AssertionError('Initialization metadata accidentally granted room history')
+   status_path='rooms/'+newroom+'/environment-agents/'+extra_node+'/control-status'
+   original_slot=next(r for r in store.room_agents_read(owner,newroom)['agents'] if r['node']==extra_node)
+   diagnostic={'revision':1,'state':'blocked','note':'Actual parent admission prerequisite missing','originalOperation':'SYNTHETIC-own-host-control'}
+   async with session.post(api.make_url('/hollywood/v3/'+status_path),json=diagnostic,headers={'Authorization':'Bearer '+outsider_token}) as r:
+    assert r.status==200,(r.status,await r.json());accepted=await r.json()
+   async with session.post(api.make_url('/hollywood/v3/'+status_path),json=diagnostic,headers={'Authorization':'Bearer '+outsider_token}) as r:
+    assert r.status==200 and await r.json()==accepted
+   async with session.post(api.make_url('/hollywood/v3/'+status_path),json={**diagnostic,'note':'Changed same original revision'},headers={'Authorization':'Bearer '+outsider_token}) as r:assert r.status==409
+   async with session.post(api.make_url('/hollywood/v3/'+status_path),json=diagnostic) as r:assert r.status==403 # other host administrator cannot impersonate this coordinator observation
+   observed=next(r for r in store.room_agents_read(owner,newroom)['agents'] if r['node']==extra_node)
+   assert observed['readiness']=='blocked' and observed['note']==diagnostic['note'] and observed['ready'] is False
+   assert observed['revision']==original_slot['revision'] and observed['receipt']==original_slot['receipt'] and observed['state']==original_slot['state']
+   assert accepted['nativeReadiness']==accepted['businessCompletion']=='not_inferred'
    store.room_default_set(owner,extra_node,{'agentId':outsider,'enabled':False,'revision':1})
    assert store.catalog(outsider)['roomAgentInitializations']==[]
    try:store.room_agents_read(outsider,newroom)
    except Exception as error:assert type(error).__name__=='Denied'
    else:raise AssertionError('Revoked coordinator still reads desired metadata')
-   result={'passed':True,'realPgAndHttp':True,'stableRoomEnvironmentIdentities':True,'lostAckSameMetadataOperationReused':True,'desiredRecipientRecordedBeforeEnrollment':True,'noPreInitializationInputReplay':True,'newGlobalMemberships':0,'stagedSuccessorReceivesNoOldOrStagingInput':True,'explicitAllReadyHandoffAtomicallyChangesFutureFanout':True,'oldPrivateOwnerAndHistoricalRecipientsRetained':True,'environmentReenableAllocatesOriginWithoutGlobalJoin':True,'typedGlobalBootstrapExcludedFromProjectReconcile':True,'projectBeforeHostRegistrationQueuesDesiredOnceRegistered':True,'noForeignHomeCredentialManufactured':True,'registeredNonadminHomeSeesOnlyOwnSlotsWithoutRoomHistoryOrAdminPromotion':True,'coordinatorRevocationFencesMetadataDiscovery':True,'originMoveRejected':True,'readyRequiresFreshMatchingObservation':True,'offlineEnvironmentNotCountedReady':True,'hostAndOriginDescriptorProjected':True,'originalGlobalRoleUnchanged':True,'nativeAndHostProof':'SYNTHETIC only; no native/model/service dispatched','apiSource':str(Path(__import__('hollywood_backbone.store',fromlist=['Store']).__file__))}
+   result={'passed':True,'realPgAndHttp':True,'stableRoomEnvironmentIdentities':True,'lostAckSameMetadataOperationReused':True,'desiredRecipientRecordedBeforeEnrollment':True,'noPreInitializationInputReplay':True,'newGlobalMemberships':0,'stagedSuccessorReceivesNoOldOrStagingInput':True,'explicitAllReadyHandoffAtomicallyChangesFutureFanout':True,'oldPrivateOwnerAndHistoricalRecipientsRetained':True,'environmentReenableAllocatesOriginWithoutGlobalJoin':True,'typedGlobalBootstrapExcludedFromProjectReconcile':True,'projectBeforeHostRegistrationQueuesDesiredOnceRegistered':True,'noForeignHomeCredentialManufactured':True,'registeredNonadminHomeSeesOnlyOwnSlotsWithoutRoomHistoryOrAdminPromotion':True,'coordinatorRevocationFencesMetadataDiscovery':True,'ownHomeDiagnosticIsVisibleAndCannotInventNativeReadyOrAlterBootstrapReceipt':True,'diagnosticSameRevisionReplayExactAndOtherHostRejected':True,'originMoveRejected':True,'readyRequiresFreshMatchingObservation':True,'offlineEnvironmentNotCountedReady':True,'hostAndOriginDescriptorProjected':True,'originalGlobalRoleUnchanged':True,'nativeAndHostProof':'SYNTHETIC only; no native/model/service dispatched','apiSource':str(Path(__import__('hollywood_backbone.store',fromlist=['Store']).__file__))}
    (root/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
  finally:await api.close();store.close()
 asyncio.run(main())

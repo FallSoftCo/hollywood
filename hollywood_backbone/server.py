@@ -199,6 +199,13 @@ class RoomAgentActivate(RoomAgentInitialize):
     handoff: RoomAgentHandoff
 
 
+class RoomAgentControlStatus(Input):
+    revision: int = Field(ge=1)
+    state: Literal['preparing','blocked','unknown']
+    note: str = Field(min_length=1,max_length=1000)
+    originalOperation: str = Field(min_length=1,max_length=128)
+
+
 class Membership(Input):
     operationId: str | None = Field(default=None, min_length=1, max_length=128)
     principalId: UUID
@@ -1167,6 +1174,12 @@ async def room_agents_activate(request):
     return await invoke(request, 'room_agents_activate', str(UUID(request.match_info['room'])), p.model_dump(mode='json'))
 
 
+async def room_agent_control_status(request):
+    p=await body(request,RoomAgentControlStatus)
+    return await invoke(request,'room_agent_control_status',str(UUID(request.match_info['room'])),
+                        str(UUID(request.match_info['node'])),p.model_dump(mode='json'))
+
+
 async def agent_directory(request):
     if set(request.query) - {"after", "limit"}:
         raise ValueError("Unknown agent directory query")
@@ -2072,6 +2085,7 @@ def application(store, *, federated_messages=None, federated_catalog=None, feder
             web.post("/hollywood/v3/rooms/{room}/environment-agents/activate", room_agents_activate),
             web.post("/hollywood/v3/rooms/{room}/environment-agents/{node}/enroll", room_agent_enroll),
             web.post("/hollywood/v3/rooms/{room}/environment-agents/{node}/report", room_agent_report),
+            web.post("/hollywood/v3/rooms/{room}/environment-agents/{node}/control-status", room_agent_control_status),
             web.post("/hollywood/v3/rooms", room_create),
             web.get("/hollywood/v3/room-defaults", room_defaults),
             web.put("/hollywood/v3/room-defaults/{node}", room_defaults),

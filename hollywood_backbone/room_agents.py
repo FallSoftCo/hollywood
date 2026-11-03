@@ -52,6 +52,9 @@ def inventory(c, authority, room):
             and row['receipt'] and row['receipt'].get('sharedAppServer') is True
             and str(row['origin_room']) == str(room) and str(row['origin_node']) == str(row['node']))
         if row['ready']:row['readiness'] = 'ready'
+        elif (row.get('control_status') or {}).get('state') in ('blocked','unknown'):
+            row['readiness']=row['control_status']['state']
+            row['note']=row['control_status']['note']
         elif row['state'] == 'blocked':row['readiness'] = 'blocked'
         elif row['state'] == 'unknown':row['readiness'] = 'unknown'
         elif not row['host_name']:row['readiness'] = 'host-descriptor-unavailable'
@@ -59,7 +62,7 @@ def inventory(c, authority, room):
         else:row['readiness'] = row['state']
         row.pop('native_status', None)  # Never expose another private source's busy/waiting flags.
     return json_value({'version': 1, 'model': 'room-origin-per-environment', 'roomId': room,
-        'generation': generation, 'agents': rows,
+        'generation': generation, 'agents': rows, 'capabilities':{'controlStatus':1},
         'nativeReady': bool(rows) and all(r['ready'] for r in rows),
         'complete': bool(generation) and generation['phase']=='active' and bool(rows) and all(r['ready'] for r in rows),
         'meaning': 'Initialization receipts are not native readiness or business completion. Staged legacy participants retain their work until reviewed handoff; no registered environments means not initialized.'})
@@ -205,3 +208,28 @@ def activate(store, c, actor, room, payload):
     # Future unaddressed PUBLIC fanout changes. Their explicit private
     # sources/queued outputs and historical send-time recipients are untouched.
     return inventory(c, actor['authority'], room)
+
+
+def control_status(store, actor_id, room, node, payload):
+    """Current own-host preparation observation; no admin/room-history promotion."""
+    if (not isinstance(payload,dict) or set(payload)!={'revision','state','note','originalOperation'}
+        or type(payload['revision']) is not int or not 1<=payload['revision']<9007199254740991
+        or payload['state'] not in ('preparing','blocked','unknown')
+        or not isinstance(payload['note'],str) or not 1<=len(payload['note'])<=1000
+        or not isinstance(payload['originalOperation'],str) or not 1<=len(payload['originalOperation'])<=128):
+        raise ValueError('Exact own-host preparation observation required; readiness cannot be reported')
+    with store.pool.connection() as c:
+        actor=store.actor(c,actor_id)
+        slots=controlled_slots(c,actor,room)
+        if not any(str(r['node'])==node for r in slots):
+            raise Denied('Original enabled home coordinator alone may report this slot')
+        row=c.execute('SELECT * FROM hb_room_agent_initialization WHERE room=%s AND node=%s FOR UPDATE',(room,node)).fetchone()
+        if payload['revision']==row['control_revision']:
+            if payload!=row['control_status']:raise Conflict('Original host preparation observation changed')
+        elif payload['revision']==row['control_revision']+1:
+            c.execute('UPDATE hb_room_agent_initialization SET control_status=%s,control_revision=%s,control_observed_at=clock_timestamp() WHERE room=%s AND node=%s',
+                (Jsonb(payload),payload['revision'],room,node))
+        else:raise Conflict('Original host preparation observation revision changed')
+        return {'accepted':True,'authorityId':str(actor['authority']),'roomId':room,'nodeId':node,
+                'coordinatorId':str(actor['id']),'revision':payload['revision'],'status':payload,
+                'nativeReadiness':'not_inferred','businessCompletion':'not_inferred'}

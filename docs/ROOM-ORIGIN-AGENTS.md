@@ -67,3 +67,16 @@ helpers are owned by their existing platform agents, signature in common r03
 contract. Root owns one actual CPU native bootstrap/parent release and subsequent
 platform integration, Android signing/release and existing-room handoffs. All
 original Globals, Apple operation, native PIDs/threads/profiles and failures remain.
+
+## Cross-home metadata successor
+
+A receiving-node reference correctly has administrator=false. Only its explicitly
+enabled registered home coordinator can discover its own desired slots and post
+preparation diagnostics; that metadata grants neither room history nor general
+administration. Revocation fences discovery and reports. Current preparation
+observations have their own revision/strict original payload, independent of the
+accepted native initialization receipt/revision. They cannot report Ready or
+business completion. Lost ACK is read back from that exact original observation.
+Known parent/guide/adapter prerequisites can therefore be visible as blocked
+without terminally rejecting the original native factory workflow. Actual
+remote authoritative-home birth + receiving-reference adoption remains separate.

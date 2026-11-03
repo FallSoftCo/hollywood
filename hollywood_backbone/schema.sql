@@ -1134,3 +1134,9 @@ DO $$ BEGIN
     FOR EACH ROW EXECUTE FUNCTION hb_room_origin_fence();
  END IF;
 END $$;
+
+-- Transport-owned preparation diagnostics are independent of accepted native
+-- initialization receipts/revision. A status report cannot invent readiness.
+ALTER TABLE hb_room_agent_initialization ADD COLUMN IF NOT EXISTS control_status jsonb;
+ALTER TABLE hb_room_agent_initialization ADD COLUMN IF NOT EXISTS control_revision bigint NOT NULL DEFAULT 0;
+ALTER TABLE hb_room_agent_initialization ADD COLUMN IF NOT EXISTS control_observed_at timestamptz;

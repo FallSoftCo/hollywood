@@ -823,6 +823,10 @@ class Store:
         from .room_agents import activate
         return activate(self, c, actor, room, payload)
 
+    def room_agent_control_status(self, actor_id, room, node, payload):
+        from .room_agents import control_status
+        return control_status(self, actor_id, room, node, payload)
+
     def room_default_set(self, actor_id, node, payload, *, command=None):
         from .administrative import mutate
         return mutate(self, actor_id, 'room_default_set', [node, payload], command)
