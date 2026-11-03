@@ -10,7 +10,7 @@ def mutate(store, actor_id, action, arguments, command=None):
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
         delegated = not actor["administrator"]
-        human_room = actor["kind"] == "human" and action == "create_room" and command is not None
+        human_room = actor["kind"] == "human" and action == "create_room" and bool(command)
         if delegated and not human_room and (actor["kind"] != "service" or action != "physical_grant" or not command):
             raise Denied("Administrative authority required")
         if command:
