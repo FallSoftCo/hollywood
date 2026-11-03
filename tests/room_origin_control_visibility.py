@@ -144,7 +144,30 @@ async def main():
    try:store.room_agents_read(outsider,newroom)
    except Exception as error:assert type(error).__name__=='Denied'
    else:raise AssertionError('Revoked coordinator still reads desired metadata')
-   result={'passed':True,'realPgAndHttp':True,'stableRoomEnvironmentIdentities':True,'lostAckSameMetadataOperationReused':True,'desiredRecipientRecordedBeforeEnrollment':True,'noPreInitializationInputReplay':True,'newGlobalMemberships':0,'stagedSuccessorReceivesNoOldOrStagingInput':True,'explicitAllReadyHandoffAtomicallyChangesFutureFanout':True,'oldPrivateOwnerAndHistoricalRecipientsRetained':True,'environmentReenableAllocatesOriginWithoutGlobalJoin':True,'typedGlobalBootstrapExcludedFromProjectReconcile':True,'projectBeforeHostRegistrationQueuesDesiredOnceRegistered':True,'noForeignHomeCredentialManufactured':True,'registeredNonadminHomeSeesOnlyOwnSlotsWithoutRoomHistoryOrAdminPromotion':True,'coordinatorRevocationFencesMetadataDiscovery':True,'ownHomeDiagnosticIsVisibleAndCannotInventNativeReadyOrAlterBootstrapReceipt':True,'diagnosticSameRevisionReplayExactAndOtherHostRejected':True,'originMoveRejected':True,'readyRequiresFreshMatchingObservation':True,'offlineEnvironmentNotCountedReady':True,'hostAndOriginDescriptorProjected':True,'originalGlobalRoleUnchanged':True,'nativeAndHostProof':'SYNTHETIC only; no native/model/service dispatched','apiSource':str(Path(__import__('hollywood_backbone.store',fromlist=['Store']).__file__))}
+   # Instrument only this actual batched projection's database dispatch; all
+   # data/joins are real PG. No per-room inventory/history/NATS call is stubbed.
+   from unittest.mock import patch
+   from hollywood_backbone import room_agents as projection
+   original_project=projection.project;batch_calls=[];sql_counts=[]
+   class CountConnection:
+    def __init__(self,c):self.c=c
+    def execute(self,*args,**kwargs):sql_counts.append(args[0]);return self.c.execute(*args,**kwargs)
+   def batched(c,auth,ids):batch_calls.append(list(ids));return original_project(CountConnection(c),auth,ids)
+   with patch.object(projection,'project',batched):projected_catalog=store.catalog(owner)
+   assert len(batch_calls)==len(sql_counts)==1
+   assert set(batch_calls[0])=={r['id'] for r in projected_catalog['rooms']}
+   assert len(batch_calls[0])>=4
+   for row in projected_catalog['rooms']:
+    setup=row['roomAgents'];assert type(setup['observedAt']) is int and setup['observedAt']>0
+    assert setup['desiredCount']==len(setup['agents']) and setup['readyCount']==sum(a['ready'] for a in setup['agents'])
+    assert 'native_status' not in str(setup)
+   global_setup=next(r['roomAgents'] for r in projected_catalog['rooms'] if r['id']==globalroom)
+   assert global_setup['roomKind']=='global' and global_setup['initializationRequired'] is False and global_setup['setupState']=='not-required'
+   prior=next(r['roomAgents'] for r in projected_catalog['rooms'] if r['id']==newroom)
+   current_detail=store.room_detail(owner,newroom)['roomAgents']
+   assert current_detail['observedAt']>=prior['observedAt'] and current_detail['generation']==prior['generation']
+   assert prior['setupState'] in ('pending','blocked') and prior['complete'] is False
+   result={'passed':True,'realPgAndHttp':True,'stableRoomEnvironmentIdentities':True,'lostAckSameMetadataOperationReused':True,'desiredRecipientRecordedBeforeEnrollment':True,'noPreInitializationInputReplay':True,'newGlobalMemberships':0,'stagedSuccessorReceivesNoOldOrStagingInput':True,'explicitAllReadyHandoffAtomicallyChangesFutureFanout':True,'oldPrivateOwnerAndHistoricalRecipientsRetained':True,'environmentReenableAllocatesOriginWithoutGlobalJoin':True,'typedGlobalBootstrapExcludedFromProjectReconcile':True,'projectBeforeHostRegistrationQueuesDesiredOnceRegistered':True,'noForeignHomeCredentialManufactured':True,'registeredNonadminHomeSeesOnlyOwnSlotsWithoutRoomHistoryOrAdminPromotion':True,'coordinatorRevocationFencesMetadataDiscovery':True,'ownHomeDiagnosticIsVisibleAndCannotInventNativeReadyOrAlterBootstrapReceipt':True,'diagnosticSameRevisionReplayExactAndOtherHostRejected':True,'catalogProjectionOneBatchedQueryAllVisibleRooms':True,'projectionObservedAtEpochMsAndTypedGlobalNotApplicable':True,'originMoveRejected':True,'readyRequiresFreshMatchingObservation':True,'offlineEnvironmentNotCountedReady':True,'hostAndOriginDescriptorProjected':True,'originalGlobalRoleUnchanged':True,'nativeAndHostProof':'SYNTHETIC only; no native/model/service dispatched','apiSource':str(Path(__import__('hollywood_backbone.store',fromlist=['Store']).__file__))}
    (root/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
  finally:await api.close();store.close()
 asyncio.run(main())

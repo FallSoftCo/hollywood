@@ -31,41 +31,77 @@ def allocate(c, authority, room, *, new_project=False):
     return len(rows)
 
 
-def inventory(c, authority, room):
-    generation = c.execute('SELECT phase,revision,handoff FROM hb_room_agent_generation WHERE room=%s AND authority=%s', (room,authority)).fetchone()
-    rows = c.execute("""SELECT i.*,h.name AS host_name,p.active AS identity_active,
+def project(c, authority, rooms):
+    """ONE batched setup-only projection for the caller's already-visible rooms.
+
+    Never scans history, NATS, or each room in a loop. Native/business activity
+    is separate. observedAt belongs to this computed response, not task end.
+    """
+    if not rooms:return {}
+    rows=c.execute("""SELECT r.id AS projected_room_id,r.room_kind,
+        g.phase AS generation_phase,g.revision AS generation_revision,g.handoff AS generation_handoff,
+        floor(extract(epoch FROM statement_timestamp())*1000)::bigint AS projection_observed_at,
+        i.*,h.name AS host_name,p.active AS identity_active,
         o.room AS origin_room,o.node AS origin_node,
         (m.can_read AND m.can_post AND m.can_request) AS member,
-        n.state AS native_status, n.native_thread,
-        n.observed_at > statement_timestamp()-interval '75 seconds' AS native_fresh
-        FROM hb_room_agent_initialization i LEFT JOIN hb_host h
-          ON h.authority=i.authority AND h.id=i.node
+        n.state AS native_status,n.native_thread,
+        n.observed_at > statement_timestamp()-interval '75 seconds' AS native_fresh,
+        d.enabled AS coordinator_enabled,d.principal AS current_coordinator
+        FROM hb_room r LEFT JOIN hb_room_agent_generation g ON g.room=r.id
+        LEFT JOIN hb_room_agent_initialization i ON i.room=r.id AND i.authority=r.authority
+        LEFT JOIN hb_host h ON h.authority=i.authority AND h.id=i.node
         LEFT JOIN hb_principal p ON p.id=i.agent
         LEFT JOIN hb_room_agent_origin o ON o.agent=i.agent
         LEFT JOIN hb_membership m ON m.room=i.room AND m.principal=i.agent
         LEFT JOIN hb_conversation_state n ON n.room=i.room AND n.agent=i.agent
           AND n.native_thread=i.receipt->>'nativeThreadId'
-        WHERE i.room=%s AND i.authority=%s ORDER BY i.node""", (room, authority)).fetchall()
+        LEFT JOIN hb_room_default_agent d ON d.authority=i.authority AND d.node=i.node
+        WHERE r.authority=%s AND r.id=ANY(%s::uuid[]) ORDER BY r.id,i.node""",(authority,rooms)).fetchall()
+    result={}
     for row in rows:
-        row['ready'] = bool(row['identity_active'] and row['member'] and row['native_fresh']
+        room=str(row.pop('projected_room_id'));kind=row.pop('room_kind')
+        phase=row.pop('generation_phase');revision=row.pop('generation_revision');handoff=row.pop('generation_handoff')
+        observed=row.pop('projection_observed_at')
+        required=kind!='global' and phase is not None
+        value=result.setdefault(room,{'version':1,'model':'room-origin-per-environment' if required else
+            'global-control-plane' if kind=='global' else 'legacy-participants',
+            'roomId':room,'roomKind':kind,'observedAt':observed,'initializationRequired':required,
+            'generation':{'phase':phase,'revision':revision,'handoff':handoff} if phase else None,
+            'agents':[],'capabilities':{'controlStatus':1},
+            'meaning':'Setup/native attachment only; business completion is never inferred. Historical sources and recipient snapshots are retained.'})
+        if row['agent'] is None:continue
+        row['ready']=bool(row['identity_active'] and row['member'] and row['native_fresh']
             and row['native_status']['type'] in ('idle','active','activeElsewhere')
             and row['receipt'] and row['receipt'].get('sharedAppServer') is True
-            and str(row['origin_room']) == str(room) and str(row['origin_node']) == str(row['node']))
-        if row['ready']:row['readiness'] = 'ready'
+            and str(row['origin_room'])==room and str(row['origin_node'])==str(row['node']))
+        if row['ready']:row['readiness']='ready'
         elif (row.get('control_status') or {}).get('state') in ('blocked','unknown'):
-            row['readiness']=row['control_status']['state']
-            row['note']=row['control_status']['note']
-        elif row['state'] == 'blocked':row['readiness'] = 'blocked'
-        elif row['state'] == 'unknown':row['readiness'] = 'unknown'
-        elif not row['host_name']:row['readiness'] = 'host-descriptor-unavailable'
-        elif row['receipt']:row['readiness'] = 'awaiting-fresh-native-observation'
-        else:row['readiness'] = row['state']
-        row.pop('native_status', None)  # Never expose another private source's busy/waiting flags.
-    return json_value({'version': 1, 'model': 'room-origin-per-environment', 'roomId': room,
-        'generation': generation, 'agents': rows, 'capabilities':{'controlStatus':1},
-        'nativeReady': bool(rows) and all(r['ready'] for r in rows),
-        'complete': bool(generation) and generation['phase']=='active' and bool(rows) and all(r['ready'] for r in rows),
-        'meaning': 'Initialization receipts are not native readiness or business completion. Staged legacy participants retain their work until reviewed handoff; no registered environments means not initialized.'})
+            row['readiness']=row['control_status']['state'];row['note']=row['control_status']['note']
+        elif not row['coordinator_enabled'] or row['current_coordinator']!=row['coordinator']:
+            row['readiness']='blocked';row['note']='Original environment initializer is disabled/replaced; reviewed owner recovery required'
+        elif row['state'] in ('blocked','unknown'):row['readiness']=row['state']
+        elif not row['host_name']:row['readiness']='host-descriptor-unavailable'
+        elif row['receipt']:row['readiness']='awaiting-fresh-native-observation'
+        else:row['readiness']=row['state']
+        row.pop('native_status',None) # no another source's private busy/wait flags
+        value['agents'].append(row)
+    for value in result.values():
+        agents=value['agents'];value['desiredCount']=len(agents);value['readyCount']=sum(bool(a['ready']) for a in agents)
+        value['nativeReady']=bool(agents) and value['readyCount']==len(agents)
+        value['complete']=bool(value['initializationRequired'] and value['nativeReady'] and value['generation']['phase']=='active')
+        if not value['initializationRequired']:
+            value['setupState']='not-required';value['reason']='Global control-plane room' if value['roomKind']=='global' else 'Retained legacy participants; no room-origin initialization allocated'
+        elif value['complete']:value['setupState']='ready';value['reason']='All desired environments have fresh matching native observations'
+        elif value['nativeReady']:value['setupState']='handoff-required';value['reason']='Staged agents native-ready; original-work handoff has not been activated'
+        elif any(a['readiness'] in ('blocked','unknown') for a in agents):
+            value['setupState']='blocked';value['reason']='One or more environment prerequisites/original receipts require recovery'
+        else:
+            value['setupState']='pending';value['reason']='Awaiting registered environments' if not agents else 'Environment initialization or fresh native observations pending'
+    return json_value(result)
+
+
+def inventory(c, authority, room):
+    return project(c,authority,[room])[str(room)]
 
 
 def controlled_slots(c, actor, room=None):

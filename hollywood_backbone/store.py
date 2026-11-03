@@ -1009,7 +1009,9 @@ class Store:
                 ),
             ).fetchall()
             from .project_rooms import controls
-            from .room_agents import controlled_slots
+            from .room_agents import controlled_slots, project as room_agent_project
+            setup=room_agent_project(c,a['authority'],[str(r['id']) for r in rows])
+            for row in rows:row['roomAgents']=setup[str(row['id'])]
             desired = [{k:r[k] for k in ('room','node','agent','state','revision','receipt')}
                        for r in controlled_slots(c,a)]
             return {"authorityId": str(a["authority"]), "rooms": json_value(rows), "roomControl": controls(a, rows),

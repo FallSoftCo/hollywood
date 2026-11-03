@@ -80,3 +80,23 @@ business completion. Lost ACK is read back from that exact original observation.
 Known parent/guide/adapter prerequisites can therefore be visible as blocked
 without terminally rejecting the original native factory workflow. Actual
 remote authoritative-home birth + receiving-reference adoption remains separate.
+
+## Client setup projection contract
+
+Both authenticated detail.roomAgents and catalog.rooms[].roomAgents now contain:
+version=1, observedAt (computed PostgreSQL statement time, epoch milliseconds),
+roomKind, model, initializationRequired, generation, desiredCount, readyCount,
+nativeReady, complete, setupState, reason and agents[]. Host readiness/reasons are
+agents[].readiness/note/host_name/node. This is SETUP only, separate from room
+native/business/activity state. complete refers only to active initialization,
+never task completion. setupState is pending, blocked, handoff-required or ready;
+typed Global and unadopted legacy rooms use not-required/initializationRequired=false.
+A room with allocated/pending setup cannot silently fall through to native Idle.
+
+Catalog executes ONE batched projection SELECT across already-visible room IDs,
+not per-room inventory/history/NATS. Detail invokes the same projector for one
+room. Initializer control-only reads remain explicitly scoped. Root client owns
+freshness selection by observedAt within the original binding/source and places
+status on existing activity/footer UI, not an extra permanent status row.
+Retained-source-owner actors keep original historical author descriptors after
+handoff; private counterparts and accepted event bytes remain unchanged.
