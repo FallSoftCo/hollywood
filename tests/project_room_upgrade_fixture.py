@@ -82,7 +82,7 @@ async def main():
                 async with session.post(api.make_url("/hollywood/v3/rooms"), json=changed) as response:
                     error = await response.json()
                     assert response.status == 409, (response.status, error)
-                    assert "contents changed" in error["error"]
+                    assert error == {"error": "Identity, revision or operation conflict"}
         assert snapshot() == before
         # Persist receipt behavior BEFORE shape assertions: the exact baseline
         # compares method/path/wire_digest, not the Python argument list.
