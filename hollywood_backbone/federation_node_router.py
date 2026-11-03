@@ -88,11 +88,16 @@ class NodeRouter:
                 return node,None,'not_authorized' if reply['status']==403 else 'unavailable'
             except BackplaneError as error:return node,None,error.code
         results=await asyncio.gather(*(read(n) for n in await self.nodes(request['actorAuthorityId'])))
-        rooms={};sources=[]
+        rooms={};sources=[];origin_plans={}
         for node,value,error in results:
             sources.append({'nodeId':node,'authorityId':request['actorAuthorityId'],
                 'status':'connected' if value else error})
             if value:
+                for plan in value.get('roomAgentInitializations', []):
+                    key=(plan['room'],plan['node'])
+                    if key in origin_plans and origin_plans[key]['ownerNodeId']!=node:
+                        raise BackplaneError('RESOURCE_OWNER_CONFLICT')
+                    origin_plans[key]={**plan,'ownerNodeId':node}
                 for room in value['rooms']:
                     key=room['id']
                     if key in rooms and rooms[key]['ownerNodeId']!=node:
@@ -107,6 +112,7 @@ class NodeRouter:
                         (request['actorAuthorityId'],room['id'],room['ownerNodeId']))
         await asyncio.to_thread(remember)
         return {'authorityId':request['actorAuthorityId'],'rooms':list(rooms.values()),'agents':[],
+            'roomAgentInitializations':list(origin_plans.values()),
             'sources':sources,'federationStatus':'partial' if any(s['status'] not in {'connected','not_authorized'} for s in sources) else 'connected'}
 
     async def observations(self,request,args,body):

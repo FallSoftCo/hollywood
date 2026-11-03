@@ -111,9 +111,11 @@ def feed(store, actor_id, after, limit, pending=False):
 
 
 def read(store, actor_id, identity):
+    from .actor_identity import descriptor
     with store.pool.connection() as c:
         actor = store.actor(c, actor_id)
         event = store.readable_event(c, actor, identity)
         if event["kind"] not in KINDS:
             raise Denied("Event is not a communication inbox item")
-        return {"hint": hint(store, c, actor, event), "event": json_value(event)}
+        return {"hint": hint(store, c, actor, event), "event": json_value(event),
+                "author": descriptor(c, event["author"])}

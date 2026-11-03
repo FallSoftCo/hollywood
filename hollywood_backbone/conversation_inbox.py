@@ -42,12 +42,29 @@ def recipients(c, actor, room, kind, audience, recipient):
     """Snapshot the communication audience in the publishing transaction."""
     if actor['kind'] not in ('human','agent') or kind not in ('message','request','result','question'):
         return None
+    # Serialize send with the generation handoff. An input belongs wholly to
+    # the original or successor fleet, never the union during enrollment.
+    c.execute('SELECT id FROM hb_room WHERE id=%s FOR SHARE', (room,))
+    generation = c.execute('SELECT phase,retired FROM hb_room_agent_generation WHERE room=%s', (room,)).fetchone()
     rows=c.execute("""SELECT p.id FROM hb_membership m JOIN hb_principal p ON p.id=m.principal
         WHERE m.room=%s AND m.authority=%s AND m.can_read AND p.active
         AND p.kind='agent' AND p.id<>%s
         AND (%s='room' OR p.id=%s) ORDER BY p.id""",
         (room,actor['authority'],actor['id'],audience,recipient)).fetchall()
-    return [str(row['id']) for row in rows]
+    result = {str(row['id']) for row in rows}
+    if audience == 'room' and recipient is None and generation:
+        # These identities were allocated BEFORE this send. Enrollment may be
+        # pending, but the immutable original recipient snapshot must retain
+        # their input. No pre-initialization history is replayed on later join.
+        desired = c.execute('SELECT agent FROM hb_room_agent_initialization WHERE room=%s AND authority=%s',
+                            (room, actor['authority'])).fetchall()
+        desired_ids = {str(row['agent']) for row in desired}
+        if generation['phase']=='staging':result.difference_update(desired_ids)
+        else:
+            result.difference_update(str(a) for a in generation['retired'])
+            result.update(desired_ids)
+        result.discard(str(actor['id']))
+    return sorted(result)
 
 
 def human_input_reference(c, event):

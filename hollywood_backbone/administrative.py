@@ -3,6 +3,7 @@ from psycopg.types.json import Jsonb
 from .store import Conflict, Denied, json_value
 
 ACTIONS = {"room_default_set", "context_configure","delivery_recover", "delivery_edit_reconcile", "mutation_reconcile", "principal", "create_room", "membership", "placement", "role", "communication", "collaboration_bridge", "physical_workspace", "physical_grant", "physical_agent_grant", "resource_default", "work_resource", "placement_state"}
+ACTIONS |= {'room_agents_initialize', 'room_agent_enroll', 'room_agent_report', 'room_agents_activate'}
 
 def mutate(store, actor_id, action, arguments, command=None):
     if action not in ACTIONS:

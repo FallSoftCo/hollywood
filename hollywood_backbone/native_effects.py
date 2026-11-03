@@ -31,6 +31,8 @@ BUSINESS = {"room_default_set", "external_response", "context_configure",
 # this same transaction. Communication identities, rooms, roles and membership
 # do not require an execution delivery merely because their owner is an agent.
 COMMUNICATION_ADMINISTRATION = {"room_default_set", "principal", "create_room", "membership", "role"}
+COMMUNICATION_ADMINISTRATION |= {'room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate'}
+BUSINESS |= {'room_agents_initialize','room_agent_enroll','room_agent_report','room_agents_activate'}
 METADATA = {"runtime_observe", "context_call",
     "executor_begin", "executor_reserve", "executor_attach", "executor_observe",
     "host_sample", "connector_observe", "claim", "transition",

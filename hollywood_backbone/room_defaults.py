@@ -8,15 +8,16 @@ from uuid import UUID
 from .store import Conflict, Denied, json_value
 
 
-def join(c, authority, room=None):
-    query = """INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request)
-        SELECT r.authority,r.id,d.principal,true,true,true
-        FROM hb_room r JOIN hb_room_default_agent d ON d.authority=r.authority
-        JOIN hb_principal p ON p.id=d.principal AND p.authority=d.authority
-        WHERE r.authority=%s AND NOT r.room_reference AND d.enabled AND p.active
-          AND (%s::uuid IS NULL OR r.id=%s::uuid)
-        ON CONFLICT(room,principal) DO NOTHING RETURNING room,principal"""
-    return len(c.execute(query, (authority, room, room)).fetchall())
+def join(c, authority, room=None, *, new_project=False):
+    from .room_agents import allocate
+    if room is not None:
+        allocate(c, authority, room, new_project=new_project)
+    else:
+        # Registering an environment extends only initialized project rooms;
+        # never auto-joins a Global or silently adopts unrelated legacy rooms.
+        rooms = c.execute('SELECT room FROM hb_room_agent_generation WHERE authority=%s', (authority,)).fetchall()
+        for row in rooms:allocate(c, authority, row['room'])
+    return 0  # No shared Global memberships are created by initialization.
 
 
 def read(store, actor_id):

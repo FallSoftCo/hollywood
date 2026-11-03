@@ -1082,3 +1082,55 @@ CREATE TABLE IF NOT EXISTS hb_room_default_agent (
  FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id),
  FOREIGN KEY(authority,created_by) REFERENCES hb_principal(authority,id)
 );
+
+-- Project-room agent identities are deterministic, one per enrolled environment.
+-- This is initialization metadata, never execution admission or a task scheduler.
+ALTER TABLE hb_room ADD COLUMN IF NOT EXISTS room_kind text NOT NULL DEFAULT 'legacy'
+ CHECK(room_kind IN ('legacy','global','project'));
+CREATE TABLE IF NOT EXISTS hb_room_agent_generation (
+ authority uuid NOT NULL, room uuid PRIMARY KEY,
+ phase text NOT NULL CHECK(phase IN ('staging','active')),
+ revision bigint NOT NULL DEFAULT 1, retired uuid[] NOT NULL DEFAULT '{}',
+ handoff jsonb,
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_room_agent_initialization (
+ authority uuid NOT NULL, room uuid NOT NULL, node uuid NOT NULL,
+ agent uuid NOT NULL UNIQUE, coordinator uuid NOT NULL,
+ state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','enrolled','provisioning','blocked','unknown')),
+ revision bigint NOT NULL DEFAULT 1, note text NOT NULL DEFAULT 'Host-local initialization required',
+ receipt jsonb, PRIMARY KEY(room,node),
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id),
+ FOREIGN KEY(authority,coordinator) REFERENCES hb_principal(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_room_agent_origin (
+ agent uuid PRIMARY KEY REFERENCES hb_principal(id), authority uuid NOT NULL,
+ room uuid NOT NULL, node uuid NOT NULL,
+ FOREIGN KEY(authority,room) REFERENCES hb_room(authority,id)
+);
+CREATE OR REPLACE FUNCTION hb_room_origin_fence() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE origin hb_room_agent_origin%ROWTYPE;
+BEGIN
+ IF TG_TABLE_NAME='hb_principal' THEN
+   SELECT * INTO origin FROM hb_room_agent_origin WHERE agent=NEW.id;
+   IF FOUND AND NEW.home_node IS DISTINCT FROM origin.node THEN
+     RAISE EXCEPTION 'Room origin environment is immutable' USING ERRCODE='23514';
+   END IF;
+ ELSE
+   SELECT * INTO origin FROM hb_room_agent_origin WHERE agent=NEW.principal;
+   IF FOUND AND NEW.home_room IS DISTINCT FROM origin.room THEN
+     RAISE EXCEPTION 'Room origin is immutable' USING ERRCODE='23514';
+   END IF;
+ END IF;
+ RETURN NEW;
+END $$;
+DO $$ BEGIN
+ IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='hb_room_origin_principal') THEN
+  CREATE TRIGGER hb_room_origin_principal BEFORE UPDATE OF home_node ON hb_principal
+    FOR EACH ROW EXECUTE FUNCTION hb_room_origin_fence();
+ END IF;
+ IF NOT EXISTS(SELECT 1 FROM pg_trigger WHERE tgname='hb_room_origin_role') THEN
+  CREATE TRIGGER hb_room_origin_role BEFORE UPDATE OF home_room ON hb_agent_role
+    FOR EACH ROW EXECUTE FUNCTION hb_room_origin_fence();
+ END IF;
+END $$;

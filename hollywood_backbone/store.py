@@ -573,7 +573,7 @@ class Store:
                 token = credentials[label]["token"]
                 c.execute("INSERT INTO hb_token VALUES(%s,%s,false)", (digest(token), identity))
             c.execute(
-                "INSERT INTO hb_room(id,authority,name,purpose,owner) VALUES(%s,%s,'Global',%s,%s)",
+                "INSERT INTO hb_room(id,authority,name,purpose,owner,room_kind) VALUES(%s,%s,'Global',%s,%s,'global')",
                 (room, authority, "Enterprise coordination and administration", global_agent),
             )
             c.execute(
@@ -787,6 +787,42 @@ class Store:
         from .room_defaults import read
         return read(self, actor_id)
 
+    def room_agents_read(self, actor_id, room):
+        from .room_agents import read
+        return read(self, actor_id, room)
+
+    def room_agents_initialize(self, actor_id, room, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'room_agents_initialize', [room], command)
+
+    def _admin_room_agents_initialize(self, c, actor, room):
+        from .room_agents import initialize
+        return initialize(self, c, actor, room)
+
+    def room_agent_enroll(self, actor_id, room, node, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'room_agent_enroll', [room, node, payload], command)
+
+    def _admin_room_agent_enroll(self, c, actor, room, node, payload):
+        from .room_agents import enroll
+        return enroll(self, c, actor, room, node, payload)
+
+    def room_agent_report(self, actor_id, room, node, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'room_agent_report', [room, node, payload], command)
+
+    def _admin_room_agent_report(self, c, actor, room, node, payload):
+        from .room_agents import report
+        return report(self, c, actor, room, node, payload)
+
+    def room_agents_activate(self, actor_id, room, payload, *, command=None):
+        from .administrative import mutate
+        return mutate(self, actor_id, 'room_agents_activate', [room,payload], command)
+
+    def _admin_room_agents_activate(self, c, actor, room, payload):
+        from .room_agents import activate
+        return activate(self, c, actor, room, payload)
+
     def room_default_set(self, actor_id, node, payload, *, command=None):
         from .administrative import mutate
         return mutate(self, actor_id, 'room_default_set', [node, payload], command)
@@ -823,25 +859,14 @@ class Store:
                 raise Conflict("Room identity conflict")
             return json_value(row)
         c.execute(
-            "INSERT INTO hb_room(id,authority,name,purpose,owner) VALUES(%s,%s,%s,%s,%s)",
+            "INSERT INTO hb_room(id,authority,name,purpose,owner,room_kind) VALUES(%s,%s,%s,%s,%s,'project')",
             (identity, a["authority"], name, purpose, owner),
         )
-        c.execute(
-            "INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
-            (a["authority"], identity, owner),
-        )
-        if str(a["id"]) != str(owner) and a["kind"] in ("human", "agent"):
+        if str(a["id"]) != str(owner) and a['kind']=='human':
             c.execute("INSERT INTO hb_membership(authority,room,principal,can_read,can_post,can_request) VALUES(%s,%s,%s,true,true,true)",
                       (a["authority"], identity, a["id"]))
-        if a["administrator"]:
-            c.execute(
-                """UPDATE hb_agent_role SET home_room=%s,revision=revision+1
-                   WHERE principal=%s AND home_room IS NULL AND EXISTS
-                     (SELECT 1 FROM hb_principal p WHERE p.id=hb_agent_role.principal AND NOT p.identity_reference)""",
-                (identity, owner),
-            )
         from .room_defaults import join
-        join(c, a["authority"], identity)
+        join(c, a["authority"], identity, new_project=True)
         return json_value(
             c.execute("SELECT * FROM hb_room WHERE id=%s", (identity,)).fetchone()
         )
@@ -980,9 +1005,14 @@ class Store:
                 ),
             ).fetchall()
             from .project_rooms import controls
-            return {"authorityId": str(a["authority"]), "rooms": json_value(rows), "roomControl": controls(a, rows)}
+            desired = []
+            if a['kind'] == 'agent' and a['administrator']:
+                desired = c.execute('SELECT room,node,agent,state,revision,receipt FROM hb_room_agent_initialization WHERE authority=%s AND coordinator=%s ORDER BY room,node', (a['authority'], a['id'])).fetchall()
+            return {"authorityId": str(a["authority"]), "rooms": json_value(rows), "roomControl": controls(a, rows),
+                    "roomAgentInitializations": json_value(desired)}
 
     def room_actors(self, c, a, room, *, after=None, limit=None):
+        from .actor_identity import descriptor
         query = """SELECT p.id,p.name,p.kind,p.home_node,p.identity_reference,r.primary_role,r.home_room,r.purpose,
                       coalesce(m.can_read,false) AS can_read,
                       coalesce(m.can_post,false) AS can_post,
@@ -999,10 +1029,15 @@ class Store:
         if limit is not None:
             query += " LIMIT %s"
             args.append(limit)
-        return c.execute(query,args).fetchall()
+        rows = c.execute(query,args).fetchall()
+        generation=c.execute('SELECT retired FROM hb_room_agent_generation WHERE room=%s',(room['id'],)).fetchone()
+        retired=set(generation['retired']) if generation else set()
+        return [{**row, "identity": descriptor(c, row["id"]),
+                 "participation":'retained-source-owner' if row['id'] in retired else 'participant'} for row in rows]
 
     def room_detail(self, actor_id, identity):
         from .conversation_state import read_room as native_state_read
+        from .room_agents import inventory as room_agent_inventory
         with self.pool.connection() as c:
             a = self.actor(c, actor_id)
             room = self.room(c, a, identity)
@@ -1046,6 +1081,7 @@ class Store:
             return {
                 "authorityId": str(a["authority"]),
                 "room": json_value(room),
+                "roomAgents": room_agent_inventory(c, a['authority'], identity),
                 "nativeState": native_state_read(self,c,a,identity),
                 "permissions": permissions,
                 "actors": json_value(actors),
@@ -1661,6 +1697,9 @@ class Store:
         return mutate(self, actor_id, 'role', [agent, primary, purpose, home_room, revision, native_goal_scope, decision_owner], command)
 
     def _admin_role(self, c, a, agent, primary, purpose, home_room, revision, native_goal_scope=None, decision_owner="preserve"):
+        origin = c.execute('SELECT room FROM hb_room_agent_origin WHERE agent=%s', (agent,)).fetchone()
+        if origin and str(origin['room']) != home_room:
+            raise Conflict('Room-owned agent origin cannot be moved')
         target = c.execute(
             "SELECT * FROM hb_principal WHERE id=%s AND authority=%s AND kind='agent'",
             (agent, a["authority"]),

@@ -173,6 +173,32 @@ class Room(Input):
     sourceRoomId: UUID | None = None
 
 
+class RoomAgentInitialize(Input):
+    operationId: str = Field(min_length=1, max_length=128)
+
+
+class RoomAgentEnroll(RoomAgentInitialize):
+    enrollmentCredential: str = Field(min_length=40, max_length=256)
+
+
+class RoomAgentReport(RoomAgentInitialize):
+    revision: int = Field(ge=1)
+    state: str
+    note: str = Field(min_length=1, max_length=1000)
+    receipt: dict | None = None
+
+
+class RoomAgentHandoff(Input):
+    originalWorkDisposition: Literal['retained-with-original-owners']
+    ownerReceiptSha256: str = Field(pattern=r'^[a-f0-9]{64}$')
+
+
+class RoomAgentActivate(RoomAgentInitialize):
+    revision: int = Field(ge=1)
+    retiringAgentIds: list[UUID] = Field(max_length=1000)
+    handoff: RoomAgentHandoff
+
+
 class Membership(Input):
     operationId: str | None = Field(default=None, min_length=1, max_length=128)
     principalId: UUID
@@ -1116,6 +1142,31 @@ async def room_create(request):
     return await invoke(request, "create_room", *arguments)
 
 
+async def room_agents(request):
+    room = str(UUID(request.match_info['room']))
+    if request.method == 'GET':
+        return await invoke(request, 'room_agents_read', room)
+    await body(request, RoomAgentInitialize)
+    return await invoke(request, 'room_agents_initialize', room)
+
+
+async def room_agent_enroll(request):
+    p = await body(request, RoomAgentEnroll)
+    return await invoke(request, 'room_agent_enroll', str(UUID(request.match_info['room'])),
+                        str(UUID(request.match_info['node'])), p.model_dump(mode='json'))
+
+
+async def room_agent_report(request):
+    p = await body(request, RoomAgentReport)
+    return await invoke(request, 'room_agent_report', str(UUID(request.match_info['room'])),
+                        str(UUID(request.match_info['node'])), p.model_dump(mode='json'))
+
+
+async def room_agents_activate(request):
+    p = await body(request, RoomAgentActivate)
+    return await invoke(request, 'room_agents_activate', str(UUID(request.match_info['room'])), p.model_dump(mode='json'))
+
+
 async def agent_directory(request):
     if set(request.query) - {"after", "limit"}:
         raise ValueError("Unknown agent directory query")
@@ -1915,6 +1966,12 @@ async def context_seed_control(request):
 
 
 def application(store, *, federated_messages=None, federated_catalog=None, federated_agent_gateway=None, node_router=None):
+    # Installed process configuration, not an untrusted request/header, owns the
+    # local-home boundary. A standalone unconfigured node cannot forge a home.
+    local = node_router.node_id if node_router else getattr(federated_agent_gateway, 'node_id', None)
+    if getattr(store, 'local_node_id', local) != local:
+        raise ValueError('Original accepting node identity changed')
+    store.local_node_id = local
     app = web.Application(middlewares=[boundary], client_max_size=16384)
     app[STORE] = store
     app[STREAM_CLOSING] = asyncio.Event()
@@ -2010,6 +2067,11 @@ def application(store, *, federated_messages=None, federated_catalog=None, feder
             web.get("/hollywood/v3/inbox/events/{event}", inbox_event),
             web.get("/hollywood/v3/rooms", rooms),
             web.get("/hollywood/v3/rooms/{room}", room_detail),
+            web.get("/hollywood/v3/rooms/{room}/environment-agents", room_agents),
+            web.post("/hollywood/v3/rooms/{room}/environment-agents", room_agents),
+            web.post("/hollywood/v3/rooms/{room}/environment-agents/activate", room_agents_activate),
+            web.post("/hollywood/v3/rooms/{room}/environment-agents/{node}/enroll", room_agent_enroll),
+            web.post("/hollywood/v3/rooms/{room}/environment-agents/{node}/report", room_agent_report),
             web.post("/hollywood/v3/rooms", room_create),
             web.get("/hollywood/v3/room-defaults", room_defaults),
             web.put("/hollywood/v3/room-defaults/{node}", room_defaults),

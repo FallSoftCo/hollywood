@@ -9,6 +9,7 @@ from .store import Denied,Conflict,digest
 from psycopg.types.json import Jsonb
 
 READS=frozenset({'viewer_receipt','catalog','room_detail','history','delivery','command','execution_context',
+ 'room_agents_read',
  'execution_evidence','executor_read','native_effects','delivery_targets_read','attention_read','attention_inbox',
  'inbox','inbox_event','native_control_read','agent_context','principal_read','agent_directory',
  'role_read','placement_read','decision_list','goal_list','goal_read','work_list','work_read','work_attempts',
