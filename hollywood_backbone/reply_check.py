@@ -24,7 +24,6 @@ def check(c, actor, room, payload, source):
         FROM hb_event WHERE room=%s AND data->>'humanInputEventId'=%s
         AND author<>%s AND seq>%s AND seq<=%s AND audience='room'
         AND kind='message' AND data->>'authorKind'='agent'
-        AND data->>'responsePhase' IN ('answer','update','blocked')
         ORDER BY seq DESC LIMIT 7""",
         (room,str(source['id']),actor['id'],observed,ceiling)).fetchall()
     if not rows:

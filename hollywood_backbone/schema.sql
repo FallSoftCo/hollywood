@@ -1225,11 +1225,13 @@ WITH desired AS (
  JOIN hb_room_agent_generation g ON g.room=i.room AND g.phase='active'
  JOIN hb_room_default_agent d ON d.authority=i.authority AND d.node=i.node AND d.principal=i.coordinator AND d.enabled
  UNION
- SELECT x.authority,x.room,unnest(x.globals) FROM hb_global_room_participation x
- UNION
  SELECT o.authority,o.room,o.agent FROM hb_global_origin o
  JOIN hb_room r ON r.id=o.room AND r.room_kind='global'
- WHERE NOT EXISTS(SELECT 1 FROM hb_global_room_participation x WHERE x.room=o.room)
+ LEFT JOIN hb_room_default_agent d ON d.authority=o.authority AND d.node=o.node
+   AND d.principal=o.agent AND d.enabled
+ WHERE d.principal IS NOT NULL OR
+   (o.kind='bootstrap' AND o.agent=r.owner AND o.node IS NOT DISTINCT FROM r.home_node
+    AND NOT EXISTS(SELECT 1 FROM hb_global_room_participation x WHERE x.room=o.room))
 ), current_desired AS (
  SELECT d.* FROM desired d
  LEFT JOIN hb_principal p ON p.id=d.principal

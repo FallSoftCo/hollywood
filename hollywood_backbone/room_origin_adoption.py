@@ -133,8 +133,14 @@ def global_attach(store,actor_id,operation,descriptor):
         role=c.execute('SELECT * FROM hb_agent_role WHERE principal=%s FOR SHARE',(actor_id,)).fetchone()
         if not default or not room or room['room_kind']!='global' or str(room['home_node'] or store.local_node_id)!=store.local_node_id or not role or role['primary_role'].casefold()!='global':
             raise Denied('Current original Global and canonical typed origin room required')
-        manifest=descriptor['manifest'];review(manifest,{'roomId','roomRevision','ownerId','homeNodeId','homeRevision','roleRevision','priorHomeRoomId'})
-        if descriptor['kind']!='reviewed-adoption' or (manifest['roomId'],manifest['homeNodeId'],manifest['homeRevision'],manifest['roleRevision'])!=(str(room['id']),str(actor['home_node']),actor['home_revision'],role['revision']):
+        manifest=descriptor['manifest']
+        fields={'roomId','roomRevision','ownerId','homeNodeId','homeRevision','roleRevision','priorHomeRoomId'}
+        if descriptor['kind']=='bootstrap':
+            review(manifest,fields,frozenset({'birthVersion'}))
+            if type(manifest.get('birthVersion')) is not int or manifest['birthVersion']!=1:
+                raise Denied('Fresh joined-node Global birth contract required')
+        else:review(manifest,fields)
+        if descriptor['kind'] not in ('reviewed-adoption','bootstrap') or (manifest['roomId'],manifest['homeNodeId'],manifest['homeRevision'],manifest['roleRevision'])!=(str(room['id']),str(actor['home_node']),actor['home_revision'],role['revision']):
             raise Conflict('Current home origin/role revision differs')
         if (room['revision'],str(room['owner']))!=(manifest['roomRevision'],manifest['ownerId']):
             raise Conflict('Reviewed canonical Global room revision/owner changed')

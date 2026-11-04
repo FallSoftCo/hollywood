@@ -90,6 +90,12 @@ async def main():
             private=store.post(agents[0]['id'],room,'private-answer',{'kind':'message','body':'PRIVATE MUST NOT LEAK','audience':'direct','recipientId':owner,'sourceEventId':fresh['id'],'responsePhase':'answer'})
             public=store.post(agents[1]['id'],room,'public-after-private',{'kind':'message','body':'Public answer','audience':'room','sourceEventId':fresh['id'],'responsePhase':'answer','replyCheck':{'observedThrough':fresh['seq']}})
             assert public['accepted']
+            third=store.post(owner,room,'third-question',{'kind':'message','body':'Unphased replies count too','audience':'room'})['event']
+            store.post(agents[0]['id'],room,'unphased-peer',{'kind':'message','body':'Useful unphased answer','audience':'room','sourceEventId':third['id']})
+            checked=store.post(agents[1]['id'],room,'after-unphased-peer',{'kind':'message','body':'Candidate answer','audience':'room','sourceEventId':third['id'],'responsePhase':'answer','replyCheck':{'observedThrough':third['seq']}})
+            assert checked['accepted'] is False and checked['code']=='REPLY_CONTEXT_CHANGED'
+            assert checked['peerReplies'][0]['bodyPreview']=='Useful unphased answer'
+            evidence['unphasedPeerRepliesIncluded']=True
             try:store.post(agents[0]['id'],room,'invalid-private-check',{'kind':'message','body':'Do not admit','audience':'direct','recipientId':owner,'sourceEventId':fresh['id'],'responsePhase':'answer','replyCheck':{'observedThrough':fresh['seq']}})
             except Exception as error:assert type(error).__name__=='Denied',error
             else:raise AssertionError('Private check must be rejected')
