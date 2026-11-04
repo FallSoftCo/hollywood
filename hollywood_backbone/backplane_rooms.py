@@ -123,7 +123,8 @@ class AgentRoomTransport(AgentRoomReads):
             payload = message.model_dump(mode="json", exclude={"operationId"}
                 | ({"responsePhase"} if message.responsePhase is None else set())
                 | ({"expectsReply"} if not message.expectsReply else set())
-                | ({"evidenceReferences"} if message.evidenceReferences is None else set()))
+                | ({"evidenceReferences"} if message.evidenceReferences is None else set())
+                | ({"replyCheck"} if message.replyCheck is None else set()))
             wire = {"method": "POST", "path": path, "body": raw}
             with native_effects.transport(actor, binding.token_digest,
                                           "POST", "post", path, raw, provenance, admission=binding):

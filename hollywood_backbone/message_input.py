@@ -15,6 +15,10 @@ class EvidenceReferences(Input):
     contextOperationIds: list[str] = Field(max_length=8)
 
 
+class ReplyCheck(Input):
+    observedThrough: int = Field(strict=True, ge=0, le=9007199254740991)
+
+
 class Message(Input):
     operationId: str = Field(min_length=1, max_length=128)
     kind: Literal["message", "request"]
@@ -25,3 +29,4 @@ class Message(Input):
     responsePhase: Literal["message","update","answer","blocked"] | None = None
     expectsReply: bool = False
     evidenceReferences: EvidenceReferences | None = None
+    replyCheck: ReplyCheck | None = None

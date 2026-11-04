@@ -1168,6 +1168,13 @@ class Store:
                 raise Conflict("Operation ID reused with changed contents")
             self.readable_event(c, a, old["event"])
             return self.receipt(c, old["event"])
+        checked = c.execute('SELECT * FROM hb_reply_check_command WHERE principal=%s AND operation=%s',
+                            (a['id'],operation)).fetchone()
+        if checked:
+            if checked['digest'] != fingerprint:
+                raise Conflict('Operation ID reused with changed contents')
+            self.room(c,a,checked['receipt']['roomId'])
+            return checked['receipt']
         recipient = payload.get("recipientId")
         # A human speaks to the room. Legacy owner-directed requests are
         # retained only for agent callers; explicit direct recipients remain exact.
@@ -1192,6 +1199,7 @@ class Store:
                 raise Denied("Recipient cannot access the room")
         if audience == "direct" and not recipient:
             raise Conflict("Private message requires an explicit recipient")
+        parent = None
         source = payload.get("sourceEventId")
         data = {"nativeContext": native_context} if native_context else {}
         if payload.get('responsePhase') is not None:
@@ -1233,6 +1241,12 @@ class Store:
                 ).fetchall()
                 if len(goals) == 1:
                     data["goalReferenceId"] = str(goals[0]["id"])
+        from .reply_check import check as check_reply
+        changed = check_reply(c, a, room_id, payload, parent)
+        if changed is not None:
+            c.execute('INSERT INTO hb_reply_check_command VALUES(%s,%s,%s,%s,%s)',
+                      (a['authority'],a['id'],operation,fingerprint,Jsonb(changed)))
+            return changed
         if payload.get("evidenceReferences") is not None:
             from .execution_evidence import snapshot
             data["executionEvidence"] = snapshot(c, self, a, payload["evidenceReferences"])
@@ -1271,6 +1285,11 @@ class Store:
                 "SELECT * FROM hb_command WHERE principal=%s AND operation=%s", (a["id"], operation)
             ).fetchone()
             if not row:
+                checked=c.execute('SELECT receipt FROM hb_reply_check_command WHERE principal=%s AND operation=%s',
+                                  (a['id'],operation)).fetchone()
+                if checked:
+                    self.room(c,a,checked['receipt']['roomId'])
+                    return checked['receipt']
                 raise Denied("Command unavailable")
             event = self.readable_event(c, a, row["event"])
             receipt = self.receipt(c, row["event"])

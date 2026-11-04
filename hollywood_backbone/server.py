@@ -1282,7 +1282,7 @@ async def post(request):
         "post",
         str(UUID(request.match_info["room"])),
         p.operationId,
-        p.model_dump(mode="json", exclude={"operationId"} | ({"responsePhase"} if p.responsePhase is None else set()) | ({"expectsReply"} if not p.expectsReply else set()) | ({"evidenceReferences"} if p.evidenceReferences is None else set())),
+        p.model_dump(mode="json", exclude={"operationId"} | ({"responsePhase"} if p.responsePhase is None else set()) | ({"expectsReply"} if not p.expectsReply else set()) | ({"evidenceReferences"} if p.evidenceReferences is None else set()) | ({"replyCheck"} if p.replyCheck is None else set())),
     )
 
 

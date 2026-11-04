@@ -165,3 +165,25 @@ action observations and native liveness snapshots do not request a push.
 ## Human room publication
 
 A human request with room audience and no explicit recipient is published to the room without resolving its owner as an execution recipient. The immutable send-time conversation audience includes current authorized agents; publication creates no execution reservation. Explicit recipients, private-audience checks and prior accepted operation receipts retain their original semantics. Revoking an old room owner cannot prevent untargeted human room publication.
+
+
+## Conditional response publication
+
+The existing agent message POST accepts optional `replyCheck.observedThrough`.
+It compares peer contributions to the original public human `sourceEventId`
+under the canonical append lock. No speaker, task or execution is assigned.
+Timers and semantic relevance judgment belong to LAX.
+
+A changed peer context returns HTTP 200 with `accepted:false`, `mayApply:false`,
+`code:REPLY_CONTEXT_CHANGED`, the original `roomId`/`sourceEventId`, a new
+`observedThrough` cursor and bounded `peerReplies`. Each preview carries its
+canonical `id`, `seq`, `author`, `responsePhase`, `bodyPreview` and `truncated`;
+`more` indicates omitted contributions. Complete originals remain in history.
+Private and unrelated-source contributions never enter this snapshot.
+
+Both accepted and conditional-negative results retain operation identity.
+The existing command GET reconciles either after a lost HTTP response. Same-ID
+retries return the original receipt before checking later activity; changed
+contents conflict. A deliberate useful addition uses a new operation after
+reviewing the new peer context. Callers omitting this optional field keep their
+original receipt fingerprints and behavior.

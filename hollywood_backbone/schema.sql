@@ -68,12 +68,20 @@ CREATE TABLE IF NOT EXISTS hb_event (
  CHECK(audience='room' OR recipient IS NOT NULL)
 );
 CREATE INDEX IF NOT EXISTS hb_room_history ON hb_event(room,seq);
+CREATE INDEX IF NOT EXISTS hb_source_replies ON hb_event(room,(data->>'humanInputEventId'),seq)
+ WHERE audience='room' AND kind='message' AND data->>'authorKind'='agent';
 CREATE TABLE IF NOT EXISTS hb_command (
  authority uuid NOT NULL, principal uuid NOT NULL, operation text NOT NULL,
  digest text NOT NULL, event uuid NOT NULL,
  PRIMARY KEY(principal,operation),
  FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id),
  FOREIGN KEY(authority,event) REFERENCES hb_event(authority,id)
+);
+CREATE TABLE IF NOT EXISTS hb_reply_check_command (
+ authority uuid NOT NULL, principal uuid NOT NULL, operation text NOT NULL,
+ digest text NOT NULL, receipt jsonb NOT NULL,
+ PRIMARY KEY(principal,operation),
+ FOREIGN KEY(authority,principal) REFERENCES hb_principal(authority,id)
 );
 CREATE TABLE IF NOT EXISTS hb_delivery (
  id uuid PRIMARY KEY, authority uuid NOT NULL, event uuid NOT NULL,
