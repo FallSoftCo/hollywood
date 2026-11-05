@@ -70,7 +70,11 @@ async def main(database,binary,root):
                         domain=AgentDomain(bindings)
                         handlers['hollywood.agent.authenticate']=domain.authenticate
                         handlers['hollywood.agent.domain']=domain.invoke
-                        handlers.update({'hollywood.catalog.read':catalog.receive,
+                        async def delayed_catalog(request, receive=catalog.receive, state={'first': True}):
+                            if state.pop('first', False):
+                                await asyncio.sleep(2.2)
+                            return await receive(request)
+                        handlers.update({'hollywood.catalog.read':delayed_catalog,
                             'hollywood.viewer.room.read':catalog.receive_room})
                         service=Service(transport.connection,authority_id=intents[idx]['authorityId'],
                             host_id=transport.host_id,handlers=handlers)

@@ -11,7 +11,7 @@ import asyncio
 from nats.errors import Error as NatsError
 
 from .backplane import BackplaneError
-from .federation_service import Client, discover
+from .federation_service import Client, discover, CATALOG_READ_TIMEOUT
 from .store import Denied
 
 
@@ -116,7 +116,7 @@ class Catalog:
         client = Client(self.connection, authority_id=authority_id, host_id=self.host_id)
         return await client.request('hollywood.viewer.room.read',
             {'subject': subject, 'kind': kind, 'roomId': room_id, 'read': read, 'page': page},
-            request_id=str(uuid4()), timeout=2)
+            request_id=str(uuid4()), timeout=CATALOG_READ_TIMEOUT)
 
     async def combined(self, actor_id, kind):
         if self.node_catalog is not None:return await self.node_catalog.combined(actor_id,kind)
@@ -141,7 +141,7 @@ class Catalog:
                 from uuid import uuid4
                 try:
                     value = await client.request('hollywood.catalog.read',
-                        {'subject': subject, 'kind': kind}, request_id=str(uuid4()), timeout=2)
+                        {'subject': subject, 'kind': kind}, request_id=str(uuid4()), timeout=CATALOG_READ_TIMEOUT)
                     if value.get('authorityId') != authority:
                         raise BackplaneError('RESPONSE_IDENTITY_MISMATCH')
                     return authority, value, None

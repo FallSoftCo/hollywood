@@ -207,7 +207,7 @@ class HostBackplane:
 
 
 async def connect_host(*, server: str, host_id: str, password: str,
-                       ca_file: str, timeout: float = 8, persistent: bool = False, closed_cb=None,
+                       ca_file: str, timeout: float = 15, persistent: bool = False, closed_cb=None,
                        disconnected_cb=None, reconnected_cb=None):
     """Create an authenticated TLS connection with a bounded initial handshake.
 
@@ -216,7 +216,7 @@ async def connect_host(*, server: str, host_id: str, password: str,
     """
     import ssl
     from urllib.parse import urlsplit
-    from nats.aio.client import Client
+    from .backplane_nats import Client
 
     host_id = identity(host_id)
     servers = [server] if isinstance(server, str) else list(server)
@@ -236,7 +236,7 @@ async def connect_host(*, server: str, host_id: str, password: str,
             servers, user=host_id, password=password, tls=context,
             inbox_prefix=f"_INBOX.{host_id}".encode(),
             allow_reconnect=persistent or disconnected_cb is not None, pending_size=0, reconnect_time_wait=2,
-            max_reconnect_attempts=-1 if persistent else 1, connect_timeout=min(timeout, 3),
+            max_reconnect_attempts=-1 if persistent else 1, connect_timeout=min(timeout, 8),
             ping_interval=10, max_outstanding_pings=2,
             error_cb=_quiet_connection_error, closed_cb=closed_cb,
             disconnected_cb=disconnected_cb, reconnected_cb=reconnected_cb), timeout=timeout)

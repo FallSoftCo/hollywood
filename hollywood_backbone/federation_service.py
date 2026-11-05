@@ -14,6 +14,11 @@ from nats.errors import Error as NatsError, TimeoutError, NoRespondersError
 from .backplane import HostRequest, BackplaneError, identity, encode, decode
 
 
+# A measured 1.75s tailnet RTT leaves no processing margin at two seconds.
+# This is a maximum wait, not a delay or permission to retry a write.
+CATALOG_READ_TIMEOUT = 6
+
+
 class Service:
     def __init__(self, connection, *, authority_id, host_id, handlers, version='0.3.0', node_id=None, legacy=True, read_concurrency=16, write_concurrency=32):
         self.connection = connection

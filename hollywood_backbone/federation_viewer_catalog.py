@@ -5,7 +5,7 @@ from uuid import UUID,uuid4
 
 from nats.errors import Error as NatsError
 from .backplane import BackplaneError
-from .federation_service import Client,discover
+from .federation_service import Client,discover, CATALOG_READ_TIMEOUT
 from .store import Denied
 
 
@@ -58,7 +58,7 @@ class ViewerCatalog:
             async with gate:
                 try:
                     result=await Client(cat.connection,authority_id=authority,host_id=cat.host_id,target_node_id=node).request(
-                        'hollywood.catalog.read',{'subject':subject,'kind':kind},request_id=str(uuid4()),timeout=2)
+                        'hollywood.catalog.read',{'subject':subject,'kind':kind},request_id=str(uuid4()),timeout=CATALOG_READ_TIMEOUT)
                     if result.get('authorityId')!=authority or result.get('nodeId',node)!=node:
                         raise BackplaneError('RESPONSE_IDENTITY_MISMATCH')
                     return key,result,None
@@ -117,4 +117,4 @@ class ViewerCatalog:
         if not subject:raise BackplaneError('VIEWER_ACCESS_DENIED')
         return await Client(self.catalog.connection,authority_id=owner,host_id=self.catalog.host_id,target_node_id=node).request(
             'hollywood.viewer.room.read',{'subject':subject,'kind':kind,'roomId':room,'read':read,'page':page},
-            request_id=str(uuid4()),timeout=2)
+            request_id=str(uuid4()),timeout=CATALOG_READ_TIMEOUT)
