@@ -187,3 +187,21 @@ retries return the original receipt before checking later activity; changed
 contents conflict. A deliberate useful addition uses a new operation after
 reviewing the new peer context. Callers omitting this optional field keep their
 original receipt fingerprints and behavior.
+
+
+### Federated catalog viewer identity (v1)
+
+Authenticated human room catalogs may include `viewerIdentity` with required
+`version: 1`, `authorityId`, and a lowercase 64-hex `viewerId`. It is an opaque
+presentation identity derived from the installation's existing, bidirectional
+federation subject mapping. Different gateway-local human UUIDs for the same
+mapped viewer produce the same identity within an authority. An agent,
+unmapped human, or inconsistent reverse mapping receives no identity proof.
+The private subject is never returned. Normal catalog and room authorization
+still apply to every read; this field grants no rights and is never accepted
+as a credential or write binding.
+
+Clients can group a room by fleet/account, verified viewer, authority and room.
+They retain physical binding, credentials, draft and outgoing receipt provenance.
+Missing metadata preserves legacy physical identity; malformed metadata must
+never silently merge audiences. A route change must not resubmit an intent.

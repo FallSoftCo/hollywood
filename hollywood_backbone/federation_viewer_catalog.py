@@ -46,6 +46,8 @@ class ViewerCatalog:
 
     async def combined(self,actor,kind):
         cat=self.catalog;local=await asyncio.to_thread(self.canonical,actor)
+        viewer=cat.viewer_identity(actor,kind)
+        if viewer is not None:local={**local,'viewerIdentity':viewer}
         subject=cat.local_subjects.get(actor)
         if not subject:
             return {**local,'rooms':[{**r,'ownerNodeId':self.node} for r in local['rooms']],

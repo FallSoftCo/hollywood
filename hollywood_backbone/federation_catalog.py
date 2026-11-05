@@ -30,6 +30,22 @@ class Catalog:
         from .federation_viewer_catalog import ViewerCatalog
         self.node_catalog=ViewerCatalog(self,node_id or host_id) if node_routing else None
 
+    def viewer_identity(self, actor_id, kind):
+        """Presentation identity from installation enrollment, never a write credential.
+
+        Local principal UUIDs intentionally differ across nodes. Only an exact
+        bidirectional human enrollment can establish their common viewer. The
+        opaque digest avoids exposing the private enrollment subject to clients.
+        Unenrolled actors keep their existing physical identity at the client.
+        """
+        subject = self.local_subjects.get(actor_id)
+        if (kind != 'human' or not isinstance(subject, str) or not 1 <= len(subject) <= 200
+                or self.trusted_viewers.get(subject) != actor_id):
+            return None
+        from hashlib import sha256
+        key = sha256(('hollywood.catalog.viewer.v1\0' + self.authority_id + '\0' + subject).encode()).hexdigest()
+        return {'version': 1, 'authorityId': self.authority_id, 'viewerId': key}
+
     def _mapped_read(self, subject, kind):
         actor=self._viewer(subject,kind)
         return self.node_catalog.canonical(actor) if self.node_catalog else self._local_read(actor)
@@ -121,6 +137,8 @@ class Catalog:
     async def combined(self, actor_id, kind):
         if self.node_catalog is not None:return await self.node_catalog.combined(actor_id,kind)
         local = await asyncio.to_thread(self._local_read, actor_id)
+        viewer = self.viewer_identity(actor_id, kind)
+        if viewer is not None: local = {**local, 'viewerIdentity': viewer}
         subject = self.local_subjects.get(actor_id)
         if not subject:
             return {**local, 'sources': [{'authorityId': self.authority_id, 'status': 'connected'}],
